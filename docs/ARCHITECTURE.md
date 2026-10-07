@@ -213,7 +213,7 @@ Modelled on Dusklight but simpler, with a Final Fantasy crystal look. All art is
 - The friend code / profile lives in the emulated WFC config (`dwc/utility.bin` settings), created by the runtime.
 
 ## 9. Quality-of-life backlog (initial)
-Fast-forward and turbo · faster text · skip or speed up cutscenes and movies · camera options (zoom, smoothing) · always-run / sensible deadzones ·
+Skip the boot company logos (option, on by default) · fast-forward and turbo · faster text · skip or speed up cutscenes and movies · camera options (zoom, smoothing) · always-run / sensible deadzones ·
 debug warp/teleport menu (TCRF addresses) · save backups and slots · screenshot mode (hide HUD) · texture pack loader · discord presence (optional) ·
 accessibility (button holds → toggles, colour filters) · Steam Deck profile.
 

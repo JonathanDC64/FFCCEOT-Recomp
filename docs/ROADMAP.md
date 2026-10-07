@@ -42,6 +42,7 @@ Milestones are ordered by dependency. Each ends with a demonstrable result. Desi
 - [ ] Measure interpreter cost during movies; recompile the decoder region if it matters
 - [ ] Long play sessions without crashes; save/load works and matches real-cart dumps
 - [ ] Coverage report: log every interpreter entry and fix the ones outside known regions
+- [ ] Option to skip the unskippable company logos before the title screen (first QoL feature)
 
 ## M5: Modern renderer
 **Result: 4K, widescreen, 60+ FPS.**
