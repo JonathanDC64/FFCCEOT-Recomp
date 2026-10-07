@@ -1,0 +1,65 @@
+# =====================================================================
+#  COPYRIGHT GUARD — never commit anything derived from the game ROM.
+#  The user supplies their own legally dumped ROM at runtime/build time.
+# =====================================================================
+
+# ROMs and disc/cart images
+*.nds
+*.srl
+*.dsi
+*.ids
+*.app
+*.zip
+*.7z
+*.rar
+
+# Anything extracted from / generated from the ROM
+/rom/
+/extracted/
+/baserom/
+/assets/
+/game_data/
+/generated/
+/out/
+**/recomp_generated/
+*.rsb
+*.mods
+*.sdat
+*.nsbmd
+*.nsbtx
+*.nsbca
+*.narc
+arm9*.bin
+arm7*.bin
+overlay*.bin
+ov[0-9]*.bin
+
+# Save data / user config produced by running the game
+*.sav
+*.dsv
+saves/
+user/
+
+# Build outputs
+/build/
+/build-*/
+/cmake-build-*/
+*.obj
+*.o
+*.pdb
+*.ilk
+*.exe
+*.dll
+*.lib
+*.exp
+
+# Tooling / editors
+.vs/
+.vscode/*
+!.vscode/extensions.json
+.idea/
+__pycache__/
+*.pyc
+.venv/
+.DS_Store
+Thumbs.db
