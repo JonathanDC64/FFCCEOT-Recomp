@@ -25,6 +25,24 @@ checks it, and builds everything it needs locally.
 
 Other regions are planned later.
 
+## Building (development)
+
+You need CMake 3.28+, Ninja, Python 3, and clang-cl (or MSVC) on Windows, or clang on Linux.
+
+```sh
+git clone --recursive https://github.com/JonathanDC64/FFCCEOT-Recomp.git
+cd FFCCEOT-Recomp            # existing clone: git submodule update --init
+cmake --preset release -DFFCC_ROM="path/to/your/dump.nds"
+cmake --build --preset release
+build/release/game/ffcc.exe "path/to/your/dump.nds"
+```
+
+The recompiler runs at build time and writes the generated C to `build/` (never committed). Without `FFCC_ROM`, only
+the tools, recompiler and runtime are built.
+
+Controls: arrows, X = A, Z = B, S = X, A = Y, Q = L, W = R, Enter = Start, Right Shift = Select, mouse = touch screen,
+Esc = quit. Gamepads use the Nintendo button layout, and the left stick works as the D-pad.
+
 ## Documentation
 
 - [docs/RESEARCH.md](docs/RESEARCH.md): the DS recomp landscape, prior art, and our analysis of the game

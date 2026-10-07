@@ -59,14 +59,14 @@ FFCCEOT-Recomp/
 │   ├── net/           #   DWC/SOC/WM high-level replacements on host sockets
 │   └── fs/            #   ROM/NitroFS access, save files, user data dirs
 ├── game/              # FFCC: Echoes of Time specific layer
-│   ├── config/cfie/   #   per-region config: symbols.toml, functions.toml, overlays.toml, hooks.toml (addresses only)
+│   ├── config/cfie/   #   per-region config: functions.txt, hooks.txt, regions.txt (addresses only)
 │   ├── hooks/         #   C++ replacements and mid-function hooks (widescreen, culling, QoL, input schemes)
 │   └── features/      #   QoL feature implementations
 ├── ui/                # RmlUi documents (.rml/.rcss) + C++ glue, ImGui dev panels; our own art only
 ├── app/               # main(), installer flow, settings persistence, crash handler
 ├── tools/             # dev tools: rom inspector, symbol import from dsd, GX trace dumper, guard script
 ├── tests/             # recompiler differential tests (vs reference interpreter), runtime unit tests
-├── third_party/       # git submodules (SDL3, RmlUi, imgui, toml++, xxHash, tinycc, freetype, …)
+├── third_party/       # melonDS core (submodule), SDL3 (fetched by CMake); later RmlUi, imgui, tinycc, …
 └── docs/
 ```
 
@@ -78,7 +78,7 @@ boundaries, names, ARM/Thumb mode, jump tables and hook points. These are addres
 
 **Pipeline**
 
-1. **Function discovery**. Seeded by `game/config/cfie/functions.toml`. That file is produced once by developers using
+1. **Function discovery**. Seeded by `game/config/cfie/functions.txt`. That file is produced once by developers using
    **dsd** (`dsd init` + `sig apply` to label NitroSDK / NitroSystem / DWC / Mobiclip functions) and refined by hand.
    The recompiler also traces code itself (BL/BLX targets, Thumb↔ARM interworking, literal pools, `ldr pc` and `add pc`
    jump tables) and reports any coverage gaps.
@@ -95,12 +95,11 @@ boundaries, names, ARM/Thumb mode, jump tables and hook points. These are addres
    - `SWI` calls the BIOS HLE. MCR/MRC go to a CP15 model (TCM mapping, cache ops as no-ops).
    - Memory access is `mem_read32(addr)` etc. Fast paths are inlined for main RAM, ITCM and DTCM; anything else
      goes to the IO/VRAM handlers. Code that only touches RAM never pays for IO decoding.
-4. **Fallback interpreter**. Any address with no recompiled function (data executed as code, or code generated at runtime)
-   runs on a small reference interpreter and logs a coverage miss, so missing functions surface quickly. The same
-   interpreter is the **differential-test oracle**: tests run recompiled vs interpreted code on random states and
-   compare registers, flags and memory.
-5. **Hooks**. A `hooks.toml` entry can (a) replace a guest function with a C++ function, (b) insert a mid-function call
-   at an address, or (c) skip an instruction range. All game-specific behaviour (widescreen, QoL, netplay, AP-check removal)
+4. **Fallback interpreter**. Any address with no recompiled function (code copied at run time, hand-written code
+   that breaks call/return conventions) runs on melonDS's ARMv5 interpreter (§4). The **differential tests** use
+   Unicorn as the oracle: they run recompiled and reference code on random states and compare registers, flags and memory.
+5. **Hooks**. A `hooks.txt` entry replaces a guest function with a C/C++ function. Planned: mid-function calls at an
+   address and skipping an instruction range. All game-specific behaviour (widescreen, QoL, netplay, AP-check removal)
    is written this way, as our own source code.
 
 **Two build modes, same generator**
@@ -115,23 +114,31 @@ boundaries, names, ARM/Thumb mode, jump tables and hook points. These are addres
 
 ## 4. Runtime (`ntr-runtime`)
 
-The design is HLE where it is cheap and safe, LLE where accuracy matters. Timing is approximate. The game is VBlank-driven, so
-the scheduler advances by scanline/VBlank events, not cycle-exact timing.
+**Current design (M3).** The recompiled ARM9 code is the master CPU. Everything else in the console comes from a
+pinned **melonDS** core (`third_party/melonDS`, a GPL-3.0 git submodule, built without its JIT or frontend): the ARM7 runs
+on melonDS's interpreter with its FreeBIOS, and the GPU (2D + 3D), SPU, timers, DMA, IPC, cart, RTC, SPI and Wi-Fi are
+melonDS's. Later milestones replace the output side (renderer §5, audio resampling) with native code. They keep the
+emulated hardware state as the source of truth.
 
 | Area | Design |
 |---|---|
-| Memory | 4 MiB main RAM, ITCM 32 KiB, DTCM 16 KiB, shared WRAM, VRAM banks A–I with the full mapping matrix, palettes, OAM. Host arrays with a fast-path page table. |
-| Execution model | ARM9 code runs on the main host thread. **NitroSDK OS threads map to host fibers**: the hooks `OS_CreateThread`, `OS_SwitchThread`/`OS_RescheduleThread`, `OS_SaveContext`/`OS_LoadContext` switch fibers instead of swapping register files. IRQ handlers run at defined safe points (block boundaries plus HALT/`OS_WaitIrq`/`SVC_WaitByLoop`). |
-| ARM7 | Phase 1: **recompile the ARM7 binary as well** (ARMv4T, same recompiler) and run it cooperatively. That gives exact sound-driver, touch/SPI, RTC and firmware behaviour from the shipped code. Wi-Fi hardware is stubbed because networking is replaced on the ARM9 side. Phase 2 *(optional)*: an HLE SDAT/SSEQ player like khdays-port's. |
-| IPC | PXI FIFO + IPCSYNC between the ARM9 and ARM7 contexts. |
-| Math | Hardware DIV/SQRT reproduced bit-exactly (netplay determinism). |
-| BIOS | HLE SWIs (Div, Sqrt, CpuSet, LZ77/Huffman/RL decompress, Halt, WaitByLoop, CRC16, etc.). No BIOS dump needed. |
-| Card / FS | Card ROM reads are served from the ROM file (memory-mapped). Hooking `CARD_ReadRom` / `FS_ReadFile` gives fast paths. Save memory (EEPROM/flash, per the ROM list) is persisted to `saves/CFIE.sav`. |
-| 2D | Engines A and B: BG modes 0–5, extended palettes, OAM incl. affine, windows, blending, mosaic, master brightness, display capture. Upscaled 2D layers (nearest/xBRZ-style option). |
-| 3D | See §5. |
-| Audio | 16-channel SPU (PCM8/16, IMA-ADPCM, PSG/noise), capture units. Output at 48 kHz via SDL3 with better interpolation (sinc/cubic) than hardware. |
-| Video playback | The game's own Mobiclip decoder runs as recompiled ARM9 code, so videos just work. Optional later: replace with FFmpeg's mobiclip decoder plus upscaling. |
-| Input | SDL3 gamepad/keyboard/mouse feed into a binding layer, which writes KEYINPUT/EXTKEYIN and touch (TSC via SPI). Game-specific input schemes sit on top (§6). |
+| Time | `NtrCpu::cycles` *is* melonDS's `ARM9Timestamp`. Generated code adds approximate cycle costs per block and calls `ntr_poll` at function entry and on backward branches once `cycles >= next_event`. `poll` replicates the inner loop of melonDS `RunFrame`: DMA9/GX stalls, timers, GPU3D, ARM7 catch-up, `RunSystem`, frame end. |
+| Memory | Page tables (4 KiB) point straight into melonDS's main RAM, ITCM and DTCM, which gives the inline fast path. Everything else goes through melonDS's ARM9 bus (`ARM9Read*/Write*`). IO writes that can start DMA or GX stalls, or change IME/IE/IF, force a poll. CP15 writes go to melonDS's CP15 model, and TCM remaps rebuild the page table. |
+| IRQs | HLE BIOS IRQ entry: switch to IRQ mode, push the BIOS frame, call the handler at `[DTCM+0x3FFC]` with LR = `0xFFFF0290`, then pop the frame and resume. NitroSDK's `OS_IrqHandler` is replaced by a C++ port that calls the game's own handlers and thread switch. |
+| Threads | **NitroSDK threads run on host fibers.** `OS_SaveContext` stores a *fiber token* (`0xEE000000 + 4·fiber`) as the saved PC. `OS_LoadContext` (and the IRQ return path) resumes the fiber that owns the token, or starts a new fiber when the PC is real code (a fresh thread). Each guest thread keeps its own recompiled host call stack. |
+| BIOS | HLE SWIs: Div, Sqrt, CpuSet/CpuFastSet, LZ77/Huffman/RLE (incl. callback variants), BitUnPack, CRC16, Halt, WaitByLoop. |
+| Overlays | The runtime finds which overlay is resident at an address from per-overlay **probe words** emitted by the recompiler (words that differ from every other module at the same address), so no FS hooks are needed. |
+| Interpreter fallback | A call or computed jump to an address that has no recompiled function runs on melonDS's ARMv5 interpreter, one instruction at a time, until it returns to the caller's LR with the stack unwound. Registers sync both ways around every poll, and IRQs are delivered only through the HLE path. |
+| Code regions | `regions.txt` declares code that an overlay carries and copies elsewhere at run time. In CFIE, overlay 24 copies a hand-written ITCM block to `0x01FF9000`: the movie/image block decoder, which uses continuation-style returns. Regions marked `interpret` are not recompiled. While resident they run on the interpreter fallback. |
+| Copy protection | The three DS Protect checks are replaced by functions that report "genuine". |
+| Frontend | `game/src/main.cpp` (SDL3): stacked screens, keyboard/gamepad/mouse-touch, 48 kHz audio stream, save file in the SDL pref path, frame pacing at 59.83 Hz. |
+
+**Debugging.** `ffcc.exe <rom> --trace-calls --trace-threads` logs indirect calls, interpreter entries and thread
+switches. Configure with `-DFFCC_TRACE_ENTRY=ON` to record every function entry (thread, address, LR, SP). The last 64
+entries are printed with the register and stack dump on a fatal error.
+
+**Planned replacements** (unchanged goals): GX → GPU renderer (§5), better audio interpolation, net HLE (§8). The
+original plan to recompile the ARM7 too is dropped for now. melonDS's ARM7 interpreter costs little and is exact.
 
 ## 5. Graphics
 
