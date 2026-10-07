@@ -1,5 +1,6 @@
 // Function body discovery by reachability from each entry point.
 #include <algorithm>
+#include <cstdint>
 #include <cstdio>
 #include <deque>
 
@@ -12,6 +13,8 @@ std::string Function::c_name() const {
     const char* mod = module == kModMain ? "main" : module == kModItcm ? "itcm" : module == kModDtcm ? "dtcm" : nullptr;
     if (mod)
         std::snprintf(buf, sizeof buf, "fn_%s_%08x", mod, entry);
+    else if (is_region(module))
+        std::snprintf(buf, sizeof buf, "fn_rg%d_%08x", module - kModRegionBase, entry);
     else
         std::snprintf(buf, sizeof buf, "fn_ov%03d_%08x", module - kModOverlayBase, entry);
     return buf;
@@ -27,6 +30,16 @@ std::optional<int> static_target_module(const Program& program, int from_module,
     if (is_overlay(from_module)) {
         const Module* self = program.find_module(from_module);
         if (self && self->contains(addr)) return from_module;
+    }
+    // A code region called from the module that carries it (or from a sibling region).
+    const Module* from = program.find_module(from_module);
+    const int family = from && from->parent >= 0 ? from->parent : from_module;
+    for (const Module& m : program.modules)
+        if (is_region(m.id) && m.parent == family && m.contains(addr)) return m.id;
+    // A region's calls back into its parent overlay.
+    if (from && from->parent >= 0) {
+        const Module* p = program.find_module(from->parent);
+        if (p && p->contains(addr)) return p->id;
     }
     for (const Module& m : program.modules) {
         if (is_overlay(m.id) || !m.contains(addr)) continue;
@@ -49,6 +62,7 @@ struct Builder {
     std::deque<size_t> queue;
 
     size_t add_function(int module, uint32_t entry, bool thumb, std::string name = {}) {
+        if (const Module* m = program.find_module(module); m && m->interpret) return SIZE_MAX;
         auto key = std::make_pair(module, entry);
         auto it = out.index.find(key);
         if (it != out.index.end()) {
@@ -106,6 +120,32 @@ struct Builder {
                 in.flow = Flow::Jump;
                 in.link = true;
             }
+            // ARMv4-style indirect call: `mov lr, pc` or `add lr, pc, #0` followed by `bx rX` (NitroSDK IRQ thread
+            // switch, hand-written ITCM code). Targets loaded just before with `adr rX` become functions.
+            if (!thumb && in.flow == Flow::IndirectJump && (in.op & 0x0FFFFFF0) == 0x012FFF10 && a >= m->base + 4 &&
+                (m->read32(a - 4) == ((in.op & 0xF0000000) | 0x01A0E00F) ||
+                 m->read32(a - 4) == ((in.op & 0xF0000000) | 0x028FE000))) {
+                in.flow = Flow::IndirectCall;
+                const uint32_t rx = in.op & 0xF;
+                for (uint32_t b = a - 8; b >= m->base && b + 32 >= a; b -= 4) {
+                    const uint32_t op = m->read32(b);
+                    if ((op & 0x0FFFF000) != (0x028F0000u | (rx << 12))) continue;
+                    const uint32_t rot = ((op >> 8) & 0xF) * 2, imm = op & 0xFF;
+                    const uint32_t t = b + 8 + (rot ? (imm >> rot) | (imm << (32 - rot)) : imm);
+                    if (m->contains(t, 4)) add_function(module, t, false);
+                }
+            }
+            // Unbounded `add pc, pc, rX, lsl #2`: a computed jump into straight-line code (the unrolled loops of
+            // the mwcc division helpers). Any later word of the function is a possible target.
+            if (!thumb && in.flow == Flow::IndirectJump && (in.op & 0x0FFFFFF0) == 0x008FF100) {
+                // A secondary entry inside a seeded function (no size of its own) ends where that one ends.
+                uint32_t end = extent ? entry + extent : 0;
+                for (const FunctionSeed& sd : program.config.functions)
+                    if (!end && sd.module == module && sd.size && sd.addr < entry && entry < sd.addr + sd.size)
+                        end = sd.addr + sd.size;
+                for (uint32_t t = a + 8; t < end; t += 4) in.table.push_back(t);
+                if (!in.table.empty()) in.flow = Flow::JumpTable;
+            }
             instrs[a] = in;
             if (in.flow == Flow::Undefined) {
                 warnings.push_back("undefined instruction at " + hex(a));
@@ -143,6 +183,9 @@ struct Builder {
         }
         for (auto it = labels.begin(); it != labels.end();)
             it = instrs.count(*it) ? std::next(it) : labels.erase(it);
+        // Code shared with a lower-addressed function (mwcc's 64-bit division helpers) puts the body
+        // before the entry; the emitter then starts with a jump to the entry label.
+        if (!instrs.empty() && instrs.begin()->first != entry) labels.insert(entry);
 
         Function& f = out.functions[fi];
         f.instrs = std::move(instrs);
@@ -160,6 +203,7 @@ Analysis analyze(const Program& program) {
     // Seeds first so every known entry is registered before bodies are explored.
     for (const FunctionSeed& s : program.config.functions) {
         size_t i = b.add_function(s.module, s.addr, s.thumb, s.name);
+        if (i == SIZE_MAX) continue;
         out.functions[i].encrypted = s.dsprot;
         out.functions[i].extent = s.size;
     }

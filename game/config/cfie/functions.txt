@@ -1251,8 +1251,8 @@
 02025af4 60 t
 02025b54 40 t
 02025b94 2e t
-02025bc4 40 a
-02025c04 3c a
+02025bc4 40 a CP_SaveContext
+02025c04 3c a CPi_RestoreContext
 02025c40 28 t
 02025c68 1a t
 02025c84 10 t
@@ -1565,10 +1565,10 @@
 0202c1b8 1c t
 0202c1d4 38 t
 0202c20c 2c t
-0202c238 74 t
+0202c238 74 t OSi_RescheduleThread
 0202c2ac e0 t
 0202c38c c t
-0202c398 d8 t
+0202c398 d8 t OS_CreateThread
 0202c470 18 t
 0202c488 3c t
 0202c4c4 28 t
@@ -1592,9 +1592,9 @@
 0202c814 24 t
 0202c838 24 t
 0202c85c 6 t
-0202c864 84 a
-0202c8e8 4c a
-0202c934 44 a
+0202c864 84 a OS_InitContext
+0202c8e8 4c a OS_SaveContext
+0202c934 44 a OS_LoadContext
 0202c978 4 t
 0202c97c 10 t
 0202c98c 14 t
@@ -1678,7 +1678,7 @@
 0202d934 58 t
 0202d98c a0 t
 0202da2c c t
-0202da38 c a
+0202da38 c a OS_Halt
 0202da44 c t
 0202da50 8 t
 0202da58 ac t
@@ -12323,8 +12323,8 @@
 01ff8068 18 t
 01ff8080 34 t
 01ff80b4 74 t
-01ff8128 68 a
-01ff8190 17c a
+01ff8128 68 a OS_IrqHandler
+01ff8190 17c a OS_IrqHandler_ThreadSwitch
 01ff830c 34 a
 01ff8340 cc a
 01ff840c 1c a

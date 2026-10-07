@@ -82,6 +82,7 @@ void ntr_write8_slow(NtrCpu* c, uint32_t a, uint32_t v) {
 }
 
 void ntr_call(NtrCpu* c, uint32_t target) { g_calls++; g_last_call = target; }
+void ntr_jump(NtrCpu* c, uint32_t target, uint32_t from, uint32_t entry_lr) { g_calls++; g_last_call = target; }
 void ntr_swi(NtrCpu* c, uint32_t number, uint32_t pc) { g_errors++; }
 void ntr_poll(NtrCpu* c) {}
 uint32_t ntr_get_spsr(NtrCpu* c) { g_errors++; return 0; }
@@ -137,3 +138,4 @@ EXPORT int dt_writes(uint32_t* out, int max) {
 
 EXPORT uint32_t dt_errors(void) { return g_errors; }
 EXPORT uint32_t dt_calls(void) { return g_calls; }
+void ntr_trace_enter(NtrCpu* c, uint32_t addr) {}

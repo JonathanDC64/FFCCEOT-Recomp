@@ -75,6 +75,7 @@ int main(int argc, char** argv) {
         }
 
         recomp::Program program = recomp::load_program(rom);
+        recomp::load_regions(program, config_dir);
         program.config = recomp::load_config(program, config_dir);
         recomp::Analysis analysis = recomp::analyze(program);
 

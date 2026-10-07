@@ -73,8 +73,9 @@ public:
             out_ += "    ntr_unimplemented(c, " + hexc(fn_.entry) + ");\n}\n\n";
             return out_;
         }
-        out_ += "    const uint32_t entry_lr = R(14);\n    (void)entry_lr;\n";
+        out_ += "    const uint32_t entry_lr = R(14);\n    (void)entry_lr;\n    NTR_ENTER(" + hexc(fn_.entry | (fn_.thumb ? 1u : 0u)) + ");\n    POLL();\n";
         for (const std::string& w : fn_.warnings) out_ += "    /* warning: " + w + " */\n";
+        if (!fn_.instrs.empty() && fn_.instrs.begin()->first != fn_.entry) line(fmt("goto L_%08x;", fn_.entry));
 
         std::vector<const Instr*> list;
         for (auto& [a, in] : fn_.instrs) list.push_back(&in);
@@ -152,7 +153,7 @@ private:
     std::string indirect_jump(const std::string& t_expr, bool interwork) {
         std::string s = "{ uint32_t t = " + t_expr + "; ";
         if (!interwork) s += fn_.thumb ? "t |= 1u; " : "t &= ~3u; ";
-        s += "if (t == entry_lr) return; ntr_call(c, t); return; }";
+        s += "if (t == entry_lr) return; ntr_jump(c, t, " + hexc(cur_->addr) + ", entry_lr); return; }";
         return s;
     }
 
@@ -262,7 +263,10 @@ private:
         switch (bits(op, 27, 25)) {
         case 0:
         case 1: {
-            if ((op & 0x0FFFFFF0) == 0x012FFF10) return indirect_jump(fmt("R(%u)", op & 15), true);
+            if ((op & 0x0FFFFFF0) == 0x012FFF10) {
+                if (cur_->flow == Flow::IndirectCall) return fmt("ntr_call(c, R(%u));", op & 15);  // after mov lr, pc
+                return indirect_jump(fmt("R(%u)", op & 15), true);
+            }
             if ((op & 0x0FFFFFF0) == 0x012FFF30)
                 return fmt("{ uint32_t t = R(%u); R(14) = %s; ntr_call(c, t); }", op & 15, hexc(a + 4).c_str());
             bool imm = op & (1u << 25);
@@ -763,7 +767,49 @@ EmitStats emit_c(const Program& program, const Analysis& analysis, const std::fi
         for (const Function* f : order)
             t << "    {0x" << std::hex << (f->entry | (f->thumb ? 1 : 0)) << std::dec << "u, " << f->module << ", "
               << f->c_name() << "},\n";
-        t << "};\nconst size_t ntr_recomp_function_count = " << order.size() << ";\n";
+        t << "};\nconst size_t ntr_recomp_function_count = " << order.size() << ";\n\n";
+
+        // Overlays share run addresses, so the runtime identifies the resident one by a few probe words that
+        // differ from every other overlay covering the same address.
+        std::vector<const Module*> ovs;
+        for (const Module& m : program.modules)
+            if (is_overlay(m.id)) ovs.push_back(&m);
+        t << "const NtrOverlayInfo ntr_recomp_overlays[] = {\n";
+        for (const Module* o : ovs) {
+            std::vector<std::pair<uint32_t, uint32_t>> probes;
+            const uint32_t words = uint32_t(o->data.size() / 4);
+            for (int k = 0; k < 4 && words; k++) {
+                // Search forward from evenly spread starting points for a distinguishing word.
+                for (uint32_t w = words * uint32_t(k) / 4; w < words; w++) {
+                    uint32_t addr = o->base + w * 4, val = o->read32(addr);
+                    if (val == 0) continue;
+                    bool unique = true, overlapped = false;
+                    for (const Module& pm : program.modules) {
+                        const Module* p = &pm;
+                        if (p == o || !p->contains(addr, 4)) continue;
+                        overlapped = true;
+                        if (p->read32(addr) == val) { unique = false; break; }
+                    }
+                    if (!overlapped) continue;
+                    if (unique) {
+                        probes.emplace_back(addr, val);
+                        break;
+                    }
+                }
+            }
+            std::sort(probes.begin(), probes.end());
+            probes.erase(std::unique(probes.begin(), probes.end()), probes.end());
+            t << "    {" << (o->id - kModOverlayBase) << ", 0x" << std::hex << o->base << "u, 0x" << o->data.size()
+              << "u, " << std::dec << (o->interpret ? "NTR_OVERLAY_INTERPRET" : "0") << ", " << probes.size() << ", {";
+            for (auto& pr : probes) t << "0x" << std::hex << pr.first << "u, ";
+            if (probes.empty()) t << "0";
+            t << "}, {";
+            for (auto& pr : probes) t << "0x" << std::hex << pr.second << "u, ";
+            if (probes.empty()) t << "0";
+            t << std::dec << "}},\n";
+        }
+        if (ovs.empty()) t << "    {0, 0, 0, 0, 0, {0}, {0}},\n";
+        t << "};\nconst size_t ntr_recomp_overlay_count = " << ovs.size() << ";\n";
         stats.files++;
     }
     return stats;

@@ -17,11 +17,16 @@ endif()
 set(FFCC_ROM "" CACHE FILEPATH "Path to your own FFCC: Echoes of Time (USA) ROM dump")
 
 option(FFCC_BUILD_TESTS "Build unit tests" ON)
+option(FFCC_BUILD_GAME "Build the runtime and game executable (needs the melonDS submodule)" ON)
 
 add_subdirectory(common)
 add_subdirectory(recompiler)
 add_subdirectory(tools)
-add_subdirectory(game)
+if(FFCC_BUILD_GAME)
+  add_subdirectory(third_party)
+  add_subdirectory(runtime)
+  add_subdirectory(game)
+endif()
 
 if(FFCC_BUILD_TESTS)
   enable_testing()

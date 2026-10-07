@@ -20,14 +20,20 @@ constexpr int kModItcm = 1;
 constexpr int kModDtcm = 2;
 constexpr int kModArm7 = 3;
 constexpr int kModOverlayBase = 100;
+// Code regions (regions.txt): code carried inside an overlay and copied elsewhere (ITCM) at run time. They are
+// overlay-like for the runtime, which tells them apart from what else lives at that address by probe words.
+constexpr int kModRegionBase = kModOverlayBase + 500;
 
 inline bool is_overlay(int module) { return module >= kModOverlayBase; }
+inline bool is_region(int module) { return module >= kModRegionBase; }
 
 // A contiguous block of guest code/data at a fixed run address.
 struct Module {
     int id = 0;
     std::string name;  // "main", "itcm", "ov023", ...
     uint32_t base = 0;
+    int parent = -1;   // regions: the module that carries the code and calls into it
+    bool interpret = false;  // regions: not recompiled; the runtime interprets it while it is resident
     std::vector<uint8_t> data;
 
     uint32_t end() const { return base + uint32_t(data.size()); }
@@ -68,6 +74,8 @@ struct Program {
 
 // Build the module list from a ROM: ARM9 static ("main"), autoloads ("itcm"/"dtcm") and all ARM9 overlays.
 Program load_program(const ntr::Rom& rom);
+// Add the code regions listed in regions.txt (optional) as modules.
+void load_regions(Program& program, const std::filesystem::path& dir);
 // Load functions.txt and hooks.txt from a per-game config directory.
 Config load_config(const Program& program, const std::filesystem::path& dir);
 

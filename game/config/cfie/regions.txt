@@ -1,0 +1,6 @@
+# Code regions: code carried inside an overlay and copied to another address at run time.
+# Facts only: <name> <carrying module> <source address> <size> <run address> [interpret].
+# `interpret`: hand-written code that does not follow the call/return conventions the recompiler relies on;
+# the runtime runs it on the interpreter while it is resident.
+# Overlay 24 copies this block into ITCM (0x01FF9000) when it starts (see 0x02138b88 / 0x020acd5c).
+ov024_itcm ov024 0213ecc0 659c 01ff9000 interpret

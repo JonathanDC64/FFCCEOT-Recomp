@@ -24,7 +24,7 @@ add_custom_command(
   OUTPUT ${FFCC_GEN_SOURCES} ${FFCC_GEN_DIR}/funcs.h
   COMMAND ntr-recomp --rom "${FFCC_ROM}" --config "${FFCC_GAME_CONFIG}" --out "${FFCC_GEN_DIR}"
           --report "${CMAKE_BINARY_DIR}/recomp_report.txt"
-  DEPENDS ntr-recomp ${FFCC_GAME_CONFIG}/functions.txt "${FFCC_ROM}"
+  DEPENDS ntr-recomp ${FFCC_GAME_CONFIG}/functions.txt ${FFCC_GAME_CONFIG}/hooks.txt ${FFCC_GAME_CONFIG}/regions.txt "${FFCC_ROM}"
   COMMENT "Recompiling game code from your ROM"
   VERBATIM)
 
@@ -35,3 +35,12 @@ if(MSVC)
 else()
   target_compile_options(ffcc_game_code PRIVATE -w -O2)
 endif()
+target_link_libraries(ffcc_game_code PUBLIC ntr_runtime)
+option(FFCC_TRACE_ENTRY "Record every recompiled function entry (slow; for debugging crashes)" OFF)
+if(FFCC_TRACE_ENTRY)
+  target_compile_definitions(ffcc_game_code PRIVATE NTR_TRACE_ENTRY)
+endif()
+
+# The game executable: takes the user's ROM on the command line.
+add_executable(ffcc src/main.cpp src/cfie_hooks.cpp)
+target_link_libraries(ffcc PRIVATE ffcc_game_code ntr_runtime ntr_common SDL3::SDL3-static)

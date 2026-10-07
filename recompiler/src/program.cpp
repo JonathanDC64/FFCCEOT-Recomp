@@ -81,6 +81,36 @@ static std::string trim(std::string s) {
     return s.substr(b, e - b + 1);
 }
 
+void load_regions(Program& program, const std::filesystem::path& dir) {
+    std::ifstream f(dir / "regions.txt");
+    std::string line;
+    int lineno = 0, n = 0;
+    while (f && std::getline(f, line)) {
+        lineno++;
+        line = trim(line);
+        if (line.empty()) continue;
+        std::istringstream ss(line);
+        std::string name, src, addr, size, run, flag;
+        ss >> name >> src >> addr >> size >> run;
+        const Module* parent = program.module_by_name(src);
+        if (!parent || run.empty())
+            throw std::runtime_error("regions.txt:" + std::to_string(lineno) + ": expected '<name> <module> <addr> <size> <run_addr>'");
+        Module m;
+        m.id = kModRegionBase + n++;
+        m.name = name;
+        m.parent = parent->id;
+        while (ss >> flag) {
+            if (flag != "interpret") throw std::runtime_error("regions.txt:" + std::to_string(lineno) + ": unknown flag " + flag);
+            m.interpret = true;
+        }
+        m.base = uint32_t(std::stoul(run, nullptr, 16));
+        const uint32_t a = uint32_t(std::stoul(addr, nullptr, 16)), sz = uint32_t(std::stoul(size, nullptr, 16));
+        if (!parent->contains(a, sz)) throw std::runtime_error("regions.txt:" + std::to_string(lineno) + ": source outside " + src);
+        m.data.assign(parent->data.begin() + (a - parent->base), parent->data.begin() + (a - parent->base + sz));
+        program.modules.push_back(std::move(m));
+    }
+}
+
 Config load_config(const Program& program, const std::filesystem::path& dir) {
     Config cfg;
 

@@ -121,7 +121,10 @@ def main() -> int:
     if args.paths:
         files = [(p, Path(p).read_bytes()) for p in args.paths]
     elif args.staged:
-        files = [(p, staged_blob(p)) for p in git("diff", "--cached", "--name-only", "--diff-filter=ACMR")]
+        # Submodules (gitlinks, mode 160000) are pinned upstream sources, not blobs; skip them.
+        gitlinks = {line.split("\t", 1)[1] for line in git("ls-files", "--stage") if line.startswith("160000 ")}
+        files = [(p, staged_blob(p)) for p in git("diff", "--cached", "--name-only", "--diff-filter=ACMR")
+                 if p not in gitlinks]
     else:
         files = [(p, (REPO / p).read_bytes()) for p in git("ls-files") if (REPO / p).is_file()]
 

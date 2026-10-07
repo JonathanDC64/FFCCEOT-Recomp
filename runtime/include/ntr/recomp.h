@@ -39,6 +39,21 @@ typedef struct NtrFuncEntry {
     NtrFunc fn;
 } NtrFuncEntry;
 
+/* One entry per ARM9 overlay or code region. It is resident when every probe word matches guest memory. */
+typedef struct NtrOverlayInfo {
+    uint32_t id, base, size, flags, nprobes;
+    uint32_t probe_addr[4], probe_val[4];
+} NtrOverlayInfo;
+
+/* Not recompiled: while resident, the runtime runs code at these addresses on its interpreter. */
+#define NTR_OVERLAY_INTERPRET 1u
+
+/* Tables emitted by the recompiler (func_table.c). */
+extern const NtrFuncEntry ntr_recomp_functions[];
+extern const size_t ntr_recomp_function_count;
+extern const NtrOverlayInfo ntr_recomp_overlays[];
+extern const size_t ntr_recomp_overlay_count;
+
 #define NTR_MODULE_MAIN 0
 #define NTR_MODULE_ITCM 1
 #define NTR_MODULE_DTCM 2
@@ -54,6 +69,8 @@ void ntr_write16_slow(NtrCpu* c, uint32_t addr, uint32_t v);
 void ntr_write8_slow(NtrCpu* c, uint32_t addr, uint32_t v);
 
 void ntr_call(NtrCpu* c, uint32_t target);           /* call/jump to guest code; bit 0 = Thumb */
+/* Computed jump that is not a return (a tail call): the target returns to `entry_lr`, the jumping function's own LR. */
+void ntr_jump(NtrCpu* c, uint32_t target, uint32_t from, uint32_t entry_lr);
 void ntr_swi(NtrCpu* c, uint32_t number, uint32_t pc);
 void ntr_poll(NtrCpu* c);                            /* scheduler events, IRQ delivery */
 uint32_t ntr_get_spsr(NtrCpu* c);
@@ -70,6 +87,14 @@ void ntr_unimplemented(NtrCpu* c, uint32_t addr);
 
 /* ---- register / flag helpers ---- */
 #define R(n) (c->r[n])
+/* Debug builds of the generated code (NTR_TRACE_ENTRY) record every function entry in a ring buffer
+ * that the runtime prints on a fatal error. */
+void ntr_trace_enter(NtrCpu* c, uint32_t addr);
+#ifdef NTR_TRACE_ENTRY
+#define NTR_ENTER(a) ntr_trace_enter(c, a)
+#else
+#define NTR_ENTER(a) ((void)0)
+#endif
 #define POLL() do { if (c->cycles >= c->next_event) ntr_poll(c); } while (0)
 
 static inline uint32_t ntr_get_cpsr(NtrCpu* c) {
