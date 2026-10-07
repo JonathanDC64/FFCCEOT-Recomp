@@ -9,6 +9,8 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive
       - name: Install toolchain
         run: sudo apt-get update && sudo apt-get install -y clang ninja-build cmake
       - name: Configure
@@ -29,6 +31,8 @@ jobs:
     runs-on: windows-2022
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive
       - uses: ilammy/msvc-dev-cmd@v1
       - name: Configure
         run: cmake --preset release
