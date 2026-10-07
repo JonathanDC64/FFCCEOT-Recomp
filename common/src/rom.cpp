@@ -1,5 +1,6 @@
 #include "ntr/rom.hpp"
 
+#include <algorithm>
 #include <cstring>
 #include <fstream>
 

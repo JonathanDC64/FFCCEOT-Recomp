@@ -1,0 +1,38 @@
+name: build
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install toolchain
+        run: sudo apt-get update && sudo apt-get install -y clang ninja-build cmake
+      - name: Configure
+        run: cmake --preset linux-release
+      - name: Build
+        run: cmake --build --preset linux-release
+      - name: Unit tests
+        run: ctest --preset linux-release
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Recompiler differential tests (vs Unicorn ARM946)
+        run: |
+          pip install unicorn
+          python tests/difftest/difftest.py --recomp build/linux-release/recompiler/ntr-recomp --count 500
+
+  windows:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ilammy/msvc-dev-cmd@v1
+      - name: Configure
+        run: cmake --preset release
+      - name: Build
+        run: cmake --build --preset release
+      - name: Unit tests
+        run: ctest --preset release

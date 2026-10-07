@@ -19,7 +19,9 @@ set(FFCC_ROM "" CACHE FILEPATH "Path to your own FFCC: Echoes of Time (USA) ROM 
 option(FFCC_BUILD_TESTS "Build unit tests" ON)
 
 add_subdirectory(common)
+add_subdirectory(recompiler)
 add_subdirectory(tools)
+add_subdirectory(game)
 
 if(FFCC_BUILD_TESTS)
   enable_testing()
