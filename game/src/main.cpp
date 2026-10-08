@@ -22,6 +22,7 @@
 #include <vector>
 
 #include "cfie_game.hpp"
+#include "crash_report.hpp"
 #include "input.hpp"
 #include "ntr/rom.hpp"
 #include "ntr/runtime.hpp"
@@ -709,6 +710,7 @@ bool parse_filter(const std::string& s, video::Filter& f) {
 }  // namespace
 
 int main(int argc, char** argv) {
+    crash_report::install();
     if (argc < 2) {
         std::fprintf(stderr,
                      "usage: %s <your Echoes of Time (USA) dump.nds> [options]\n"
