@@ -408,8 +408,8 @@ it. The records carry no positions, so a console moving a character differently 
   emulator in the room, everyone stays on the D-pad. New players join when the host enters the next area.
 - Tested with two instances over local wireless, with scripted stick and D-pad movement: every character's position
   matched on both consoles each tick. A console without the marker kept the host on the D-pad, and the positions still
-  matched. With the check turned off, the positions split, which shows the comparison catches a desync. Not yet
-  tested online.
+  matched. With the check turned off, the positions split, which shows the comparison catches a desync. Played
+  between two instances over the Wi-Fi Connection too, with no drift noticed.
 
 The menu's Controls page rebinds them: an input already used by another action
 swaps over, so nothing is bound twice. Pad inputs are saved by position (`east`, `+leftx`, `righttrigger`) and shown

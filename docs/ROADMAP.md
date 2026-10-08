@@ -95,8 +95,8 @@ Milestones are ordered by dependency. Each ends with a demonstrable result. Desi
       walks the way the left stick points, at the speed times how far it is pushed, and its run plays slower to match.
       The stick travels in the input records' unused touch bytes, so every console moves every character the same;
       only sent while every player runs this build ([ARCHITECTURE.md §6](ARCHITECTURE.md#6-input-and-the-no-touch-screen-scheme))
-- [ ] Analog movement online: test over the Wi-Fi Connection (local wireless between instances is tested: positions
-      stay identical on both consoles, and a console without the marker keeps everyone on the D-pad)
+- [x] Analog movement online: played between two instances over the Wi-Fi Connection, and tested over local wireless
+      (positions stay identical on both consoles, and a console without the marker keeps everyone on the D-pad)
 - [x] RmlUi integration (OpenGL for now), FF crystal theme (original styling, OFL fonts)
 - [x] In-game settings menu (display, graphics, audio, game, controls list), settings persistence (`settings.ini`)
 - [ ] Menu: more pages (online, QoL, mods, about), reset game, button glyphs; RmlUi on SDL_GPU
