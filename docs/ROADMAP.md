@@ -40,7 +40,8 @@ Milestones are ordered by dependency. Each ends with a demonstrable result. Desi
 - [x] SPU + SDL3 audio (melonDS SPU output)
 - [x] Movies play (the ITCM decoder runs on the interpreter fallback)
 - [x] Perf readout (`--perf`): boot/title cost 1.3–4.6 ms per DS frame (budget 16.7 ms)
-- [ ] Measure interpreter cost during movies; recompile the decoder region if it matters
+- [x] Movie cost measured: the interpreted ITCM decoder keeps the whole emulator at 1.5–2.8 ms per DS frame
+      (about 260k instructions per decoded movie frame at 15 fps), so it stays interpreted
 - [ ] Long play sessions without crashes; save/load works and matches real-cart dumps
 - [x] Coverage report: every new interpreter entry is logged, with a per-address summary on exit
 - [ ] Fix interpreter entries outside known regions as they show up
