@@ -38,7 +38,7 @@ std::vector<Chunk> chunks(const std::vector<Entry>& e) {
     for (size_t i = 0; i < e.size();) {
         const uint8_t op = e[i].op;
         const size_t n = std::min<size_t>(entry_count(op), e.size() - i);
-        const bool starts = op == 0x12 || op == 0x14 || op == 0x15 || op == 0x16 || op == 0x17;
+        const bool starts = op == 0x10 || op == 0x12 || op == 0x14 || op == 0x15 || op == 0x16 || op == 0x17;
         if (out.empty() || (starts && !is_matrix_op(prev_op))) {
             out.push_back({0, i, 0});
             h = 1469598103934665603ull;
@@ -48,7 +48,8 @@ std::vector<Chunk> chunks(const std::vector<Entry>& e) {
             h *= 1099511628211ull;
         };
         mix(op);
-        if (op == 0x10 || op == 0x29 || op == 0x2A || op == 0x2B) mix(e[i].param);
+        if (op == 0x10 || op == 0x2A || op == 0x2B) mix(e[i].param);
+        if (op == 0x29) mix(e[i].param & 0xFFFF);  // without the alpha and polygon ID
         out.back().key = h;
         out.back().entries += n;
         prev_op = op;

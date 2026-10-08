@@ -205,8 +205,11 @@ no GX FIFO interrupts or DMA requests.
    same opcode sequence (12-26k FIFO entries, 2-3k of them matrix parameters), and **vertex data never changes between
    scenes**: all animation, skinning included, is in the matrices. The projection matrix never changes either (the
    camera is in the position matrix). When the opcodes differ (objects appearing, effects), the streams are cut into
-   chunks (runs of drawing after a matrix load/restore, keyed by opcodes and polygon/texture attributes) and aligned
-   with a longest common subsequence: 95-97% of entries line up. Unmatched chunks are taken from the new scene as is.
+   chunks (runs of drawing after a matrix mode switch, load or restore, keyed by opcodes and polygon/texture
+   attributes other than alpha and polygon ID) and aligned with a longest common subsequence: 95-97% of entries line
+   up. Unmatched chunks are taken from the new scene as is, which matters most for the 2D sprites in the world (dropped
+   items, their shadows, effects): the game places them in view space on the CPU, so one left unblended slides against
+   the ground whenever the camera moves.
 3. **Replay.** At the VBlank that swaps in a new scene, that scene is run again through melonDS's own geometry engine
    from its recorded start state, with every matched matrix parameter (commands 0x16-0x1C) blended towards the
    previous scene, and the resulting polygon list replaces the real one as the render list. The engine's state and the

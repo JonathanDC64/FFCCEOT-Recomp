@@ -26,8 +26,9 @@ inline bool is_vertex_op(uint8_t op) { return op >= 0x20 && op <= 0x28; }
 
 bool same_opcodes(const std::vector<Entry>& a, const std::vector<Entry>& b);
 
-// A run of commands drawn with one matrix setup: it starts where the stream loads or restores a matrix after
-// something that was not matrix work. Its key covers the opcodes and the polygon/texture attributes, so the same
+// A run of commands drawn with one matrix setup: it starts where the stream sets the matrix mode or loads or restores
+// a matrix after something that was not matrix work. Its key covers the opcodes and the polygon/texture attributes
+// (not the alpha or polygon ID, which change as an object fades or as others come and go before it), so the same
 // object drawn in two scenes gets the same key even when its matrices (or vertices) moved.
 struct Chunk {
     uint64_t key = 0;

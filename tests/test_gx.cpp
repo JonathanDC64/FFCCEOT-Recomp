@@ -117,6 +117,36 @@ void test_chunk_alignment() {
     CHECK(param(out, 0x1C, 2) == 0x4000);  // object 2
 }
 
+void test_chunk_alignment_sprites() {
+    // Sprites as the game draws them: each wrapped in matrix mode switches, so nothing but a mode switch separates one
+    // from the next. A sprite appears before the second one, whose polygon ID and alpha change as it fades: the
+    // second still lines up.
+    const auto sprites = [](const std::vector<std::pair<uint32_t, int32_t>>& objects) {
+        std::vector<Entry> s;
+        const auto add = [&](uint8_t op, uint32_t p) { s.push_back({op, p}); };
+        for (const auto& [attr, x] : objects) {
+            add(0x10, 2);
+            const uint32_t m[12] = {0x1000, 0, 0, 0, 0x1000, 0, 0, 0, 0x1000, uint32_t(x), 0, 0};
+            for (uint32_t p : m) add(0x17, p);
+            add(0x29, attr);
+            add(0x40, 0);
+            add(0x23, 0x00100010), add(0x23, 0x10);
+            add(0x41, 0);
+            add(0x10, 0);
+            add(0x15, 0);
+        }
+        add(0x50, 0);
+        return s;
+    };
+    const auto a = sprites({{0x011F0001, 0x1000}, {0x021F0002, 0x1000}});
+    const auto b = sprites({{0x011F0001, 0x3000}, {0x021F0003, 0x5000}, {0x030F0002, 0x7000}});
+    auto out = b;
+    ntr::gx::blend(a, b, out, 1, 2);
+    CHECK(param(out, 0x17, 0, 9) == 0x2000);  // sprite 1
+    CHECK(param(out, 0x17, 1, 9) == 0x5000);  // the new sprite as it is
+    CHECK(param(out, 0x17, 2, 9) == 0x4000);  // sprite 2, fading
+}
+
 // A scene with one object turned by `yaw` degrees about y and scaled by `scale`, drawn through a 4x3 multiply. With
 // `camera_yaw`, the camera load is turned instead.
 std::vector<Entry> turning_scene(double yaw, double scale = 1, double camera_yaw = 0) {
@@ -221,6 +251,7 @@ int main() {
     test_camera_cut();
     test_teleport();
     test_chunk_alignment();
+    test_chunk_alignment_sprites();
     test_rotation_slerp();
     test_rotation_with_scale();
     test_rotation_snap();
