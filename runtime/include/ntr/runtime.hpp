@@ -96,7 +96,9 @@ public:
     virtual int run() = 0;
 
     // Input (thread-safe to call from Host::on_frame).
-    virtual void set_buttons(uint32_t pressed) = 0;  // Key bits that are held
+    // Key bits that are held, and those that went down since the last call even if already released (input events
+    // see taps shorter than a frame).
+    virtual void set_buttons(uint32_t held, uint32_t pressed) = 0;
     virtual void touch(int x, int y) = 0;
     virtual void release_touch() = 0;
 

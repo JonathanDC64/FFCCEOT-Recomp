@@ -11,6 +11,7 @@
 #include "NDS.h"
 #include "fiber.hpp"
 #include "gl_between.hpp"
+#include "input_latch.hpp"
 #include "gx_stream.hpp"
 #include "ntr/recomp.h"
 #include "ntr/runtime.hpp"
@@ -54,7 +55,7 @@ public:
     ~RuntimeImpl() override;
 
     int run() override;
-    void set_buttons(uint32_t pressed) override;
+    void set_buttons(uint32_t held, uint32_t pressed) override;
     void touch(int x, int y) override;
     void release_touch() override;
     void set_video(const VideoSettings& settings) override;
@@ -152,12 +153,8 @@ private:
     bool video_dirty_ = false;
     bool video_applied_ = false;
 
-    uint32_t buttons_ = 0;
-    // Each press reaches the DS for at least kMinPressFrames frames: the game reads the buttons once per 30 Hz tick
-    // (every second frame), so a shorter tap could fall between two reads and be lost.
-    static constexpr int kMinPressFrames = 2;
-    uint32_t sent_buttons_ = 0;
-    uint8_t press_left_[12] = {};  // per button: frames the current press must still be held for
+    uint32_t buttons_ = 0, presses_ = 0;  // held, and gone down since the last frame (from set_buttons)
+    InputLatch latch_;                     // so that the game's 30 Hz reads see every press and release
     int touch_x_ = -1, touch_y_ = -1;
     std::vector<int16_t> audio_buf_;
     uint64_t frames_ = 0;

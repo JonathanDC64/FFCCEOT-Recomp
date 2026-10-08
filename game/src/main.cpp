@@ -183,15 +183,15 @@ public:
     bool on_frame(const ntr::Frame& frame) override {
         if (!show_frame(frame)) return false;
         // Input last, once the frame has been shown and paced: the runtime hands it to the DS for the frame that runs
-        // next, so the game reads a sample taken just before that frame rather than one a frame or two old.
-        SDL_PumpEvents();
+        // next, so the game reads a sample taken just before that frame rather than one a frame or two old. Events
+        // are handled right before sampling, so the presses they count and the held state agree.
+        if (!pump_events()) return false;
         update_input();
         return true;
     }
 
     bool show_frame(const ntr::Frame& frame) {
-        if (title_dirty_) update_title();  // before handling input: a change made last frame is now in effect
-        if (!pump_events()) return false;
+        if (title_dirty_) update_title();  // a change made last frame is now in effect
         ++frames_;
         if (exit_after_frames && frames_ >= exit_after_frames && frames_ != menu_at_frame) return false;
         if (skipping_) {
@@ -251,10 +251,15 @@ private:
             case SDL_EVENT_KEY_DOWN:
                 if (e.key.key == SDLK_ESCAPE) open_menu();
                 else if (!e.key.repeat) hotkey(e.key.key);
+                if (!e.key.repeat)
+                    for (int i = 0; i < input::kFirstAppAction; i++)
+                        if (settings.controls.key[i] == e.key.scancode) presses_ |= kDsBits[i];
                 break;
             case SDL_EVENT_GAMEPAD_BUTTON_DOWN: {
-                // Guide, or Back and Start together, opens the menu.
                 const auto b = SDL_GamepadButton(e.gbutton.button);
+                for (int i = 0; i < input::kFirstAppAction; i++)
+                    if (settings.controls.pad[i] == input::PadInput::button(b)) presses_ |= kDsBits[i];
+                // Guide, or Back and Start together, opens the menu.
                 const auto held = [&](SDL_GamepadButton o) { return gamepad_ && SDL_GetGamepadButton(gamepad_, o); };
                 if (b == SDL_GAMEPAD_BUTTON_GUIDE || (b == SDL_GAMEPAD_BUTTON_START && held(SDL_GAMEPAD_BUTTON_BACK)) ||
                     (b == SDL_GAMEPAD_BUTTON_BACK && held(SDL_GAMEPAD_BUTTON_START)))
@@ -490,11 +495,6 @@ private:
         for (int i = 0; i < input::kActionCount; i++)
             down[i] = (c.key[i] != SDL_SCANCODE_UNKNOWN && k[c.key[i]]) || input::pad_held(gamepad_, c.pad[i], dead);
 
-        // DS buttons, in the order of input::Action.
-        static constexpr uint32_t kDsBits[] = {ntr::KeyA,     ntr::KeyB,      ntr::KeyX,  ntr::KeyY,
-                                               ntr::KeyL,     ntr::KeyR,      ntr::KeyStart, ntr::KeySelect,
-                                               ntr::KeyUp,    ntr::KeyDown,   ntr::KeyLeft,  ntr::KeyRight};
-        static_assert(std::size(kDsBits) == input::kFirstAppAction);
         uint32_t b = 0;
         for (int i = 0; i < input::kFirstAppAction; i++)
             if (down[i]) b |= kDsBits[i];
@@ -525,10 +525,12 @@ private:
             if (b == 0) input_hold_ = false;
             b = 0;
             touching = false;
+            presses_ = 0;
         }
         b &= ~(1u << 31);
         script_input(b, touching, sx, sy);
-        runtime_->set_buttons(b);
+        runtime_->set_buttons(b, presses_);
+        presses_ = 0;
         if (touching)
             runtime_->touch(std::clamp(int(sx), 0, kScreenW - 1), std::clamp(int(sy), 0, kScreenH - 1));
         else
@@ -655,6 +657,13 @@ private:
     bool input_active_ = false;
     bool input_hold_ = false;
     bool app_down_[input::kActionCount] = {};  // app action inputs held last frame
+    uint32_t presses_ = 0;  // DS buttons that went down (input events) since the last update_input
+
+    // DS buttons, in the order of input::Action.
+    static constexpr uint32_t kDsBits[] = {ntr::KeyA,  ntr::KeyB,  ntr::KeyX,     ntr::KeyY,      ntr::KeyL,    ntr::KeyR,
+                                           ntr::KeyStart, ntr::KeySelect, ntr::KeyUp, ntr::KeyDown, ntr::KeyLeft,
+                                           ntr::KeyRight};
+    static_assert(std::size(kDsBits) == input::kFirstAppAction);
     uint64_t script_quit_ = 0;                 // the frame a script's quit step ends the run (0 = none)
     uint64_t menu_shot_from_ = 0;              // screenshots before this frame were taken in the menu
     static constexpr uint64_t kMaxLogoSkipFrames = 900;  // the logos end around frame 564
