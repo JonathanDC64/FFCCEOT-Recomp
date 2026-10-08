@@ -263,6 +263,11 @@ parameters that changed since the previous scene.
   same smoothness at any display rate, as below.
 
 **Latency.** Input is read once per 30 Hz tick in every scheme.
+- **Host side.** The frontend samples the controls last in its frame callback, after the frame is shown and paced, and
+  the runtime hands them to the DS right after it, for the frame that runs next. (Sampling before presenting, as at
+  first, made every sample about two frames, ~33 ms, old; measured: reactions now show 2 frames sooner.) Each press is
+  held for at least two emulated frames, one tick, so a tap that falls between two of the game's reads is not lost.
+  Ship of Harkinian does neither: it reads a snapshot once per game tick.
 - **Today at 60 Hz:** interpolation adds one frame (16.7 ms) before the full pose, and motion starts on the same frame.
 - **Above 60 Hz,** two choices:
   - spread the step evenly over the tick, which adds up to one tick (33 ms) before the full pose;
@@ -319,7 +324,7 @@ refreshes pace the emulation instead, and every refresh gets its own frame.
 
 **Later:**
 - Checking the cut detection on cutscenes.
-- Interpolating master brightness fades.
+- Interpolating master brightness fades (the only 2D change worth blending: measured, other 2D motion is 1 px steps).
 - A low-latency mode that extrapolates instead.
 
 ### 5.4 Screen layouts

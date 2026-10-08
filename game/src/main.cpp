@@ -180,6 +180,15 @@ public:
     }
 
     bool on_frame(const ntr::Frame& frame) override {
+        if (!show_frame(frame)) return false;
+        // Input last, once the frame has been shown and paced: the runtime hands it to the DS for the frame that runs
+        // next, so the game reads a sample taken just before that frame rather than one a frame or two old.
+        SDL_PumpEvents();
+        update_input();
+        return true;
+    }
+
+    bool show_frame(const ntr::Frame& frame) {
         if (title_dirty_) update_title();  // before handling input: a change made last frame is now in effect
         if (!pump_events()) return false;
         ++frames_;
@@ -254,7 +263,6 @@ private:
             default: break;
             }
         }
-        update_input();
         return true;
     }
 
@@ -527,7 +535,7 @@ private:
         input_active_ = b != 0 || touching;
     }
 
-    // Adds the --input-script steps active in the frame about to be shown (frames_ + 1).
+    // Adds the --input-script steps active in the next emulated frame (frames_ + 1), the one this input is for.
     void script_input(uint32_t& b, bool& touching, float& sx, float& sy) {
         const uint64_t f = frames_ + 1;
         for (const ScriptStep& s : script) {

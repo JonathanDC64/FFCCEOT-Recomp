@@ -287,11 +287,6 @@ void RuntimeImpl::advance() {
 void RuntimeImpl::end_frame() {
     melonDS::NDS& n = *nds;
     frames_++;
-    n.SetKeyMask(~buttons_ & 0xFFF);
-    if (touch_x_ >= 0)
-        n.TouchScreen(u16(touch_x_), u16(touch_y_));
-    else
-        n.ReleaseScreen();
 
     int avail = n.SPU.GetOutputSize();
     if (avail > 0) {
@@ -319,6 +314,23 @@ void RuntimeImpl::end_frame() {
         quit_ = true;
         fiber_switch(fibers_[current_fiber_].fiber, root_fiber_);
     }
+    // The input the host set during on_frame, which ends when the next frame is due: the freshest sample for the
+    // frame about to run.
+    uint32_t keys = buttons_ & 0xFFF;
+    for (int i = 0; i < 12; i++) {
+        const uint32_t bit = 1u << i;
+        if ((keys & bit) && !(sent_buttons_ & bit)) press_left_[i] = kMinPressFrames;  // a new press
+        if (press_left_[i] > 0) {
+            keys |= bit;
+            --press_left_[i];
+        }
+    }
+    sent_buttons_ = keys;
+    n.SetKeyMask(~keys & 0xFFF);
+    if (touch_x_ >= 0)
+        n.TouchScreen(u16(touch_x_), u16(touch_y_));
+    else
+        n.ReleaseScreen();
     if (video_dirty_) {
         video_dirty_ = false;
         apply_video(pending_video_);

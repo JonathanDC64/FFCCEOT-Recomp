@@ -58,7 +58,12 @@ Milestones are ordered by dependency. Each ends with a demonstrable result. Desi
 - [ ] Widescreen: projection hook, culling hook, HUD anchoring, fades
 - [x] Measure the frame rate (`--fps-probe`): 3D at 30 Hz, top screen only, no display capture
 - [x] Frame interpolation from the GX command stream to 60 Hz (record, match, replay with blended matrices; §5.3)
-- [ ] Interpolation: check camera-cut detection on cutscenes, interpolate brightness fades
+- [ ] Interpolation: check camera-cut detection on cutscenes
+- [ ] Interpolate screen fades (master brightness, maybe BLDY) at 60 / display rate: fades step at 30 Hz, ~16 visible
+      steps each; the display-rate path already re-runs the final pass that applies brightness
+- [x] Measure 2D motion (OAM, BG scroll, VRAM per frame): 2D updates at 30 Hz but only in 1 px steps (bottom-screen
+      background scroll, menu/arrow bobs), menus appear in one frame, no 2D element tracks the 3D. General 2D
+      interpolation not planned (would need sprite matching and sub-pixel compositing for little gain)
 - [x] Display-rate interpolation beyond 60 Hz (GL/compute: re-render 3D + re-composite between emulated frames; §5.3)
 - [ ] Display rate: VRR (timer-paced presents), low-latency option
 - [x] Rotation blending by decomposition + slerp (object matrices; camera stays element-wise)

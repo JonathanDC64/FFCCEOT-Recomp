@@ -153,6 +153,11 @@ private:
     bool video_applied_ = false;
 
     uint32_t buttons_ = 0;
+    // Each press reaches the DS for at least kMinPressFrames frames: the game reads the buttons once per 30 Hz tick
+    // (every second frame), so a shorter tap could fall between two reads and be lost.
+    static constexpr int kMinPressFrames = 2;
+    uint32_t sent_buttons_ = 0;
+    uint8_t press_left_[12] = {};  // per button: frames the current press must still be held for
     int touch_x_ = -1, touch_y_ = -1;
     std::vector<int16_t> audio_buf_;
     uint64_t frames_ = 0;
