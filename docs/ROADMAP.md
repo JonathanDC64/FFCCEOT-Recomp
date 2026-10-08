@@ -94,12 +94,14 @@ Milestones are ordered by dependency. Each ends with a demonstrable result. Desi
 - [x] Analog movement (Controls page, on by default): the character walks the way the left stick points, at the speed
       times how far it is pushed, and its run plays slower to match (hooks on the movement direction and the player's
       animation speed; single-player only)
-- [ ] Analog movement in multiplayer: send the stick in the per-tick input record, so every console moves the
-      character the same way
+- [ ] Analog movement in multiplayer (feasible, researched; [ARCHITECTURE.md §6](ARCHITECTURE.md#6-input-and-the-no-touch-screen-scheme)):
+      the stick in the touch bytes of the per-tick input record, which are unused while not touching; only while
+      every player in the session runs this build
 - [x] RmlUi integration (OpenGL for now), FF crystal theme (original styling, OFL fonts)
 - [x] In-game settings menu (display, graphics, audio, game, controls list), settings persistence (`settings.ini`)
 - [ ] Menu: more pages (online, QoL, mods, about), reset game, button glyphs; RmlUi on SDL_GPU
 - [ ] Launcher/installer flow
+- [ ] App icon: original artwork (no game assets) for the exe (Windows resource) and the window (`SDL_SetWindowIcon`)
 - [ ] ImGui dev tools (`--dev`)
 
 ## M7: Online and LAN multiplayer
