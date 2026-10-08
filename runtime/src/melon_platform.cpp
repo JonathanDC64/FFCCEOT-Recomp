@@ -9,6 +9,7 @@
 
 #include "Platform.h"
 #include "SPI_Firmware.h"
+#include "local_wireless.hpp"
 #include "runtime_internal.hpp"
 
 namespace melonDS::Platform {
@@ -167,17 +168,46 @@ void WriteGBASave(const u8*, u32, u32, u32, void*) {}
 void WriteFirmware(const Firmware&, u32, u32, void*) {}
 void WriteDateTime(int, int, int, int, int, int, void*) {}
 
-// ---- local wireless (not connected yet) ----
+// ---- local wireless: with other instances on this PC (local_wireless.hpp) ----
 
-void MP_Begin(void*) {}
-void MP_End(void*) {}
-int MP_SendPacket(u8*, int, u64, void*) { return 0; }
-int MP_RecvPacket(u8*, u64*, void*) { return 0; }
-int MP_SendCmd(u8*, int, u64, void*) { return 0; }
-int MP_SendReply(u8*, int, u64, u16, void*) { return 0; }
-int MP_SendAck(u8*, int, u64, void*) { return 0; }
-int MP_RecvHostPacket(u8*, u64*, void*) { return 0; }
-u16 MP_RecvReplies(u8*, u64, u16, void*) { return 0; }
+namespace {
+ntr::LocalWireless* wireless() { return ntr::LocalWireless::get(); }
+}  // namespace
+
+void MP_Begin(void*) {
+    if (auto* w = wireless()) w->begin();
+}
+void MP_End(void*) {
+    if (auto* w = wireless()) w->end();
+}
+int MP_SendPacket(u8* data, int len, u64 timestamp, void*) {
+    auto* w = wireless();
+    return w ? w->send_packet(data, len, timestamp) : 0;
+}
+int MP_RecvPacket(u8* data, u64* timestamp, void*) {
+    auto* w = wireless();
+    return w ? w->recv_packet(data, timestamp) : 0;
+}
+int MP_SendCmd(u8* data, int len, u64 timestamp, void*) {
+    auto* w = wireless();
+    return w ? w->send_cmd(data, len, timestamp) : 0;
+}
+int MP_SendReply(u8* data, int len, u64 timestamp, u16 aid, void*) {
+    auto* w = wireless();
+    return w ? w->send_reply(data, len, timestamp, aid) : 0;
+}
+int MP_SendAck(u8* data, int len, u64 timestamp, void*) {
+    auto* w = wireless();
+    return w ? w->send_ack(data, len, timestamp) : 0;
+}
+int MP_RecvHostPacket(u8* data, u64* timestamp, void*) {
+    auto* w = wireless();
+    return w ? w->recv_host_packet(data, timestamp) : 0;
+}
+u16 MP_RecvReplies(u8* data, u64 timestamp, u16 aidmask, void*) {
+    auto* w = wireless();
+    return w ? w->recv_replies(data, timestamp, aidmask) : 0;
+}
 
 // ---- internet (not connected yet) ----
 

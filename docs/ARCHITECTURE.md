@@ -433,8 +433,12 @@ below comes with the flip-model presentation work (§5.5).
   - Server presets: **WiiLink WFC** (default, open source AGPL), custom/self-hosted (any wfc-server compatible), Wiimmfi only if its operators allow PC clients.
   - Cross-play with real DS/Wii clients works as long as our simulation is bit-exact (§4 Math, §5.3). That needs a long-running
     determinism test: two instances fed the same inputs must produce identical RAM hashes every frame.
-- **Local wireless → LAN**: hook the WM/WH layer (`WH_*` wrappers are present) and carry MP frames over UDP between PC instances
-  (LAN discovery, plus optional direct IP or relay later). Interop with real DS local wireless is out of scope.
+- **Local wireless, same PC (done)**: the game's own WM library runs on the emulated ARM7 and Wi-Fi hardware, so the
+  link is below it, at melonDS's MP frame hooks (`Platform::MP_*`). Instances on one PC exchange those frames through
+  shared memory with melonDS's LocalMP protocol (`runtime/src/local_wireless.cpp`, Windows for now). Each instance
+  takes a slot, which also gives its console its own MAC address.
+- **Local wireless → LAN**: carry the same MP frames over UDP between PCs (melonDS's LAN interface over ENet is a
+  model; LAN discovery, plus optional direct IP or relay later). Interop with real DS local wireless is out of scope.
 - The friend code / profile lives in the emulated WFC config (`dwc/utility.bin` settings), created by the runtime.
 
 ## 9. Quality-of-life backlog (initial)

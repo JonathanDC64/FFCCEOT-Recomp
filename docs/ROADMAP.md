@@ -98,7 +98,8 @@ Milestones are ordered by dependency. Each ends with a demonstrable result. Desi
 - [ ] SOC/CPS sockets → host sockets; NAS + GameSpy host redirection; TLS handling
 - [ ] Server presets (WiiLink WFC default, custom); profile/friend-code storage
 - [ ] Determinism harness (input replay + per-frame state hashes)
-- [ ] WM/WH → UDP LAN transport, discovery
+- [x] Local wireless between instances on one PC (MP frames through shared memory, own MAC per instance)
+- [ ] Local wireless between PCs: MP frames over UDP, discovery
 - [ ] Cross-play test with real DS/Wii (Dolphin) clients on WiiLink WFC
 
 ## M8: QoL and release packaging

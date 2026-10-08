@@ -17,6 +17,7 @@
 #include "NDSCart.h"
 #include "SPU.h"
 #include "gx_hook.hpp"
+#include "local_wireless.hpp"
 #include "ntr/rom.hpp"
 #include "runtime_internal.hpp"
 
@@ -70,6 +71,18 @@ RuntimeImpl::RuntimeImpl(std::vector<uint8_t> rom, const GameCode& code, Host& h
     melonDS::NDSArgs args;
     args.JIT = std::nullopt;
     args.OutputSampleRate = 48000.0;
+    // Local wireless with other instances on this PC: each console needs a MAC address of its own (melonDS's scheme
+    // for its instances; the first instance keeps the default).
+    if (LocalWireless* w = LocalWireless::get(); w && w->slot() > 0) {
+        auto& header = args.Firmware.GetHeader();
+        const int n = w->slot();
+        header.MacAddr[3] += n;
+        header.MacAddr[4] += n * 0x44;
+        header.MacAddr[5] += n * 0x10;
+        header.MacAddr[0] &= 0xFC;
+        header.UpdateChecksum();
+        args.Firmware.UpdateChecksums();
+    }
     nds = std::make_unique<RecompNDS>(std::move(args), this);
 
     melonDS::NDSCart::NDSCartArgs cart_args;
