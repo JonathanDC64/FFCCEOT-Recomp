@@ -60,6 +60,41 @@ don't have, but the HLE ideas (SSEQ synth, G3 → modern GPU) carry over to a re
 | [XenonRecomp](https://github.com/hedge-dev/XenonRecomp) / [Unleashed Recompiled](https://github.com/hedge-dev/UnleashedRecomp) | Mid-function hooks, jump-table config, a polished controller-navigable installer that validates and extracts user-provided game files per-file. |
 | [Dusklight](https://github.com/TwilitRealm/dusklight) (TP, decomp-based) on [Aurora](https://github.com/encounter/aurora)/[borealis](https://github.com/encounter/borealis) | **RmlUi** (HTML/CSS) for the user-facing UI and Dear ImGui only for debug tools. Prelaunch screen with disc hash validation. F1 / Back / R+Start opens a menu bar (Settings, Warp, Editor, Achievements, Mods, Reset, Quit). Settings tabs: Prelaunch, Video, Input, Audio, Gameplay, Cheats, Interface, Tools. |
 
+#### High frame rates in other projects
+Checked against their source (October 2026). Every project whose game logic is a fixed step keeps the logic at its
+rate and interpolates the rendering. Only engines that already used delta time run faster logic.
+
+- **[RT64](https://github.com/rt64/rt64) (Zelda64Recomp, other N64Recomp ports).**
+  - **Display rate.** The display-rate setting is Original, Display (the swapchain's rate) or Manual. Pacing counts
+    integer ticks and gives each display frame a weight between the previous and current game frame
+    (`src/hle/rt64_workload_queue.cpp`).
+  - **Tagging.** Patches tag matrices with extended display-list commands, mostly the `gEXMatrixGroup*` macros: a
+    32-bit ID and, for each component (position, rotation, scale, skew, perspective, vertices, tiles), interpolate,
+    skip or auto. Zelda assigns an ID per actor spawn index × limb (plus post-limb draws), a fixed camera ID, and
+    ranges for particles and the sky (`patches/transform_ids.h`, `actor_transform_tagging.c`).
+  - **Matching.** Tagged matrices are paired by ID in submission order. Untagged ones are matched heuristically:
+    draw-call hashes, then candidate transforms scored by distance, basis and screen position
+    (`src/hle/rt64_game_frame.cpp`).
+  - **Blending.** Matrices are decomposed into translation, rotation (quaternion slerp), scale, skew and perspective
+    (`src/common/rt64_math.cpp`, `rt64_rigid_body.cpp`). The camera deliberately stays element-wise ("cameras
+    usually look better with simple interpolation").
+  - **Cuts.** Camera cuts come from velocity-predicted thresholds plus per-scene overrides. Actors get a
+    "skip interpolation next frame" flag, set by hand on warps and animation changes.
+  - **Latency.** Up to one logic frame; a patch moves the input poll and frame submission later to reduce it.
+- **[Ship of Harkinian](https://github.com/HarbourMasters/Shipwright).**
+  - **Record and replay.** It records the game's CPU matrix-stack calls into a tree keyed by (pointer, int), for
+    example `(actor, 0)`, and replays them with interpolated inputs (`soh/soh/frame_interpolation.cpp`).
+  - **Blending.** There is no decomposition. Angles are lerped, snapping above 90°. Other matrices are lerped
+    element-wise, with actor children made relative to the actor's matrix first (against the "paper" squash).
+  - **Cuts.** A camera epoch snaps the camera.
+  - **Rate.** It runs up to 360 Hz or the display refresh rate.
+- **sm64ex `60fps_ex.patch`.** Previous transforms are stored per object, and it renders twice per tick at a fixed
+  midpoint. 60 Hz only.
+- **Unleashed Recompiled, Perfect Dark port.** The engines natively use delta time, so the frame rate was unlocked and
+  high-fps bugs patched one by one (frame-rate-independent camera easing, clamped dt, scaled constants). Perfect Dark
+  is experimental above about 165 Hz.
+- **DS.** No DS port, decomp or emulator with frame interpolation was found.
+
 ### 1.6 Is there a DS-recomp UI standard?
 
 No formal one. The closest thing to a convention is RetroPortingToolKit's
@@ -128,10 +163,24 @@ controller-navigable player UI and ImGui for developer/debug panels. See [ARCHIT
   frame, no capture in any frame). So there is no dual-screen 3D to deal with.
 - No evidence of microphone use.
 - Frame rate [V]: **the 3D scene updates at 30 Hz**: a new polygon list is flushed every second VBlank (`#.#.#.`) in all
-  of the above, including the title screen. The Wii version also runs at about 30 fps [R]. When an update runs late the
-  game catches up: a gap of 3-6 frames is followed by two flushes on consecutive frames (`....##.#`), so frames do not
-  arrive on a fixed two-frame grid. Loading and fades show longer gaps. The DS slows down with a full party [R]; not yet
+  of the above, including the title screen. The Wii version also runs at about 30 fps [R]. When an update runs late, a
+  gap of 3-6 frames is followed by two flushes on consecutive frames (`....##.#`), so frames do not arrive on a fixed
+  two-frame grid. This is a short wait after a long tick, not a catch-up (see the frame pacing item below). Loading and fades show longer gaps. The DS slows down with a full party [R]; not yet
   measured with four players.
+- Frame pacing and the logic tick [V]: **the game logic is a fixed step with no delta time.**
+  - **The limiter.** The main loop (`0204f818`) and two other loops (`020511a0`, `02050cb4`) end each tick in a frame
+    limiter at `02050b54`. The limiter takes an interval from `02050b20`, then waits (`OS_WaitVBlankIntr`, at least
+    once) until the VBlank counter at `02103cac` reaches the last tick's count plus that interval. It then stores the
+    counter at `02104da0`. That stored value is read nowhere else, and the interval is only read here and by a
+    multiplayer check (`020ae228`, "is the interval 2?").
+  - **The interval.** It is 2 VBlanks (30 Hz). It is 4 (15 Hz) in modes 2/5 when a flag bit is set, and 8 when a flag
+    at `0212f524`+24 is set.
+  - **Late ticks.** A late tick is not made up: the next wait is just shorter (the `##` after a long gap above), so the
+    game really slows down.
+  - **Experiment.** The interval was forced to 1 VBlank mid-game; this was a temporary local patch of the generated
+    code. The game ran stably at 60 new scenes a second, but walking in a straight line scrolled the camera 33 px per
+    tick in both modes: twice the speed at 60 Hz. Every per-tick quantity (movement, animation, timers, camera
+    easing) is in units of one tick. ARCHITECTURE §5.3 has the feasibility conclusions.
 - GX command streams [V] (`--gx-probe`): consecutive scenes nearly always send the same sequence of GX commands
   (12-26k FIFO entries per scene in the field), vertex data never changes between scenes (animation and skinning are
   all matrix work), and the projection matrix stays fixed (the camera is in the position matrix). This is what makes

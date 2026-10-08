@@ -184,8 +184,9 @@ and interpolation (§5.3) need our own rasteriser:
 flushes in a row, the 3D is always on the top screen and display capture is never used. `--fps-probe` logs this per
 second (`#` = new 3D scene, `.` = repeated, `c`/`C` = display capture).
 
-The game logic tick is left untouched (30 Hz). This is required for lockstep netplay and avoids physics/animation bugs;
-speeding the logic up would mean retuning every per-tick constant in the game.
+The game logic tick is left untouched (30 Hz). This is required for lockstep netplay and avoids physics/animation bugs.
+Speeding the logic up would mean retuning every per-tick constant in the game. Measurements are below
+("Why not a variable-rate logic tick").
 
 **Today: frame interpolation from the GX command stream** (`runtime/src/gx_stream.cpp`, on by default, setting
 "60 fps 3D", F9, `--no-interpolate`). Everything the game draws in 3D reaches the geometry engine as a stream of GX
@@ -222,9 +223,85 @@ as it is. Any other matrix command that jumps that far keeps its new value. In n
 long test run through the field, dialogue and combat). `--gx-dump-at-frame <n>` writes one scene's commands to
 `gx_scene.txt` (local only: it is game data), marking the parameters that changed since the previous scene.
 
+**Why not a variable-rate logic tick (delta time).** This was investigated (RESEARCH §2.3).
+- **Fixed step.** The logic is a fixed 30 Hz step. A frame limiter waits a fixed number of VBlanks per tick, and nothing
+  in the game receives the elapsed time.
+- **The experiment.** Forcing the limiter to one VBlank runs stably at 60 scenes a second, so the logic fits in a VBlank,
+  but the whole game then runs at double speed.
+- **What real 60 Hz or delta logic would take.** Scaling every per-tick quantity, spread over the main binary and the
+  overlays with no symbols:
+  - velocities, accelerations and gravity/jump integration;
+  - animation steps;
+  - frame-count timers: attack windows, invulnerability, AI, spawns, status effects, event/cutscene scripts, menu waits;
+  - per-tick camera easing (the double-speed run showed it), particles and effects;
+  - per-tick RNG calls.
+- **Risks.**
+  - Halved constants do not reproduce the same trajectories: jump arcs and collisions change slightly.
+  - Every missed site is a bug in which something runs at double speed.
+  - Multiplayer lockstep needs every player on the same tick.
+- **Verdict.** A doubled tick with halved constants is the only realistic variant. It would be months of reverse
+  engineering with constant regressions, and arbitrary delta time is harder still. Not planned. Interpolation gives the
+  same smoothness at any display rate, as below.
+
+**Latency.** Input is read once per 30 Hz tick in every scheme.
+- **Today at 60 Hz:** interpolation adds one frame (16.7 ms) before the full pose, and motion starts on the same frame.
+- **Above 60 Hz,** two choices:
+  - spread the step evenly over the tick, which adds up to one tick (33 ms) before the full pose;
+  - keep the one-frame delay, which makes motion uneven within the tick.
+- **Other options:**
+  - **Extrapolation** (the low-latency option below) removes the delay at the cost of overshoot when motion changes.
+  - **Run-ahead,** as in RetroArch, could cut latency below the DS's own by re-running the deterministic logic from a
+    snapshot. It needs full machine snapshots, and the recomp's guest threads run on host fibers, so this is research,
+    not a plan.
+
+**Next: display rates above 60 Hz (planned).** Today the frontend presents once per emulated frame, paced by a timer to
+59.83 Hz, with vsync off.
+- **The renderer side.** In melonDS's OpenGL and compute renderers, the 3D is drawn into a texture at line 215 of one
+  frame (`Start3DRendering`). At line 192 of the next frame, a GPU pass (`GLRenderer2D::RenderScreen`) composites
+  engine A's 2D layers with that texture, and a final pass (`GLRenderer::RenderScreen`) applies master brightness.
+  All of their inputs (per-scanline configs, layer textures) are still in place after an emulated frame ends.
+- **An in-between frame** therefore takes four steps:
+  1. replay the scene with its matrices blended at fraction t (as today, about 0.4 ms of CPU);
+  2. draw the result into a spare 3D texture;
+  3. re-run the two passes into a spare output;
+  4. present it.
+  No emulation is involved, and the 2D layers stay at the game's rate.
+- **What to build:**
+  - a configure-time melonDS patch with that entry point, about 100-150 lines;
+  - a runtime call that renders the in-between frame at fraction t;
+  - a frontend loop that presents at the display rate (vsync, or a timer for VRR), runs emulated frames when they
+    are due, and weighs each display frame between scenes as RT64 does;
+  - a setting: Original 30 / 60 / Display refresh / Custom.
+  Roughly 2-4 days.
+- **The software renderer** composites on the CPU line by line, so it stays at 60.
+- **Latency** is as described above: spreading each step evenly over the tick, as RT64 and Ship of Harkinian do, adds
+  up to one tick.
+
+**Rotation blending (planned).** Measured over a walk/dialogue/combat run and a combat run (about 3,800 scenes, 164k
+changed matrix commands):
+- About 85% rotate under 10° between scenes and about 6% rotate 10-30°.
+- 0.3-0.6% rotate over 30°: fast turns, which `jumped()` currently snaps.
+- Element-wise lerp shrinks a 30° turn by 3.4% at the midpoint, and spaces the angle unevenly at other fractions.
+
+The plan is to decompose object matrices (polar decomposition of the 3×3 part into rotation and scale), slerp the
+rotation and lerp the rest. Turns up to about 120° would then blend, and anything mirrored or degenerate (zero scale)
+falls back to today's path. The camera stays element-wise, as in RT64. This matters more above 60 Hz, where the frames
+at 1/4 and 3/4 make uneven turns visible.
+
+**Object tagging (deferred).** RT64 tags matrices with IDs so it can pair objects exactly between frames.
+- **What it would fix here: little.** Measured: 95% of scenes have exactly the same command sequence as the previous
+  one, and the remaining 5% chunk-match about 95% of their entries. Under 0.05% of matrix commands are rejected as
+  translation jumps.
+- **The ingredients exist.** All models are NitroSystem G3D (about 1,200 BMD0 and 1,000 BCA0 files), so one draw
+  routine sees every model, and its render-object pointer plus joint index would make a natural ID.
+- **But it is costly.** The game builds GX commands in buffers and sends them by DMA, so a hook at draw time cannot
+  tell which FIFO entries belong to the call without injecting markers into the stream. The draw routine also has no
+  symbol yet.
+- **Revisit if a case needs it:** identical objects swapping draw order within 16 units, or cutscene cuts the camera
+  heuristic misses. A cheaper first step is hooking the game's camera setup to flag cuts directly, like RT64's
+  per-actor "skip" flag.
+
 **Later:**
-- Display rates above 60 Hz (120/144 Hz, VRR): replay at any fraction between scenes. This needs presentation to be
-  decoupled from the emulated frame, plus the 2D layers composited separately.
 - Checking the cut detection on cutscenes.
 - Interpolating master brightness fades.
 - A low-latency mode that extrapolates instead.
