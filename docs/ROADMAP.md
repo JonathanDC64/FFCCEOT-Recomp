@@ -58,8 +58,8 @@ Milestones are ordered by dependency. Each ends with a demonstrable result. Desi
 - [ ] Widescreen: projection hook, culling hook, HUD anchoring, fades
 - [ ] Frame interpolation (draw matching, transform lerp, cut detection), uncapped/VRR presentation
 - [ ] Golden-image comparison vs reference rasteriser (local)
-- [ ] Flip-model presentation on Windows (DXGI, through SDL_GPU's D3D12/Vulkan swapchain): seamless alt-tab with
-      direct-to-display latency in borderless fullscreen; then drop the one-pixel-taller window workaround (§5.5)
+- [x] Flip-model presentation on Windows (DXGI through WGL_NV_DX_interop2): seamless alt-tab with direct-to-display
+      latency in an exact-size borderless window; GL swap with the one-pixel-taller window as the fallback (§5.5)
 
 ## M6: Controls and UI shell
 **Result: fully playable on a gamepad without touching the bottom screen. Themed launcher and in-game menu.**
@@ -69,7 +69,7 @@ Milestones are ordered by dependency. Each ends with a demonstrable result. Desi
 - [ ] Analog movement: full 360° character movement from the stick (the game reads an 8-way D-pad; hook its movement input)
 - [x] RmlUi integration (OpenGL for now), FF crystal theme (original styling, OFL fonts)
 - [x] In-game settings menu (display, graphics, audio, game, controls list), settings persistence (`settings.ini`)
-- [ ] Menu: more pages (online, QoL, mods, about), reset game, button glyphs; RmlUi on SDL_GPU with flip-model presentation
+- [ ] Menu: more pages (online, QoL, mods, about), reset game, button glyphs; RmlUi on SDL_GPU
 - [ ] Launcher/installer flow
 - [ ] ImGui dev tools (`--dev`)
 

@@ -60,7 +60,7 @@ screen at the left edge, the other filling the rest of the width) between bottom
 
 Video: the screens are rendered with OpenGL at a multiple of the DS resolution that matches the window (up to 16×,
 4K and beyond). While playing: F5 cycles the renderer (software, OpenGL, compute), F6/F7 lower/raise the internal
-resolution (past 1× or 16× returns to auto), F8 cycles the filter (nearest, linear, sharp), F11 toggles borderless fullscreen (`--fullscreen` starts in it).
+resolution (past 1× or 16× returns to auto), F8 cycles the filter (nearest, linear, sharp), F11 toggles borderless fullscreen (`--fullscreen` starts in it; on Windows frames go through a DXGI flip-model swapchain, so alt-tab is seamless, and `--no-flip-model` falls back to a plain GL swap).
 The window title shows the current settings. The same choices exist as options:
 `--renderer software|opengl|compute`, `--scale auto|1..16`, `--filter nearest|linear|sharp`, `--better-polygons`,
 `--no-hires-coordinates`.

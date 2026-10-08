@@ -63,3 +63,8 @@ add_custom_command(
 add_executable(ffcc src/main.cpp src/video.cpp src/cfie_hooks.cpp src/settings.cpp src/input.cpp src/ui.cpp ${FFCC_UI_ASSETS})
 target_include_directories(ffcc PRIVATE src)
 target_link_libraries(ffcc PRIVATE ffcc_game_code ntr_runtime ntr_common SDL3::SDL3-static rmlui_backend)
+if(WIN32)
+  # Flip-model presentation: OpenGL drawn into a Direct3D 11 swapchain.
+  target_sources(ffcc PRIVATE src/flip_present.cpp)
+  target_link_libraries(ffcc PRIVATE d3d11 dxgi opengl32)
+endif()

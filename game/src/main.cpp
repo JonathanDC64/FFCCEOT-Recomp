@@ -52,7 +52,7 @@ public:
         window_ = SDL_CreateWindow(kTitle, wide ? 1280 : stacked ? kScreenW * 3 : kScreenW * 2 * 3,
                                    wide ? 720 : stacked ? kScreenH * 2 * 3 : kScreenH * 3,
                                    SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY);
-        if (!window_ || !presenter_.init(window_)) {
+        if (!window_ || !presenter_.init(window_, allow_flip_model)) {
             std::fprintf(stderr, "cannot open the game window: %s\n", SDL_GetError());
             return false;
         }
@@ -329,10 +329,11 @@ public:
         settings.fullscreen = on;
         if (on == fullscreen_) return;
 #ifdef _WIN32
-        // On Windows a GL window that exactly covers the monitor gets promoted to exclusive-style presentation by
-        // the driver (alt-tab blanks the screen for seconds). One pixel taller avoids that; the shell still treats
-        // it as fullscreen and hides the taskbar. Each step is synced so the border is gone before positioning.
-        // The proper fix is flip-model (DXGI) presentation; see docs/ARCHITECTURE.md section 5.5.
+        // With flip-model presentation the window exactly covers the display, and Windows shows it directly
+        // (independent flip) with seamless alt-tab. Without it (GL swap), a window exactly covering the monitor gets
+        // promoted to exclusive-style presentation by the driver and alt-tab blanks the screen for seconds; one pixel
+        // taller avoids that, and the shell still treats it as fullscreen. See docs/ARCHITECTURE.md section 5.5.
+        // Each step is synced so the border is gone before positioning.
         if (on) {
             SDL_GetWindowPosition(window_, &windowed_.x, &windowed_.y);
             SDL_GetWindowSize(window_, &windowed_.w, &windowed_.h);
@@ -343,7 +344,7 @@ public:
             SDL_SetWindowBordered(window_, false);
             SDL_SyncWindow(window_);
             SDL_SetWindowPosition(window_, d.x, d.y);
-            SDL_SetWindowSize(window_, d.w, d.h + 1);
+            SDL_SetWindowSize(window_, d.w, presenter_.flip_model() ? d.h : d.h + 1);
             SDL_SyncWindow(window_);
             SDL_RaiseWindow(window_);
         } else {
@@ -487,6 +488,7 @@ public:
     std::string screenshot_path;
     uint64_t menu_at_frame = 0;      // debugging: open the menu at this frame
     std::string menu_keys;           // debugging: and press these keys in it
+    bool allow_flip_model = true;    // Windows: present through DXGI when possible
     ui::Menu& menu() { return menu_; }
 };
 
@@ -546,7 +548,8 @@ int main(int argc, char** argv) {
                      "  --no-skip-logos --trace-calls --trace-threads --trace-files --perf\n"
                      "  --profile-functions <file> --dump-at-frame <n> --exit-after-frames <n>\n"
                      "  --screenshot-at-frame <n> <file.png> --menu-at-frame <n> --menu-tab <name>\n"
-                     "  --menu-keys <key,key,...>\n",
+                     "  --menu-keys <key,key,...>\n"
+                     "  --no-flip-model                      Windows: present with a plain OpenGL swap\n",
                      argv[0]);
         return 2;
     }
@@ -563,6 +566,7 @@ int main(int argc, char** argv) {
 
     ntr::RuntimeOptions options;
     uint64_t exit_after_frames = 0, screenshot_frame = 0, menu_at_frame = 0;
+    bool allow_flip_model = true;
     std::string screenshot_path, menu_tab, menu_keys;
     for (int i = 2; i < argc; i++) {
         const std::string a = argv[i];
@@ -571,6 +575,8 @@ int main(int argc, char** argv) {
             options.trace_calls = true;
         else if (a == "--trace-threads")
             options.trace_threads = true;
+        else if (a == "--no-flip-model")
+            allow_flip_model = false;
         else if (a == "--no-skip-logos")
             settings.skip_logos = false;
         else if (a == "--perf")
@@ -638,6 +644,7 @@ int main(int argc, char** argv) {
     host.screenshot_path = screenshot_path;
     host.menu_at_frame = menu_at_frame;
     host.menu_keys = menu_keys;
+    host.allow_flip_model = allow_flip_model;
     const bool fullscreen = settings.fullscreen;
     host.settings.fullscreen = false;  // the window starts windowed; set_fullscreen below records the state
     if (!host.init(save_path)) return 1;

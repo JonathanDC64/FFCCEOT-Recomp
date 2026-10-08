@@ -133,7 +133,30 @@ if(FFCC_BUILD_GAME)
   # RmlUi's SDL3 platform and GL3 renderer backends are source files in its tree, built here. The renderer uses
   # melonDS's glad (already loaded by the frontend) instead of its own GL loader.
   set(RMLUI_BACKENDS ${rmlui_SOURCE_DIR}/Backends)
-  add_library(rmlui_backend STATIC ${RMLUI_BACKENDS}/RmlUi_Platform_SDL.cpp ${RMLUI_BACKENDS}/RmlUi_Renderer_GL3.cpp)
+
+  # The GL3 renderer ends each frame by drawing to framebuffer 0. Patch a copy to draw to the framebuffer that was
+  # bound when the frame began instead: on Windows the frontend renders into an offscreen framebuffer that it then
+  # presents through a DXGI flip-model swapchain.
+  file(READ ${RMLUI_BACKENDS}/RmlUi_Renderer_GL3.cpp gl3_src)
+  string(REPLACE "\r\n" "\n" gl3_src "${gl3_src}")
+  # (Text patches: the strings contain semicolons, so they are passed quoted and never as CMake lists.)
+  function(ffcc_patch_gl3 from to)
+    string(FIND "${gl3_src}" "${from}" at)
+    if(at EQUAL -1)
+      message(FATAL_ERROR "RmlUi_Renderer_GL3.cpp changed: cannot apply the output framebuffer patch")
+    endif()
+    string(REPLACE "${from}" "${to}" patched "${gl3_src}")
+    set(gl3_src "${patched}" PARENT_SCOPE)
+  endfunction()
+  ffcc_patch_gl3("void RenderInterface_GL3::BeginFrame()\n{\n"
+    "static GLint rmlui_output_framebuffer = 0;\n\nvoid RenderInterface_GL3::BeginFrame()\n{\n\tglGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &rmlui_output_framebuffer);\n")
+  ffcc_patch_gl3("// Draw to backbuffer\n\tglBindFramebuffer(GL_FRAMEBUFFER, 0);"
+    "// Draw to backbuffer\n\tglBindFramebuffer(GL_FRAMEBUFFER, GLuint(rmlui_output_framebuffer));")
+  file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/rmlui_gl3/patched.tmp "${gl3_src}")
+  configure_file(${CMAKE_CURRENT_BINARY_DIR}/rmlui_gl3/patched.tmp ${CMAKE_CURRENT_BINARY_DIR}/rmlui_gl3/RmlUi_Renderer_GL3.cpp COPYONLY)
+
+  add_library(rmlui_backend STATIC ${RMLUI_BACKENDS}/RmlUi_Platform_SDL.cpp
+    ${CMAKE_CURRENT_BINARY_DIR}/rmlui_gl3/RmlUi_Renderer_GL3.cpp)
   target_include_directories(rmlui_backend PUBLIC ${RMLUI_BACKENDS})
   target_compile_definitions(rmlui_backend PUBLIC RMLUI_SDL_VERSION_MAJOR=3
     PRIVATE RMLUI_GL3_CUSTOM_LOADER="frontend/glad/glad.h")

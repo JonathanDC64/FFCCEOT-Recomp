@@ -3,6 +3,7 @@
 #pragma once
 
 #include <cstdint>
+#include <memory>
 
 #include "ntr/runtime.hpp"
 
@@ -53,15 +54,22 @@ struct ScreenView {
     bool framed = false;  // drawn with a border (the picture-in-picture)
 };
 
+class FlipPresenter;
+
 class Presenter {
 public:
-    // Creates the GL context (4.3 core if available, else 3.3 core) on `window` and loads its functions.
-    bool init(SDL_Window* window);
+    Presenter();
+    ~Presenter();
+
+    // Creates the GL context (4.3 core if available, else 3.3 core) on `window` and loads its functions. On Windows,
+    // frames are shown through a DXGI flip-model swapchain when the driver allows it (unless `allow_flip_model` is
+    // false), else with an ordinary GL swap.
+    bool init(SDL_Window* window, bool allow_flip_model = true);
     // Destroys the context (before the window goes).
     void shutdown();
-    ~Presenter() { shutdown(); }
 
     bool has_compute() const { return gl43_; }
+    bool flip_model() const { return flip_ != nullptr; }
 
     // Lays the screens out for the window's current size.
     void layout(int window_px_w, int window_px_h, const LayoutSettings& settings);
@@ -73,7 +81,7 @@ public:
     // The tallest screen on the window, in pixels (what the internal resolution should cover).
     float largest_screen_height() const;
 
-    // Draws a frame (or black if `frame` is null) to the back buffer.
+    // Draws a frame (or black if `frame` is null) to the back buffer, and leaves it bound for drawing over.
     void draw(const ntr::Frame* frame, Filter filter);
     // Shows the back buffer. With `screenshot`, first saves it as a PNG.
     void swap(const char* screenshot = nullptr);
@@ -87,6 +95,8 @@ private:
 
     SDL_Window* window_ = nullptr;
     void* context_ = nullptr;  // SDL_GLContext
+    std::unique_ptr<FlipPresenter> flip_;
+    unsigned target_ = 0;      // the framebuffer this frame is drawn into (0 = the window's own)
     bool gl43_ = false;
     unsigned program_ = 0, vbo_ = 0, vao_ = 0, soft_tex_ = 0;
     int u_dest_ = -1, u_layer_ = -1, u_sharp_ = -1, u_out_size_ = -1, u_tex_ = -1, u_opacity_ = -1;

@@ -204,21 +204,32 @@ every renderer, and the automatic internal resolution follows the largest screen
   (e.g. full menus), so it can pop up or swap automatically.
 
 ### 5.5 Fullscreen presentation (Windows)
-**Today:** fullscreen is a borderless window over the display, never a display mode change. It is made one pixel taller
-than the monitor (`set_fullscreen` in `game/src/main.cpp`). A window whose client area exactly matches the monitor is
-treated by Windows and the GPU driver (NVIDIA's OpenGL driver in particular) as a fullscreen game: its frames go straight
-to the display, bypassing the desktop compositor (DWM). Leaving that state on alt-tab means turning composition back on,
-and the screen goes black for a few seconds, as with exclusive fullscreen. The extra row (off-screen) fails the
-exact-match test, so the window stays composited; the shell still hides the taskbar because the window covers the
-display. Godot and Chromium use the same workaround. The cost is about one frame of extra latency in fullscreen.
+Fullscreen is a borderless window over the display, never a display mode change.
 
-**Proper fix (planned):** present through a DXGI **flip-model** swapchain (`DXGI_SWAP_EFFECT_FLIP_DISCARD`). Windows
-can then promote a borderless fullscreen window to independent flip, which goes direct to the display with no extra
-latency, and demote it again on alt-tab without a mode change or a black screen. OpenGL on Windows has no flip-model
-swapchain of its own. The native renderer (§5.1) runs on SDL_GPU, whose D3D12 and Vulkan backends present through one,
-so the workaround goes once presentation moves there. (A stopgap that keeps OpenGL is rendering to a texture shared with a
-D3D11 flip-model swapchain through `WGL_NV_DX_interop2`, at the cost of interop complexity.) The window is then sized
-exactly to the display.
+**The problem:** OpenGL on Windows presents with the old blit model. A GL window whose client area exactly matches the
+monitor is treated by Windows and the GPU driver (NVIDIA's in particular) as a fullscreen game: its frames go straight to
+the display, bypassing the desktop compositor (DWM). Leaving that state on alt-tab means turning composition back on,
+and the screen goes black for a few seconds, as with exclusive fullscreen.
+
+**Today:** frames are shown through a DXGI **flip-model** swapchain (`DXGI_SWAP_EFFECT_FLIP_DISCARD`), so Windows can
+promote the borderless window to independent flip (direct to the display, no extra latency) and demote it on alt-tab
+without a mode change or a black screen. Everything still renders with OpenGL (melonDS's renderers, the screen pass
+and the menu); `game/src/flip_present.cpp` bridges to Direct3D 11 with `WGL_NV_DX_interop2` (supported by NVIDIA,
+AMD and Intel drivers):
+
+1. the frame is drawn into an offscreen GL framebuffer (the presenter binds it; RmlUi's GL3 renderer is patched at
+   configure time to end its frame on the framebuffer bound when the frame began, rather than framebuffer 0);
+2. at present, it is blitted with the rows flipped (GL is bottom-up, D3D top-down) into a D3D11 texture shared with GL;
+3. D3D11 copies that texture to the swapchain's back buffer and presents with sync interval 0 (the frontend paces
+   frames; the flip model shows the newest frame at the next refresh, without tearing).
+
+The two extra copies are at window resolution and cost well under a millisecond. The window is sized exactly to the
+display. If the interop is missing (or `--no-flip-model` is passed), presentation falls back to a GL swap and the
+window is made one pixel taller than the display, which fails the driver's exact-match test and keeps it composited
+(the shell still hides the taskbar; Godot and Chromium use the same trick), at about one frame of extra latency.
+
+**Later:** the native renderer (§5.1) on SDL_GPU presents through D3D12/Vulkan swapchains, which are flip-model
+already; the interop goes away then.
 
 ## 6. Input and the "no touch screen" scheme
 **Today:** `game/src/input.cpp` binds each action (the 12 DS buttons, plus show other screen, swap screens and

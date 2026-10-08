@@ -5,8 +5,13 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <memory>
+#include <string>
 
 #include "OpenGLSupport.h"  // melonDS: glad and the shader compile helper
+#ifdef _WIN32
+#include "flip_present.hpp"
+#endif
 
 namespace video {
 
@@ -53,8 +58,8 @@ void main() {
 void Presenter::save_png(const char* path) {
     SDL_Surface* surf = SDL_CreateSurface(width_, height_, SDL_PIXELFORMAT_ABGR8888);
     if (!surf) return;
-    glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
-    glReadBuffer(GL_BACK);
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, target_);
+    glReadBuffer(target_ ? GL_COLOR_ATTACHMENT0 : GL_BACK);
     glPixelStorei(GL_PACK_ALIGNMENT, 4);
     glPixelStorei(GL_PACK_ROW_LENGTH, surf->pitch / 4);
     glReadPixels(0, 0, width_, height_, GL_RGBA, GL_UNSIGNED_BYTE, surf->pixels);
@@ -92,7 +97,14 @@ const char* filter_name(Filter f) {
     return "?";
 }
 
-bool Presenter::init(SDL_Window* window) {
+#ifndef _WIN32
+class FlipPresenter {};  // Windows only
+#endif
+
+Presenter::Presenter() = default;
+Presenter::~Presenter() { shutdown(); }
+
+bool Presenter::init(SDL_Window* window, bool allow_flip_model) {
     window_ = window;
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
 #ifdef __APPLE__
@@ -149,11 +161,30 @@ bool Presenter::init(SDL_Window* window) {
     glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     soft_tex_ = t;
+
+#ifdef _WIN32
+    if (allow_flip_model) {
+        void* hwnd = SDL_GetPointerProperty(SDL_GetWindowProperties(window), SDL_PROP_WINDOW_WIN32_HWND_POINTER, nullptr);
+        auto flip = std::make_unique<FlipPresenter>();
+        std::string error;
+        if (hwnd && flip->init(hwnd, error)) {
+            flip_ = std::move(flip);
+            std::printf("presentation: DXGI flip model\n");
+        } else {
+            std::printf("presentation: OpenGL swap (flip model unavailable: %s)\n", error.c_str());
+        }
+    } else {
+        std::printf("presentation: OpenGL swap\n");
+    }
+#else
+    (void)allow_flip_model;
+#endif
     return true;
 }
 
 void Presenter::shutdown() {
     if (!context_) return;
+    flip_.reset();
     GLuint t = soft_tex_, b = vbo_, a = vao_;
     if (t) glDeleteTextures(1, &t);
     if (b) glDeleteBuffers(1, &b);
@@ -230,7 +261,10 @@ float Presenter::largest_screen_height() const {
 
 void Presenter::draw(const ntr::Frame* frame, Filter filter) {
     // melonDS's GL renderers share this context: put back the state the screen pass relies on.
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+#ifdef _WIN32
+    target_ = flip_ ? flip_->begin(width_, height_) : 0;
+#endif
+    glBindFramebuffer(GL_FRAMEBUFFER, target_);
     glDisable(GL_DEPTH_TEST);
     glDisable(GL_STENCIL_TEST);
     glDisable(GL_BLEND);
@@ -290,6 +324,12 @@ void Presenter::draw(const ntr::Frame* frame, Filter filter) {
 
 void Presenter::swap(const char* screenshot) {
     if (screenshot) save_png(screenshot);
+#ifdef _WIN32
+    if (flip_) {
+        flip_->present();
+        return;
+    }
+#endif
     SDL_GL_SwapWindow(window_);
 }
 
