@@ -190,12 +190,35 @@ and interpolation (§5.3) need our own rasteriser:
   (that would mean 30 Hz per screen and needs special handling: render both screens' 3D every frame natively).
 
 ### 5.4 Screen layouts
-Each DS screen is composited into its own render target. Then the layout compositor shows:
+**Today** (`game/src/video.cpp`): single screen (default; the top screen as large as fits, the other as a framed
+picture-in-picture in the bottom-right corner that can be hidden and takes mouse touches), main + side (the main
+screen at the window's left edge, the other filling the remaining width at the top, middle or bottom), stacked and side-by-side,
+each with the screens swappable. The layout works on the renderer's two-layer output texture, so it is the same for
+every renderer, and the automatic internal resolution follows the largest screen on the window.
+
+**Plan:** each DS screen is composited into its own render target. Then the layout compositor shows:
 - **Single (default)**: the main screen full-window. The second screen is a **toggleable overlay** (hold or toggle) or a
   **picture-in-picture** panel. Position, size and opacity are configurable, and the panel is mouse-clickable as a touch surface.
 - **Swap** (show the other screen as main), **side-by-side**, **stacked**, and **separate window** (for a second monitor).
 - Auto-switching: game hooks tell the compositor when the bottom screen carries something the player must see
   (e.g. full menus), so it can pop up or swap automatically.
+
+### 5.5 Fullscreen presentation (Windows)
+**Today:** fullscreen is a borderless window over the display, never a display mode change. It is made one pixel taller
+than the monitor (`set_fullscreen` in `game/src/main.cpp`). A window whose client area exactly matches the monitor is
+treated by Windows and the GPU driver (NVIDIA's OpenGL driver in particular) as a fullscreen game: its frames go straight
+to the display, bypassing the desktop compositor (DWM). Leaving that state on alt-tab means turning composition back on,
+and the screen goes black for a few seconds, as with exclusive fullscreen. The extra row (off-screen) fails the
+exact-match test, so the window stays composited; the shell still hides the taskbar because the window covers the
+display. Godot and Chromium use the same workaround. The cost is about one frame of extra latency in fullscreen.
+
+**Proper fix (planned):** present through a DXGI **flip-model** swapchain (`DXGI_SWAP_EFFECT_FLIP_DISCARD`). Windows
+can then promote a borderless fullscreen window to independent flip, which goes direct to the display with no extra
+latency, and demote it again on alt-tab without a mode change or a black screen. OpenGL on Windows has no flip-model
+swapchain of its own. The native renderer (§5.1) runs on SDL_GPU, whose D3D12 and Vulkan backends present through one,
+so the workaround goes once presentation moves there. (A stopgap that keeps OpenGL is rendering to a texture shared with a
+D3D11 flip-model swapchain through `WGL_NV_DX_interop2`, at the cost of interop complexity.) The window is then sized
+exactly to the display.
 
 ## 6. Input and the "no touch screen" scheme
 - A binding system maps physical inputs to **actions**: DS buttons plus virtual touch actions plus app actions (open menu, swap screens, fast-forward).

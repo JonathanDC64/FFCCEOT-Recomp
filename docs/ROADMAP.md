@@ -52,10 +52,14 @@ Milestones are ordered by dependency. Each ends with a demonstrable result. Desi
 - [x] Upscaling now: melonDS's OpenGL and compute renderers at 1–16× (auto-matched to the window), switchable live,
       with nearest/linear/sharp-bilinear output filters, software renderer kept as the exact reference; fullscreen
 - [ ] SDL_GPU GX rasteriser with DS rules at N× scale; texture cache
-- [ ] Upscaled 2D compositor; screen layouts (single + overlay/PiP, swap, side-by-side, stacked, separate window)
+- [x] Screen layouts: single screen with a picture-in-picture second screen (toggle, touchable), main + side (main
+      at the left edge, the other filling the rest, top/middle/bottom), stacked, side-by-side, swap; borderless fullscreen
+- [ ] More layout options: PiP position/size/opacity settings, separate window, automatic swap/pop-up from game hooks
 - [ ] Widescreen: projection hook, culling hook, HUD anchoring, fades
 - [ ] Frame interpolation (draw matching, transform lerp, cut detection), uncapped/VRR presentation
 - [ ] Golden-image comparison vs reference rasteriser (local)
+- [ ] Flip-model presentation on Windows (DXGI, through SDL_GPU's D3D12/Vulkan swapchain): seamless alt-tab with
+      direct-to-display latency in borderless fullscreen; then drop the one-pixel-taller window workaround (§5.5)
 
 ## M6: Controls and UI shell
 **Result: fully playable on a gamepad without touching the bottom screen. Themed launcher and in-game menu.**

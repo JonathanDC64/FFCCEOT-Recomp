@@ -44,9 +44,15 @@ Controls: arrows, X = A, Z = B, S = X, A = Y, Q = L, W = R, Enter = Start, Right
 Esc = quit. Gamepads use the Nintendo button layout, and the left stick works as the D-pad. The company logos
 before the title screen are skipped; pass `--no-skip-logos` to watch them.
 
+Screens: by default the top screen fills the window and the bottom screen is a picture-in-picture in the corner
+(click it to touch). F1 cycles the layout (single, main + side, stacked, side by side), F2 swaps the screens, F3 or
+the right stick click shows/hides the picture-in-picture, F4 moves the side screen of the main + side layout (the main
+screen at the left edge, the other filling the rest of the width) between bottom, middle and top. Options:
+`--layout single|main-side|stacked|side`, `--side-align top|middle|bottom`, `--swap-screens`, `--no-second-screen`.
+
 Video: the screens are rendered with OpenGL at a multiple of the DS resolution that matches the window (up to 16×,
 4K and beyond). While playing: F5 cycles the renderer (software, OpenGL, compute), F6/F7 lower/raise the internal
-resolution (past 1× or 16× returns to auto), F8 cycles the filter (nearest, linear, sharp), F11 toggles fullscreen.
+resolution (past 1× or 16× returns to auto), F8 cycles the filter (nearest, linear, sharp), F11 toggles borderless fullscreen (`--fullscreen` starts in it).
 The window title shows the current settings. The same choices exist as options:
 `--renderer software|opengl|compute`, `--scale auto|1..16`, `--filter nearest|linear|sharp`, `--better-polygons`,
 `--no-hires-coordinates`.

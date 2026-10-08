@@ -2,8 +2,9 @@
 //
 //   ffcc <your dump.nds>
 //
-// Shows both screens stacked, with keyboard/gamepad input, touch via the mouse and audio output. Video goes through
-// OpenGL, which also lets melonDS render the screens at a multiple of the DS resolution.
+// Shows the screens in a choice of layouts (by default the top screen with the bottom one as a picture-in-picture),
+// with keyboard/gamepad input, touch via the mouse and audio output. Video goes through OpenGL, which also lets
+// melonDS render the screens at a multiple of the DS resolution.
 #include <SDL3/SDL.h>
 
 #include <algorithm>
@@ -50,7 +51,10 @@ public:
             std::fprintf(stderr, "SDL_Init failed: %s\n", SDL_GetError());
             return false;
         }
-        window_ = SDL_CreateWindow(kTitle, kScreenW * 3, kScreenH * 2 * 3,
+        const bool wide = layout.layout == video::Layout::Single || layout.layout == video::Layout::MainSide;
+        const bool stacked = layout.layout == video::Layout::Stacked;
+        window_ = SDL_CreateWindow(kTitle, wide ? 1280 : stacked ? kScreenW * 3 : kScreenW * 2 * 3,
+                                   wide ? 720 : stacked ? kScreenH * 2 * 3 : kScreenH * 3,
                                    SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY);
         if (!window_ || !presenter_.init(window_)) {
             std::fprintf(stderr, "cannot open the game window: %s\n", SDL_GetError());
@@ -82,7 +86,7 @@ public:
         if (v.renderer == ntr::Renderer::Compute && !presenter_.has_compute()) v.renderer = ntr::Renderer::OpenGL;
         // Match the window: render at least as many pixels as a screen covers (any excess is filtered down).
         v.scale = choice.scale ? choice.scale
-                               : std::clamp(int(std::ceil(presenter_.top_rect().h / kScreenH - 0.01f)), 1, 16);
+                               : std::clamp(int(std::ceil(presenter_.largest_screen_height() / kScreenH - 0.01f)), 1, 16);
         if (v.renderer == ntr::Renderer::Software) v.scale = 1;  // native only
         v.better_polygons = choice.better_polygons;
         v.hires_coordinates = choice.hires_coordinates;
@@ -141,6 +145,10 @@ private:
                 update_layout();
                 sync_video();
                 break;
+            case SDL_EVENT_GAMEPAD_BUTTON_DOWN:
+                // Right stick click shows or hides the second screen.
+                if (e.gbutton.button == SDL_GAMEPAD_BUTTON_RIGHT_STICK) hotkey(SDLK_F3);
+                break;
             case SDL_EVENT_GAMEPAD_ADDED:
                 if (!gamepad_) gamepad_ = SDL_OpenGamepad(e.gdevice.which);
                 break;
@@ -157,12 +165,29 @@ private:
         return true;
     }
 
-    // Video hotkeys (until there is a settings menu): F5 renderer, F6/F7 resolution down/up, F8 filter,
-    // F11 fullscreen. Stepping the resolution past 1x or 16x returns to matching the window.
+    // Hotkeys (until there is a settings menu): F1 layout, F2 swap screens, F3 second screen on/off (single screen),
+    // F4 side screen position (main + side), F5 renderer, F6/F7 resolution down/up, F8 filter, F11 fullscreen.
+    // Stepping the resolution past 1x or 16x returns to matching the window.
     void hotkey(SDL_Keycode key) {
         const int scale = runtime_->video().scale;
-        if (key == SDLK_F11) {
-            SDL_SetWindowFullscreen(window_, !(SDL_GetWindowFlags(window_) & SDL_WINDOW_FULLSCREEN));
+        switch (key) {
+        case SDLK_F11: toggle_fullscreen(); return;
+        case SDLK_F1: layout.layout = video::Layout((int(layout.layout) + 1) % 4); break;
+        case SDLK_F2: layout.swap = !layout.swap; break;
+        case SDLK_F3:
+            if (layout.layout != video::Layout::Single) return;
+            layout.second_screen = !layout.second_screen;
+            break;
+        case SDLK_F4:
+            if (layout.layout != video::Layout::MainSide) return;
+            layout.side_align = video::Align((int(layout.side_align) + 1) % 3);
+            break;
+        default: break;
+        }
+        if (key == SDLK_F1 || key == SDLK_F2 || key == SDLK_F3 || key == SDLK_F4) {
+            update_layout();
+            sync_video();
+            title_dirty_ = true;
             return;
         }
         switch (key) {
@@ -191,18 +216,70 @@ private:
     void update_title() {
         title_dirty_ = false;
         const ntr::VideoSettings v = runtime_->video();
-        std::string t = std::string(kTitle) + "  |  " + ntr::renderer_name(v.renderer);
+        std::string t = std::string(kTitle) + "  |  " + video::layout_name(layout.layout);
+        if (layout.layout == video::Layout::Single)
+            t += std::string(layout.swap ? " (bottom" : " (top") + (layout.second_screen ? " + other)" : ")");
+        else if (layout.layout == video::Layout::MainSide)
+            t += std::string(layout.swap ? " (bottom main" : " (top main") + ", side at " +
+                 video::align_name(layout.side_align) + ")";
+        else if (layout.swap)
+            t += " (swapped)";
+        t += std::string(", ") + ntr::renderer_name(v.renderer);
         if (v.renderer != ntr::Renderer::Software)
             t += " " + std::to_string(v.scale) + "x" + (choice.scale ? "" : " (auto)");
-        t += std::string(", ") + video::filter_name(choice.filter) + " filter  |  F5 renderer, F6/F7 resolution, F8 filter, F11 fullscreen";
+        t += std::string(", ") + video::filter_name(choice.filter) +
+             " filter  |  F1-F4 screens, F5-F8 video, F11 fullscreen";
         SDL_SetWindowTitle(window_, t.c_str());
     }
+
+public:
+    // Borderless fullscreen: a borderless window over the whole display, so the display mode never changes and
+    // switching away is seamless.
+    void set_fullscreen(bool on) {
+        if (on == fullscreen_) return;
+#ifdef _WIN32
+        // On Windows a GL window that exactly covers the monitor gets promoted to exclusive-style presentation by
+        // the driver (alt-tab blanks the screen for seconds). One pixel taller avoids that; the shell still treats
+        // it as fullscreen and hides the taskbar. Each step is synced so the border is gone before positioning.
+        // The proper fix is flip-model (DXGI) presentation; see docs/ARCHITECTURE.md section 5.5.
+        if (on) {
+            SDL_GetWindowPosition(window_, &windowed_.x, &windowed_.y);
+            SDL_GetWindowSize(window_, &windowed_.w, &windowed_.h);
+            windowed_maximized_ = SDL_GetWindowFlags(window_) & SDL_WINDOW_MAXIMIZED;
+            SDL_Rect d;
+            if (!SDL_GetDisplayBounds(SDL_GetDisplayForWindow(window_), &d)) return;
+            if (windowed_maximized_) SDL_RestoreWindow(window_);
+            SDL_SetWindowBordered(window_, false);
+            SDL_SyncWindow(window_);
+            SDL_SetWindowPosition(window_, d.x, d.y);
+            SDL_SetWindowSize(window_, d.w, d.h + 1);
+            SDL_SyncWindow(window_);
+            SDL_RaiseWindow(window_);
+        } else {
+            SDL_SetWindowBordered(window_, true);
+            SDL_SyncWindow(window_);
+            SDL_SetWindowSize(window_, windowed_.w, windowed_.h);
+            SDL_SetWindowPosition(window_, windowed_.x, windowed_.y);
+            if (windowed_maximized_) SDL_MaximizeWindow(window_);
+            SDL_SyncWindow(window_);
+        }
+#else
+        SDL_SetWindowFullscreenMode(window_, nullptr);  // no display mode = borderless desktop fullscreen
+        SDL_SetWindowFullscreen(window_, on);
+        SDL_SyncWindow(window_);
+#endif
+        fullscreen_ = on;
+        update_layout();
+    }
+
+private:
+    void toggle_fullscreen() { set_fullscreen(!fullscreen_); }
 
     void update_layout() {
         int w = 0, h = 0, pw = 0, ph = 0;
         SDL_GetWindowSize(window_, &w, &h);
         SDL_GetWindowSizeInPixels(window_, &pw, &ph);
-        presenter_.layout(pw, ph);
+        presenter_.layout(pw, ph, layout);
         pixel_ratio_ = w > 0 ? float(pw) / w : 1.0f;
     }
 
@@ -251,18 +328,14 @@ private:
         }
         runtime_->set_buttons(b);
 
-        // Mouse on the bottom screen = stylus.
+        // Mouse on the bottom screen (wherever the layout puts it, picture-in-picture included) = stylus.
         float mx, my;
         SDL_MouseButtonFlags mb = SDL_GetMouseState(&mx, &my);
-        const video::Rect& r = presenter_.bottom_rect();
         bool touching = false;
-        if ((mb & SDL_BUTTON_LMASK) && r.w > 0) {
-            float sx = (mx * pixel_ratio_ - r.x) / r.w * kScreenW;
-            float sy = (my * pixel_ratio_ - r.y) / r.h * kScreenH;
-            if (sx >= 0 && sx < kScreenW && sy >= 0 && sy < kScreenH) {
-                runtime_->touch(int(sx), int(sy));
-                touching = true;
-            }
+        float sx, sy;
+        if ((mb & SDL_BUTTON_LMASK) && presenter_.screen_at(mx * pixel_ratio_, my * pixel_ratio_, &sx, &sy) == 1) {
+            runtime_->touch(std::clamp(int(sx), 0, kScreenW - 1), std::clamp(int(sy), 0, kScreenH - 1));
+            touching = true;
         }
         if (!touching) runtime_->release_touch();
         input_active_ = b != 0 || touching;
@@ -294,6 +367,9 @@ private:
     SDL_Window* window_ = nullptr;
     video::Presenter presenter_;
     float pixel_ratio_ = 1;  // window pixels per window coordinate (high-DPI displays)
+    bool fullscreen_ = false;
+    SDL_Rect windowed_{};    // the window's place before going fullscreen
+    bool windowed_maximized_ = false;
     ntr::VideoSettings sent_video_;
     bool title_dirty_ = false;
     SDL_AudioStream* audio_ = nullptr;
@@ -314,6 +390,7 @@ public:
     uint64_t exit_after_frames = 0;  // 0 = run until the window closes
     bool skip_logos = true;
     VideoChoice choice;
+    video::LayoutSettings layout;
     uint64_t screenshot_frame = 0;   // debugging: save the window at this frame
     std::string screenshot_path;
 };
@@ -322,6 +399,23 @@ bool parse_renderer(const std::string& s, ntr::Renderer& r) {
     if (s == "software" || s == "soft") r = ntr::Renderer::Software;
     else if (s == "opengl" || s == "gl") r = ntr::Renderer::OpenGL;
     else if (s == "compute") r = ntr::Renderer::Compute;
+    else return false;
+    return true;
+}
+
+bool parse_layout(const std::string& s, video::Layout& l) {
+    if (s == "single") l = video::Layout::Single;
+    else if (s == "main-side") l = video::Layout::MainSide;
+    else if (s == "stacked") l = video::Layout::Stacked;
+    else if (s == "side") l = video::Layout::SideBySide;
+    else return false;
+    return true;
+}
+
+bool parse_align(const std::string& s, video::Align& a) {
+    if (s == "top") a = video::Align::Top;
+    else if (s == "middle") a = video::Align::Middle;
+    else if (s == "bottom") a = video::Align::Bottom;
     else return false;
     return true;
 }
@@ -340,6 +434,12 @@ int main(int argc, char** argv) {
     if (argc < 2) {
         std::fprintf(stderr,
                      "usage: %s <your Echoes of Time (USA) dump.nds> [options]\n"
+                     "screens:\n"
+                     "  --layout single|main-side|stacked|side   (default single)\n"
+                     "  --side-align top|middle|bottom       main-side: the side screen's position (default bottom)\n"
+                     "  --fullscreen                         start in (borderless) fullscreen; F11 toggles\n"
+                     "  --swap-screens                       bottom screen as the main/first one\n"
+                     "  --no-second-screen                   single layout: hide the picture-in-picture\n"
                      "video:\n"
                      "  --renderer software|opengl|compute   (default opengl)\n"
                      "  --scale auto|1..16                   internal resolution for opengl/compute (default auto)\n"
@@ -358,6 +458,8 @@ int main(int argc, char** argv) {
     uint64_t exit_after_frames = 0;
     bool skip_logos = true;
     VideoChoice choice;
+    video::LayoutSettings layout;
+    bool fullscreen = false;
     uint64_t screenshot_frame = 0;
     std::string screenshot_path;
     for (int i = 2; i < argc; i++) {
@@ -389,7 +491,17 @@ int main(int argc, char** argv) {
         else if (a == "--screenshot-at-frame" && i + 2 < argc) {
             screenshot_frame = std::strtoull(argv[++i], nullptr, 10);
             screenshot_path = argv[++i];
-        } else if (a == "--better-polygons")
+        } else if (a == "--layout" && has_value && parse_layout(argv[i + 1], layout.layout))
+            ++i;
+        else if (a == "--side-align" && has_value && parse_align(argv[i + 1], layout.side_align))
+            ++i;
+        else if (a == "--fullscreen")
+            fullscreen = true;
+        else if (a == "--swap-screens")
+            layout.swap = true;
+        else if (a == "--no-second-screen")
+            layout.second_screen = false;
+        else if (a == "--better-polygons")
             choice.better_polygons = true;
         else if (a == "--no-hires-coordinates")
             choice.hires_coordinates = false;
@@ -420,9 +532,11 @@ int main(int argc, char** argv) {
     host.exit_after_frames = exit_after_frames;
     host.skip_logos = skip_logos;
     host.choice = choice;
+    host.layout = layout;
     host.screenshot_frame = screenshot_frame;
     host.screenshot_path = screenshot_path;
     if (!host.init(save_path)) return 1;
+    if (fullscreen) host.set_fullscreen(true);
     options.video = host.wanted_video();  // the GL context is current: melonDS's GL renderers can start
 
     ntr::GameCode code{ntr_recomp_functions, ntr_recomp_function_count, ntr_recomp_overlays, ntr_recomp_overlay_count};

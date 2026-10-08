@@ -20,6 +20,37 @@ const char* filter_name(Filter f);
 
 struct Rect {
     float x = 0, y = 0, w = 0, h = 0;  // in window pixels, origin at the top left
+    bool contains(float px, float py) const { return px >= x && px < x + w && py >= y && py < y + h; }
+};
+
+// Where the two screens go on the window.
+enum class Layout {
+    Single,      // one screen fills the window; the other is an optional picture-in-picture
+    MainSide,    // the main screen at the left edge; the other fills the width that is left, on the right
+    Stacked,     // one above the other, as on the console
+    SideBySide,  // next to each other, the same size
+};
+const char* layout_name(Layout l);
+
+// Where the smaller screen sits vertically in the MainSide layout.
+enum class Align { Top, Middle, Bottom };
+const char* align_name(Align a);
+
+struct LayoutSettings {
+    Layout layout = Layout::Single;
+    bool swap = false;           // Single/MainSide: the bottom screen is the main one. Others: the bottom screen first.
+    bool second_screen = true;   // Single: show the other screen as a picture-in-picture
+    float pip_size = 0.3f;       // picture-in-picture height, as a fraction of the window height
+    float pip_opacity = 1.0f;
+    Align side_align = Align::Bottom;  // MainSide: the side screen's vertical position
+};
+
+// One DS screen's place on the window.
+struct ScreenView {
+    int screen = 0;  // 0 = top, 1 = bottom
+    Rect rect;
+    float opacity = 1;
+    bool framed = false;  // drawn with a border (the picture-in-picture)
 };
 
 class Presenter {
@@ -32,10 +63,15 @@ public:
 
     bool has_compute() const { return gl43_; }
 
-    // Lays the screens out for the window's current size (top above bottom).
-    void layout(int window_px_w, int window_px_h);
-    const Rect& top_rect() const { return top_; }
-    const Rect& bottom_rect() const { return bottom_; }
+    // Lays the screens out for the window's current size.
+    void layout(int window_px_w, int window_px_h, const LayoutSettings& settings);
+    // The visible screens in drawing order (later ones are on top).
+    int view_count() const { return view_count_; }
+    const ScreenView& view(int i) const { return views_[i]; }
+    // The screen drawn at a window position (topmost), or -1. Sets `local` to the position on that screen in DS pixels.
+    int screen_at(float px, float py, float* local_x, float* local_y) const;
+    // The tallest screen on the window, in pixels (what the internal resolution should cover).
+    float largest_screen_height() const;
 
     // Draws a frame (or black if `frame` is null) and swaps. With `screenshot`, also saves the window as a PNG.
     void present(const ntr::Frame* frame, Filter filter, const char* screenshot = nullptr);
@@ -47,9 +83,10 @@ private:
     void* context_ = nullptr;  // SDL_GLContext
     bool gl43_ = false;
     unsigned program_ = 0, vbo_ = 0, vao_ = 0, soft_tex_ = 0;
-    int u_dest_ = -1, u_layer_ = -1, u_sharp_ = -1, u_out_size_ = -1, u_tex_ = -1;
+    int u_dest_ = -1, u_layer_ = -1, u_sharp_ = -1, u_out_size_ = -1, u_tex_ = -1, u_opacity_ = -1;
     int width_ = 0, height_ = 0;
-    Rect top_, bottom_;
+    ScreenView views_[2];
+    int view_count_ = 0;
 };
 
 }  // namespace video

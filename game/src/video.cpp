@@ -3,6 +3,7 @@
 #include <SDL3/SDL.h>
 
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
 
 #include "OpenGLSupport.h"  // melonDS: glad and the shader compile helper
@@ -30,6 +31,7 @@ const char* kFS = R"(#version 140
 uniform sampler2DArray uTex;
 uniform int uSharp;
 uniform vec2 uOutSize;  // the screen's size on the window, in pixels
+uniform float uOpacity;
 in vec3 fTex;
 out vec4 oColor;
 void main() {
@@ -42,7 +44,7 @@ void main() {
         vec2 range = 0.5 - 0.5 / scale;
         uv = (floor(texel) + (d - clamp(d, -range, range)) * scale + 0.5) / size;
     }
-    oColor = vec4(texture(uTex, vec3(uv, fTex.z)).rgb, 1.0);
+    oColor = vec4(texture(uTex, vec3(uv, fTex.z)).rgb, uOpacity);
 }
 )";
 
@@ -60,6 +62,25 @@ void Presenter::save_png(const char* path) {
     SDL_FlipSurface(surf, SDL_FLIP_VERTICAL);  // GL rows run bottom-up
     if (!SDL_SavePNG(surf, path)) std::fprintf(stderr, "cannot save %s: %s\n", path, SDL_GetError());
     SDL_DestroySurface(surf);
+}
+
+const char* layout_name(Layout l) {
+    switch (l) {
+    case Layout::Single: return "single screen";
+    case Layout::MainSide: return "main + side";
+    case Layout::Stacked: return "stacked";
+    case Layout::SideBySide: return "side by side";
+    }
+    return "?";
+}
+
+const char* align_name(Align a) {
+    switch (a) {
+    case Align::Top: return "top";
+    case Align::Middle: return "middle";
+    case Align::Bottom: return "bottom";
+    }
+    return "?";
 }
 
 const char* filter_name(Filter f) {
@@ -107,6 +128,7 @@ bool Presenter::init(SDL_Window* window) {
     u_sharp_ = glGetUniformLocation(prog, "uSharp");
     u_out_size_ = glGetUniformLocation(prog, "uOutSize");
     u_tex_ = glGetUniformLocation(prog, "uTex");
+    u_opacity_ = glGetUniformLocation(prog, "uOpacity");
 
     const float quad[] = {0, 0, 1, 0, 0, 1, 1, 1};  // triangle strip
     GLuint b, a, t;
@@ -141,14 +163,69 @@ void Presenter::shutdown() {
     context_ = nullptr;
 }
 
-void Presenter::layout(int w, int h) {
+void Presenter::layout(int w, int h, const LayoutSettings& s) {
     width_ = w;
     height_ = h;
-    const float s = std::min(float(w) / kScreenW, float(h) / (kScreenH * 2));
-    const float sw = kScreenW * s, sh = kScreenH * s;
-    const float x = (w - sw) / 2, y = (h - sh * 2) / 2;
-    top_ = {x, y, sw, sh};
-    bottom_ = {x, y + sh, sw, sh};
+    const int first = s.swap ? 1 : 0, second = 1 - first;
+    if (s.layout == Layout::Single) {
+        // The main screen as large as fits; the other in the bottom right corner, over the main one if it must.
+        const float k = std::min(float(w) / kScreenW, float(h) / kScreenH);
+        const float sw = kScreenW * k, sh = kScreenH * k;
+        views_[0] = {first, {(w - sw) / 2, (h - sh) / 2, sw, sh}, 1.0f, false};
+        view_count_ = 1;
+        if (s.second_screen) {
+            const float ph = std::min(h * std::clamp(s.pip_size, 0.1f, 0.5f), float(w) * kScreenH / kScreenW / 2);
+            const float pw = ph * kScreenW / kScreenH, margin = std::round(h * 0.015f);
+            views_[1] = {second, {w - pw - margin, h - ph - margin, pw, ph}, std::clamp(s.pip_opacity, 0.2f, 1.0f), true};
+            view_count_ = 2;
+        }
+        return;
+    }
+    if (s.layout == Layout::MainSide) {
+        // The main screen as tall as the window allows while leaving the side screen at least 30% of its width,
+        // pinned to the left; the side screen takes the rest of the width, aligned to the main screen's top, middle
+        // or bottom.
+        const float k = std::min(float(h) / kScreenH, float(w) / (kScreenW * 1.3f));
+        const Rect main{0, std::round((h - kScreenH * k) / 2), kScreenW * k, kScreenH * k};
+        float sw = w - main.w, sh = sw * kScreenH / kScreenW;
+        if (sh > h) {
+            sh = float(h);
+            sw = sh * kScreenW / kScreenH;
+        }
+        const float sx = main.w + (w - main.w - sw) / 2;
+        const float sy = s.side_align == Align::Top      ? main.y
+                         : s.side_align == Align::Bottom ? main.y + main.h - sh
+                                                         : (h - sh) / 2;
+        views_[0] = {first, main, 1.0f, false};
+        views_[1] = {second, {sx, std::clamp(sy, 0.0f, h - sh), sw, sh}, 1.0f, false};
+        view_count_ = 2;
+        return;
+    }
+    const bool stacked = s.layout == Layout::Stacked;
+    const float k = stacked ? std::min(float(w) / kScreenW, float(h) / (kScreenH * 2))
+                            : std::min(float(w) / (kScreenW * 2), float(h) / kScreenH);
+    const float sw = kScreenW * k, sh = kScreenH * k;
+    const float x = (w - (stacked ? sw : sw * 2)) / 2, y = (h - (stacked ? sh * 2 : sh)) / 2;
+    views_[0] = {first, {x, y, sw, sh}, 1.0f, false};
+    views_[1] = {second, {stacked ? x : x + sw, stacked ? y + sh : y, sw, sh}, 1.0f, false};
+    view_count_ = 2;
+}
+
+int Presenter::screen_at(float px, float py, float* local_x, float* local_y) const {
+    for (int i = view_count_ - 1; i >= 0; i--) {
+        const Rect& r = views_[i].rect;
+        if (!r.contains(px, py)) continue;
+        *local_x = (px - r.x) / r.w * kScreenW;
+        *local_y = (py - r.y) / r.h * kScreenH;
+        return views_[i].screen;
+    }
+    return -1;
+}
+
+float Presenter::largest_screen_height() const {
+    float h = 0;
+    for (int i = 0; i < view_count_; i++) h = std::max(h, views_[i].rect.h);
+    return h;
 }
 
 void Presenter::present(const ntr::Frame* frame, Filter filter, const char* screenshot) {
@@ -185,14 +262,27 @@ void Presenter::present(const ntr::Frame* frame, Filter filter, const char* scre
         glUniform1i(u_tex_, 0);
         glUniform1i(u_sharp_, filter == Filter::Sharp);
         glBindVertexArray(vao_);
-        const Rect* screens[2] = {&top_, &bottom_};
-        for (int layer = 0; layer < 2; layer++) {
-            const Rect& r = *screens[layer];
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        for (int i = 0; i < view_count_; i++) {
+            const ScreenView& v = views_[i];
+            const Rect& r = v.rect;
+            if (v.framed && v.opacity >= 1.0f) {
+                // A thin border sets the picture-in-picture apart from the screen under it.
+                const int b = std::max(2, height_ / 400);
+                glEnable(GL_SCISSOR_TEST);
+                glScissor(int(r.x) - b, height_ - int(r.y + r.h) - b, int(r.w) + 2 * b, int(r.h) + 2 * b);
+                glClearColor(0.55f, 0.6f, 0.7f, 1);
+                glClear(GL_COLOR_BUFFER_BIT);
+                glDisable(GL_SCISSOR_TEST);
+            }
+            if (v.opacity < 1.0f) glEnable(GL_BLEND);
             glUniform4f(u_dest_, r.x / width_ * 2 - 1, 1 - r.y / height_ * 2, (r.x + r.w) / width_ * 2 - 1,
                         1 - (r.y + r.h) / height_ * 2);
-            glUniform1f(u_layer_, float(layer));
+            glUniform1f(u_layer_, float(v.screen));
             glUniform2f(u_out_size_, r.w, r.h);
+            glUniform1f(u_opacity_, v.opacity);
             glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+            glDisable(GL_BLEND);
         }
         glUseProgram(0);
     }
