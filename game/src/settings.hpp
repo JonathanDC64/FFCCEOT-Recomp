@@ -25,6 +25,8 @@ struct Settings {
     bool skip_logos = true;
     bool fast_loading = true;  // cartridge reads without the card's delays
     int cpu_speed = 4;         // ARM9 clock: 1, 2 or 4 times the DS's
+    // Online
+    std::string online_server = "kaeru";  // a Wi-Fi Connection revival server (see online_dns), or a DNS address
     // Controls
     input::Bindings controls = input::Bindings::defaults();
 };
@@ -33,3 +35,7 @@ struct Settings {
 // Returns false if the file does not exist.
 bool load_settings(const std::filesystem::path& path, Settings& s);
 bool save_settings(const std::filesystem::path& path, const Settings& s);
+
+// The DNS server for an online server setting: "wiilink" (WiiLink WFC), "kaeru" (Kaeru WFC, on Wiimmfi), "host" (the
+// host's own DNS, 0.0.0.0) or a DNS address such as "5.161.56.11". False if it is none of these.
+bool online_dns(const std::string& server, std::array<uint8_t, 4>& dns);

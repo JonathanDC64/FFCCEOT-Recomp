@@ -111,6 +111,24 @@ elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "arm64|aarch64|ARM64")
   target_compile_definitions(melonds_core PUBLIC ARCHITECTURE_ARM64=1)
 endif()
 
+# Internet for the emulated Wi-Fi: melonDS's user-mode NAT driver (libslirp, bundled with its glib shim), which the
+# runtime's Platform::Net_* hooks use to reach Wi-Fi Connection revival servers.
+set(SLIRP_DIR ${MS}/net/libslirp)
+add_subdirectory(${SLIRP_DIR} ${CMAKE_CURRENT_BINARY_DIR}/libslirp EXCLUDE_FROM_ALL)
+add_library(melonds_net STATIC ${MS}/net/Net.cpp ${MS}/net/Net_Slirp.cpp ${MS}/net/PacketDispatcher.cpp)
+set_target_properties(melonds_net PROPERTIES CXX_STANDARD 17)
+target_include_directories(melonds_net SYSTEM PUBLIC ${MS}/net)
+target_link_libraries(melonds_net PUBLIC melonds_core slirp)
+if(MSVC)
+  target_compile_options(melonds_net PRIVATE /w)
+  target_compile_options(slirp PRIVATE /w)
+  target_compile_definitions(melonds_net PRIVATE _CRT_SECURE_NO_WARNINGS NOMINMAX __WIN32__)  # (as MinGW)
+  target_include_directories(melonds_net PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/compat)
+else()
+  target_compile_options(melonds_net PRIVATE -w)
+  target_compile_options(slirp PRIVATE -w)
+endif()
+
 # DSi DSP interpreter (unused by NDS games, but referenced by the DSi code that NDS.cpp links against).
 add_library(melonds_teakra STATIC
   ${MS}/teakra/src/ahbm.cpp ${MS}/teakra/src/apbp.cpp ${MS}/teakra/src/btdmp.cpp ${MS}/teakra/src/disassembler.cpp

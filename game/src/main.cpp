@@ -830,7 +830,7 @@ int main(int argc, char** argv) {
                      "  --display-rate                       3D interpolated to the display's refresh rate (vsync)\n"
                      "  --no-display-rate                    3D interpolated to 60 fps\n"
                      "other:\n"
-                     "  --no-skip-logos --trace-calls --trace-threads --trace-files --perf --fps-probe --gx-probe --gx-check\n"
+                     "  --no-skip-logos --trace-calls --trace-threads --trace-files --net-log --perf --fps-probe --gx-probe --gx-check\n"
                      "  --profile-functions <file> --dump-at-frame <n> --gx-dump-at-frame <n> --exit-after-frames <n>\n"
                      "  --screenshot-at-frame <n> <file.png> --menu-at-frame <n> --menu-tab <name>\n"
                      "  --menu-keys <key,key,...>\n"
@@ -838,6 +838,8 @@ int main(int argc, char** argv) {
                      "game:\n"
                      "  --no-fast-loading                    cartridge reads at the card's speed\n"
                      "  --cpu-speed 1|2|4                    the ARM9 at this many times the DS's clock (default 4)\n"
+                     "online:\n"
+                     "  --online-server wiilink|kaeru|host|<DNS address>   Wi-Fi Connection server (default kaeru)\n"
                      "testing:\n"
                      "  --input-script <file>                scripted input, screenshots and exit (see main.cpp)\n"
                      "  --record-input <file>                write the input of every frame as an input script\n"
@@ -900,11 +902,21 @@ int main(int argc, char** argv) {
             options.gx_dump_at_frame = std::strtoull(argv[++i], nullptr, 10);
         else if (a == "--trace-files")
             options.trace_files = true;
+        else if (a == "--net-log")
+            options.net_log = true;
         else if (a == "--no-fast-loading")
             settings.fast_loading = false;
         else if (a == "--cpu-speed" && has_value) {
             const int n = std::atoi(argv[++i]);
             settings.cpu_speed = n >= 4 ? 4 : n >= 2 ? 2 : 1;
+        }
+        else if (a == "--online-server" && has_value) {
+            std::array<uint8_t, 4> dns;
+            if (!online_dns(argv[++i], dns)) {
+                std::fprintf(stderr, "--online-server: wiilink, kaeru, host or a DNS address\n");
+                return 2;
+            }
+            settings.online_server = argv[i];
         }
         else if (a == "--profile-functions" && has_value)
             options.profile_path = argv[++i];
@@ -1004,6 +1016,7 @@ int main(int argc, char** argv) {
     options.video = host.wanted_video();  // the GL context is current: melonDS's GL renderers can start
     options.fast_cart = host.settings.fast_loading;
     options.cpu_speed = host.settings.cpu_speed;
+    online_dns(host.settings.online_server, options.online_dns);
 
     ntr::GameCode code{ntr_recomp_functions, ntr_recomp_function_count, ntr_recomp_overlays, ntr_recomp_overlay_count};
     auto runtime = ntr::Runtime::create(std::move(rom), code, host, std::move(options));

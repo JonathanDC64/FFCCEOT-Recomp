@@ -13,7 +13,7 @@
 | 4K | A GPU 3D renderer that reproduces DS GX rules at N× internal resolution, with upscaled 2D compositing and optional filtering |
 | Modern controls | Remappable SDL3 gamepad, keyboard and mouse. Touch actions are mapped to buttons (spell ring, menus); mouse works as a stylus. |
 | Works on one screen | Layouts: single-screen with the bottom screen as a toggleable overlay or picture-in-picture, side-by-side, stacked, or a separate window |
-| Online multiplayer restored | The DWC/SOC socket layer is replaced with host sockets and pointed at a revival WFC server (WiiLink WFC by default, configurable). LAN "local wireless" works between PCs. |
+| Online multiplayer restored | The game's own Wi-Fi Connection code runs on the emulated Wi-Fi hardware, NATed to the host's network and pointed at a revival WFC server through its DNS server (Kaeru WFC by default, configurable). LAN "local wireless" works between PCs. |
 | QoL | Hooks into game functions: fast-forward, faster text and cutscenes, a camera options set, a debug warp menu, mods/texture packs |
 | No copyrighted material in the repo | Everything game-derived is produced on the user's machine from their own ROM. See [LEGAL.md](LEGAL.md). |
 
@@ -425,12 +425,20 @@ below comes with the flip-model presentation work (§5.5).
 - Settings persist as TOML in the user data dir.
 
 ## 8. Networking
-- **Online (WFC)**: hook the DWC / SOC (CPS socket) layer on the ARM9 side.
-  - SOC socket calls map to host BSD sockets (non-blocking, polled at VBlank).
-  - NAS (`nas.nintendowifi.net/ac`) is redirected to the configured server. We control TLS, so the "https→http / exploit cert"
-    workarounds are unnecessary; we either do real TLS on the host or use the server's plain-HTTP NAS.
-  - GameSpy hostnames are rewritten from `*.gs.nintendowifi.net` to the server's domain.
-  - Server presets: **WiiLink WFC** (default, open source AGPL), custom/self-hosted (any wfc-server compatible), Wiimmfi only if its operators allow PC clients.
+- **Online (WFC), done the emulated way**: the game's own DWC/SOC stack runs unchanged on the emulated ARM7 and Wi-Fi
+  hardware, and melonDS's access point hands its Ethernet frames to a user-mode NAT (libslirp, `Net_Slirp`) through
+  `Platform::Net_SendPacket`/`Net_RecvPacket` (`runtime/src/melon_platform.cpp`). No socket hooks, no NAS or GameSpy
+  redirection: the revival server is picked by its DNS server, which the runtime writes into the firmware's first
+  access point at boot (`RuntimeOptions::online_dns`). The DS's own TLS works with these servers.
+  - Server presets (`online.server`, the Network tab, `--online-server`): **Kaeru WFC** (default), **WiiLink WFC**, or a
+    custom DNS address. A change takes effect at the next start.
+  - WiiLink WFC fails this game since its April 2026 NAS refactor: the profanity check (`/pr`) decodes the words twice
+    and answers one `prwords` character whatever the number of words, and the game wants one per word (error 33020).
+  - The stats server's session key (`\sesskey\`) is larger than the game's `atoi` can hold, which leaves `errno` at
+    ERANGE; the connection test reads `errno`, so every connection after the first failed with 52200. A hook clears
+    `errno` when the test starts (`cfie_on_netcheck`).
+  - `--net-log` logs DNS, TCP, the GameSpy text protocols and the conntest page, and, since HTTPS is encrypted on the
+    wire, the NAS requests and answers the game builds in main RAM.
   - Cross-play with real DS/Wii clients works as long as our simulation is bit-exact (§4 Math, §5.3). That needs a long-running
     determinism test: two instances fed the same inputs must produce identical RAM hashes every frame.
 - **Local wireless, same PC (done)**: the game's own WM library runs on the emulated ARM7 and Wi-Fi hardware, so the

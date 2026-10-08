@@ -238,6 +238,22 @@ input.range sliderarrowdec, input.range sliderarrowinc { width: 0; height: 0; }
     background-color: #3d78b8;
 }
 .row.action .label { color: #e6c77f; }
+/* A text box (the custom DNS address): Enter or a click starts typing. */
+.field {
+    float: right;
+    width: 264dp;
+    height: 30dp;
+    margin-top: 6dp;
+    line-height: 30dp;
+    padding: 0 8dp;
+    color: #e6c77f;
+    background-color: #0b1530a0;
+    border: 1dp #c8a76440;
+    border-radius: 4dp;
+}
+.field.unbound { color: #6c7790; }
+.row.focused .field { border-color: #7fd0ff; }
+.field.editing { color: #ffffff; border-color: #7fd0ff; background-color: #3d78b8; }
 
 /* Resume / Quit. */
 #footer {

@@ -1,6 +1,7 @@
 #include "settings.hpp"
 
 #include <algorithm>
+#include <cstdio>
 #include <fstream>
 #include <map>
 #include <string>
@@ -100,6 +101,13 @@ const Field kFields[] = {
               s.cpu_speed = n;
               return true;
           }},
+    Field{"online.server", [](const Settings& s) { return s.online_server; },
+          [](Settings& s, const std::string& v) {
+              std::array<uint8_t, 4> dns;
+              if (!online_dns(v, dns)) return false;
+              s.online_server = v;
+              return true;
+          }},
     BOOL_FIELD("controls.stick_moves", controls.stick_moves),
     Field{"controls.deadzone", [](const Settings& s) { return std::to_string(s.controls.deadzone); },
           [](Settings& s, const std::string& v) { return parse_int(v, 5, 90, s.controls.deadzone); }},
@@ -125,6 +133,20 @@ std::string trim(const std::string& s) {
 }
 
 }  // namespace
+
+bool online_dns(const std::string& server, std::array<uint8_t, 4>& dns) {
+    if (server == "wiilink") return dns = {5, 161, 56, 11}, true;
+    if (server == "kaeru") return dns = {178, 62, 43, 212}, true;
+    if (server == "host") return dns = {}, true;
+    unsigned a[4];
+    char end;
+    if (std::sscanf(server.c_str(), "%u.%u.%u.%u%c", &a[0], &a[1], &a[2], &a[3], &end) != 4) return false;
+    for (int i = 0; i < 4; i++) {
+        if (a[i] > 255) return false;
+        dns[i] = uint8_t(a[i]);
+    }
+    return true;
+}
 
 bool load_settings(const std::filesystem::path& path, Settings& s) {
     std::ifstream f(path);

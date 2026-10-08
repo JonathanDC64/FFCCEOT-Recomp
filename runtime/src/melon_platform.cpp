@@ -1,12 +1,26 @@
 // melonDS Platform interface: host services the emulation core calls back into.
+#include <algorithm>
 #include <chrono>
 #include <condition_variable>
 #include <cstdarg>
 #include <cstdio>
+#include <cstring>
 #include <filesystem>
 #include <mutex>
+#include <string>
 #include <thread>
 
+#include "Net.h"
+#if defined(_WIN32) && !defined(__WIN32__)
+#define __WIN32__  // (Net_Slirp.h tells Windows by MinGW's macro)
+#endif
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include "Net_Slirp.h"
 #include "Platform.h"
 #include "SPI_Firmware.h"
 #include "local_wireless.hpp"
@@ -209,10 +223,134 @@ u16 MP_RecvReplies(u8* data, u64 timestamp, u16 aidmask, void*) {
     return w ? w->recv_replies(data, timestamp, aidmask) : 0;
 }
 
-// ---- internet (not connected yet) ----
+// ---- internet: through melonDS's user-mode NAT (libslirp), started when the game first uses it ----
 
-int Net_SendPacket(u8*, int, void*) { return 0; }
-int Net_RecvPacket(u8*, void*) { return 0; }
+namespace {
+melonDS::Net& internet() {
+    static melonDS::Net net;
+    static const bool started = [] {
+        net.SetDriver(std::make_unique<melonDS::Net_Slirp>([](const u8* data, int len) { net.RXEnqueue(data, len); }));
+        net.RegisterInstance(0);
+        ntr::log("net: the console's Wi-Fi reaches the internet through a user-mode NAT\n");
+        return true;
+    }();
+    (void)started;
+    return net;
+}
+
+// --net-log: what an Ethernet frame to or from the console is, if worth a line (DNS, TCP connections).
+void log_frame(const char* dir, const u8* f, int len) {
+    if (len < 34 || f[12] != 0x08 || f[13] != 0x00) return;  // IPv4 only
+    static const auto start = std::chrono::steady_clock::now();
+    const double t = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();  // seconds
+    const u8* ip = f + 14;
+    const int ihl = (ip[0] & 15) * 4, proto = ip[9];
+    const u8* l4 = ip + ihl;
+    const int l4_len = std::min(len - 14, (ip[2] << 8) | ip[3]) - ihl;  // (without Ethernet padding)
+    char src[16], dst[16];
+    std::snprintf(src, sizeof src, "%u.%u.%u.%u", ip[12], ip[13], ip[14], ip[15]);
+    std::snprintf(dst, sizeof dst, "%u.%u.%u.%u", ip[16], ip[17], ip[18], ip[19]);
+    const auto port = [&](int at) { return (l4[at] << 8) | l4[at + 1]; };
+    if (proto == 17 && l4_len >= 8 && (port(0) == 53 || port(2) == 53)) {
+        // DNS: the question's name, and the A records of an answer.
+        const u8* d = l4 + 8;
+        const int n = l4_len - 8;
+        if (n < 12) return;
+        std::string name;
+        int at = 12;
+        while (at < n && d[at] && d[at] < 64) {
+            if (!name.empty()) name += '.';
+            name.append(reinterpret_cast<const char*>(d + at + 1), std::min<int>(d[at], n - at - 1));
+            at += d[at] + 1;
+        }
+        at += 5;
+        const bool answer = d[2] & 0x80;
+        std::string addrs;
+        for (int i = 0, count = (d[6] << 8) | d[7]; answer && i < count && at + 12 <= n; i++) {
+            while (at < n && d[at] && d[at] < 64) at += d[at] + 1;  // a name, or
+            at += (at < n && d[at] >= 0xC0) ? 2 : 1;                // a pointer to one
+            if (at + 10 > n) break;
+            const int type = (d[at] << 8) | d[at + 1], rdlen = (d[at + 8] << 8) | d[at + 9];
+            at += 10;
+            if (type == 1 && rdlen == 4 && at + 4 <= n) {
+                char a[20];
+                std::snprintf(a, sizeof a, " %u.%u.%u.%u", d[at], d[at + 1], d[at + 2], d[at + 3]);
+                addrs += a;
+            }
+            at += rdlen;
+        }
+        if (answer)
+            ntr::log("net %s %.3f: DNS %s ->%s (rcode %d, from %s)\n", dir, t, name.c_str(), addrs.empty() ? " nothing" : addrs.c_str(),
+                     d[3] & 15, src);
+        else
+            ntr::log("net %s %.3f: DNS lookup %s (server %s)\n", dir, t, name.c_str(), dst);
+    } else if (proto == 6 && l4_len >= 20) {
+        const int flags = l4[13];
+        const int data_len = l4_len - ((l4[12] >> 4) * 4);
+        if (flags & 0x02)
+            ntr::log("net %s %.3f: TCP %s %s:%d -> %s:%d\n", dir, t, (flags & 0x10) ? "SYN-ACK" : "SYN", src, port(0), dst, port(2));
+        else if (flags & 0x05)
+            ntr::log("net %s %.3f: TCP %s %s:%d -> %s:%d\n", dir, t, (flags & 0x04) ? "RST" : "FIN", src, port(0), dst, port(2));
+        else if (data_len == 0 && (port(0) == 80 || port(2) == 80))  // (acks of the connection test)
+            ntr::log("net %s %.3f: TCP ACK %u %s:%d -> %s:%d\n", dir, t,
+                     unsigned((l4[8] << 24) | (l4[9] << 16) | (l4[10] << 8) | l4[11]), src, port(0), dst, port(2));
+        else if (data_len > 0) {
+            // GameSpy's presence server (GPCM, port 29900) and plain HTTP (the connection test) are text: show it.
+            std::string text;
+            if (port(0) == 29900 || port(2) == 29900 || port(0) == 80 || port(2) == 80) {
+                const u8* p = l4 + (l4[12] >> 4) * 4;
+                for (int i = 0; i < data_len && i < 600; i++) text += (p[i] >= 0x20 && p[i] < 0x7F) ? char(p[i]) : '.';
+            }
+            ntr::log("net %s %.3f: TCP %d bytes %s:%d -> %s:%d %s\n", dir, t, data_len, src, port(0), dst, port(2), text.c_str());
+        }
+    } else if (proto == 17 && l4_len >= 8) {
+        std::string text;  // GameSpy's query/report protocol (QR2, port 27900): mostly key/value text
+        if (port(0) == 27900 || port(2) == 27900)
+            for (int i = 8; i < l4_len && i < 608; i++) text += (l4[i] >= 0x20 && l4[i] < 0x7F) ? char(l4[i]) : '.';
+        ntr::log("net %s %.3f: UDP %d bytes %s:%d -> %s:%d %s\n", dir, t, l4_len - 8, src, port(0), dst, port(2), text.c_str());
+    }
+}
+
+bool net_log(void* userdata) { return userdata && static_cast<ntr::RuntimeImpl*>(userdata)->options.net_log; }
+}  // namespace
+
+// --net-log: HTTPS requests are encrypted on the wire, but the game builds them as text in main RAM first. On a
+// TCP segment sent, log the HTTP requests and NAS answers (returncd=...) found there when they changed.
+void log_https_request(ntr::RuntimeImpl& rt, const u8* f, int len) {
+    if (len < 54 || f[23] != 6) return;
+    static std::string last;
+    const u8* ram = rt.nds->MainRAM;
+    const size_t size = 4u << 20;
+    std::string found;
+    for (size_t i = 0; i + 5 < size; i++) {
+        if (std::memcmp(ram + i, "POST ", 5) != 0 && std::memcmp(ram + i, "GET /", 5) != 0 &&
+            std::memcmp(ram + i, "returncd=", 9) != 0)
+            continue;
+        size_t end = i;
+        while (end < size && end - i < 1024 && ram[end] && (ram[end] >= 0x20 || ram[end] == '\r' || ram[end] == '\n'))
+            end++;
+        std::string text(reinterpret_cast<const char*>(ram + i), end - i);
+        for (char& c : text)
+            if (c == '\r') c = ' ';
+        found += "  @" + std::to_string(i) + ": " + text + "\n";
+        i = end;
+    }
+    if (found != last) ntr::log("net: HTTP request texts in RAM:\n%s", found.c_str());
+    last = found;
+}
+
+int Net_SendPacket(u8* data, int len, void* userdata) {
+    if (net_log(userdata)) {
+        log_frame("out", data, len);
+        log_https_request(*static_cast<ntr::RuntimeImpl*>(userdata), data, len);
+    }
+    return internet().SendPacket(data, len, 0);
+}
+int Net_RecvPacket(u8* data, void* userdata) {
+    const int len = internet().RecvPacket(data, 0);
+    if (len > 0 && net_log(userdata)) log_frame("in", data, len);
+    return len;
+}
 
 // ---- peripherals the game does not use ----
 

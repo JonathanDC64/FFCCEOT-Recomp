@@ -95,8 +95,14 @@ Milestones are ordered by dependency. Each ends with a demonstrable result. Desi
 
 ## M7: Online and LAN multiplayer
 **Result: a 4-player online session on a revival server; LAN play between PCs.**
-- [ ] SOC/CPS sockets → host sockets; NAS + GameSpy host redirection; TLS handling
-- [ ] Server presets (WiiLink WFC default, custom); profile/friend-code storage
+- [x] Wi-Fi Connection through a revival server: the game's own network stack on the emulated Wi-Fi, out through a
+      user-mode NAT (libslirp); the server is picked by its DNS server (no NAS/GameSpy redirection, the DS's TLS works)
+- [x] Server presets in the Network tab (Kaeru WFC default, WiiLink WFC, custom DNS address); `--net-log`
+- [x] Reconnecting: the game's connection test reads a stale `errno` left by the stats server's session key (52200)
+- [ ] WiiLink WFC: its profanity check answers one result for any number of words since April 2026, and the game
+      rejects it (error 33020); report it upstream
+- [ ] An online session with other players (2+ instances, then real DS/emulator clients); check that instances get
+      their own WFC user ID and friend code, and that these persist (firmware writes are not saved yet)
 - [ ] Determinism harness (input replay + per-frame state hashes)
 - [x] Local wireless between instances on one PC (MP frames through shared memory, own MAC per instance)
 - [ ] Local wireless between PCs: MP frames over UDP, discovery

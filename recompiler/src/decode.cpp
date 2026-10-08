@@ -57,14 +57,21 @@ bool thumb_jump_table(const Module& m, uint32_t addr, uint32_t rn, std::vector<u
 }
 
 // mwcc ARM switch:  cmp rX,#n; addls pc,pc,rX,lsl #2; b default; b case0; b case1; ...
+// Signed index:     cmp rX,#n; bgt default; cmp rX,#0; addge pc,pc,rX,lsl #2; b default; b case0; ...
 bool arm_jump_table(const Module& m, uint32_t addr, uint32_t op, std::vector<uint32_t>& out) {
     uint32_t rm = op & 15;
+    const bool signed_index = (op >> 28) == 0xA;  // addge: the compare just before is the lower check
     int count = -1;
-    for (uint32_t back = 4; back <= 12 && addr >= m.base + back; back += 4) {
+    for (uint32_t back = 4; back <= 20 && addr >= m.base + back; back += 4) {
         uint32_t p = m.read32(addr - back);
         if ((p & 0x0FFFF000) == (0x03500000 | (rm << 16))) {  // cmp rm, #imm
             uint32_t imm = p & 0xFF, rot = ((p >> 8) & 15) * 2;
             imm = rot ? (imm >> rot) | (imm << (32 - rot)) : imm;
+            if (signed_index) {
+                if (back == 4 && imm == 0) continue;  // cmp rX,#0
+                // The upper check: cmp rX,#n; bgt default.
+                if ((m.read32(addr - back + 4) & 0xFF000000) != 0xCA000000) return false;
+            }
             count = int(imm) + 1;
             break;
         }

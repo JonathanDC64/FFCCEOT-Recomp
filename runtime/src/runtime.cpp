@@ -83,6 +83,12 @@ RuntimeImpl::RuntimeImpl(std::vector<uint8_t> rom, const GameCode& code, Host& h
         header.UpdateChecksum();
         args.Firmware.UpdateChecksums();
     }
+    if (options.online_dns != std::array<uint8_t, 4>{}) {
+        auto& ap = args.Firmware.GetAccessPoints()[0];  // melonDS's access point, which the console connects through
+        ap.PrimaryDns = ap.SecondaryDns = options.online_dns;
+        ap.UpdateChecksum();
+        args.Firmware.UpdateChecksums();
+    }
     nds = std::make_unique<RecompNDS>(std::move(args), this);
 
     melonDS::NDSCart::NDSCartArgs cart_args;

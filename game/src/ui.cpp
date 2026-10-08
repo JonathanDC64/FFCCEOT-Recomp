@@ -6,6 +6,7 @@
 #include <SDL3/SDL.h>
 
 #include <algorithm>
+#include <array>
 #include <cstdio>
 #include <cstring>
 #include <string>
@@ -61,7 +62,7 @@ public:
     }
 };
 
-const char* const kTabs[] = {"display", "graphics", "audio", "game", "controls"};
+const char* const kTabs[] = {"display", "graphics", "audio", "game", "network", "controls"};
 constexpr int kTabCount = int(std::size(kTabs));
 
 }  // namespace
@@ -77,6 +78,8 @@ struct State {
     bool skip_logos = true;
     bool fast_loading = true;
     int cpu_speed = 2;  // 0 = the DS's clock, 1 = twice, 2 = four times
+    int online_server = 0;   // 0 = Kaeru WFC, 1 = WiiLink WFC, 2 = custom
+    Rml::String custom_dns;  // the custom server's DNS address
     bool stick_moves = true;
     int deadzone = 35;
     bool operator==(const State&) const = default;
@@ -108,7 +111,8 @@ struct Menu::Impl {
     int capture_row = -1;  // the action being rebound, or -1
     int capture_col = 0;
     Uint64 capture_started = 0;
-    bool* changed = nullptr;  // the menu's flag
+    bool editing_dns = false;  // typing the custom DNS address
+    bool* changed = nullptr;   // the menu's flag
 
     // Fills the table from the settings, naming pad inputs for the connected gamepad's type.
     void refresh_binds() {
@@ -196,6 +200,40 @@ struct Menu::Impl {
         }
     }
 
+    void start_dns_edit() {
+        editing_dns = true;
+        model.DirtyVariable("editing_dns");
+        SDL_StartTextInput(window);  // (shows an on-screen keyboard where there is one)
+    }
+
+    void end_dns_edit() {
+        editing_dns = false;
+        model.DirtyVariable("editing_dns");
+        SDL_StopTextInput(window);
+    }
+
+    // While typing the address: digits and dots go in, Backspace deletes, Enter, Esc or a gamepad button ends it.
+    void dns_event(const SDL_Event& e) {
+        switch (e.type) {
+        case SDL_EVENT_TEXT_INPUT:
+            for (const char* t = e.text.text; *t; t++)
+                if (((*t >= '0' && *t <= '9') || *t == '.') && state.custom_dns.size() < 15) state.custom_dns += *t;
+            model.DirtyVariable("custom_dns");
+            return;
+        case SDL_EVENT_KEY_DOWN:
+            if (e.key.key == SDLK_BACKSPACE && !state.custom_dns.empty()) {
+                state.custom_dns.pop_back();
+                model.DirtyVariable("custom_dns");
+            } else if (e.key.key == SDLK_RETURN || e.key.key == SDLK_KP_ENTER || e.key.key == SDLK_ESCAPE) {
+                end_dns_edit();
+            }
+            return;
+        case SDL_EVENT_GAMEPAD_BUTTON_DOWN:
+        case SDL_EVENT_MOUSE_BUTTON_DOWN: end_dns_edit(); return;
+        default: return;
+        }
+    }
+
     void load_state() {
         const Settings& s = *settings;
         state.layout = int(s.layout.layout);
@@ -214,6 +252,8 @@ struct Menu::Impl {
         state.skip_logos = s.skip_logos;
         state.fast_loading = s.fast_loading;
         state.cpu_speed = s.cpu_speed >= 4 ? 2 : s.cpu_speed >= 2 ? 1 : 0;
+        state.online_server = s.online_server == "kaeru" ? 0 : s.online_server == "wiilink" ? 1 : 2;
+        if (state.online_server == 2) state.custom_dns = s.online_server;
         state.stick_moves = s.controls.stick_moves;
         state.deadzone = s.controls.deadzone;
         applied = state;
@@ -241,6 +281,11 @@ struct Menu::Impl {
         s.skip_logos = state.skip_logos;
         s.fast_loading = state.fast_loading;
         s.cpu_speed = 1 << std::clamp(state.cpu_speed, 0, 2);
+        std::array<uint8_t, 4> dns;
+        if (state.online_server < 2)
+            s.online_server = state.online_server == 0 ? "kaeru" : "wiilink";
+        else if (online_dns(state.custom_dns, dns))  // (a partly typed address leaves the server as it was)
+            s.online_server = state.custom_dns;
         s.controls.stick_moves = state.stick_moves;
         s.controls.deadzone = std::clamp(state.deadzone, 5, 90);
         applied = state;
@@ -314,6 +359,10 @@ struct Menu::Impl {
             start_capture(row->GetAttribute<int>("bind", -1), bind_col);
             return;
         }
+        if (row->IsClassSet("textfield")) {
+            start_dns_edit();
+            return;
+        }
         Rml::ElementList controls;
         row->QuerySelectorAll(controls, "select");
         if (!controls.empty()) {
@@ -385,6 +434,12 @@ bool Menu::init(SDL_Window* window, Settings* settings, bool compute_available) 
     c.Bind("skip_logos", &s.skip_logos);
     c.Bind("fast_loading", &s.fast_loading);
     c.Bind("cpu_speed", &s.cpu_speed);
+    c.Bind("online_server", &s.online_server);
+    c.Bind("custom_dns", &s.custom_dns);
+    c.Bind("editing_dns", &m.editing_dns);
+    c.BindEventCallback("edit_dns", [&m](Rml::DataModelHandle, Rml::Event&, const Rml::VariantList&) {
+        if (!m.editing_dns) m.start_dns_edit();
+    });
     c.Bind("stick_moves", &s.stick_moves);
     c.Bind("deadzone", &s.deadzone);
     if (auto row = c.RegisterStruct<BindRow>()) {
@@ -444,6 +499,7 @@ void Menu::open() {
     m.load_state();
     m.refresh_binds();
     m.end_capture();
+    if (m.editing_dns) m.end_dns_edit();
     m.focus = 0;
     m.document->Show();
     m.context->Update();  // lay the page out now, so input that arrives before the first draw finds its rows
@@ -453,6 +509,7 @@ void Menu::open() {
 void Menu::close() {
     Impl& m = *impl_;
     if (!open_) return;
+    if (m.editing_dns) m.end_dns_edit();
     m.document->Hide();
     open_ = false;
 }
@@ -477,6 +534,10 @@ void Menu::handle_event(const SDL_Event& event) {
     if (e.type == SDL_EVENT_GAMEPAD_ADDED || e.type == SDL_EVENT_GAMEPAD_REMOVED) m.refresh_binds();
     if (m.capture_row >= 0) {
         m.capture_event(e);
+        if (e.type != SDL_EVENT_MOUSE_MOTION) return;
+    }
+    if (m.editing_dns) {
+        m.dns_event(e);
         if (e.type != SDL_EVENT_MOUSE_MOTION) return;
     }
     switch (e.type) {

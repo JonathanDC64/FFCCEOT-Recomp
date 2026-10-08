@@ -2,6 +2,7 @@
 // which emulates the rest of the console (ARM7, video, sound, timers, DMA, cartridge, Wi-Fi).
 #pragma once
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -78,9 +79,13 @@ struct RuntimeOptions {
     bool gx_check = false;     // replay each 3D scene's GX commands and check the polygon list comes out the same
     uint64_t gx_dump_at_frame = 0;  // write the first 3D scene swapped in at or after this frame to gx_scene.txt
     bool trace_files = false;  // log which ROM file each cartridge read hits (with the frame number)
+    bool net_log = false;      // log the console's internet traffic: DNS lookups and answers, TCP connections
     // Speed-ups (set_fast_cart, set_cpu_speed) at start.
     bool fast_cart = true;
     int cpu_speed = 4;
+    // Online play: the DNS server the console's Wi-Fi settings use, which sends the game's Nintendo Wi-Fi Connection
+    // lookups to a revival server (0.0.0.0: the host's own DNS).
+    std::array<uint8_t, 4> online_dns{};
     // Builds with FFCC_TRACE_ENTRY only: write each function's first/last frame and call count here on exit.
     std::string profile_path;
     uint64_t dump_at_frame = 0;  // print the CPU state and recent function entries at this frame (debugging)

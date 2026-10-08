@@ -18,3 +18,7 @@ main 020cb470 replace ntr_dsprot_not_detected
 
 # Sound: start background music. The first call is the title screen's BGM (game/src/cfie_hooks.cpp: logo skip).
 main 0207713c before cfie_on_bgm_play
+
+# Wi-Fi Connection test (DWC netcheck): clear errno first. The test reads errno after its strtol, and the GameSpy
+# stats session key of today's servers overflows the game's strtol, leaving ERANGE for the next connection.
+main 02005bbc before cfie_on_netcheck
