@@ -42,6 +42,7 @@ struct VideoSettings {
     bool better_polygons = false;    // OpenGL: split quads better (fewer seams in upscaled 3D)
     bool hires_coordinates = true;   // Compute: keep sub-pixel vertex positions when upscaling
     bool threaded = true;            // Software: render 3D on a worker thread
+    bool interpolate = false;        // 3D at 60 fps: blend the game's 30 Hz scenes (one frame of latency)
 };
 
 // One finished frame of both screens.
@@ -71,6 +72,9 @@ struct RuntimeOptions {
     bool trace_threads = false;
     bool perf = false;         // log emulation cost and interpreter use every 60 frames
     bool fps_probe = false;    // log how often the game makes a new 3D frame, display capture and 3D screen use
+    bool gx_probe = false;     // log how well each 3D scene's GX command stream matches the previous one
+    bool gx_check = false;     // replay each 3D scene's GX commands and check the polygon list comes out the same
+    uint64_t gx_dump_at_frame = 0;  // write the first 3D scene swapped in at or after this frame to gx_scene.txt
     bool trace_files = false;  // log which ROM file each cartridge read hits (with the frame number)
     // Builds with FFCC_TRACE_ENTRY only: write each function's first/last frame and call count here on exit.
     std::string profile_path;

@@ -87,6 +87,7 @@ const Field kFields[] = {
     ENUM_FIELD("graphics.filter", filter, kFilters),
     BOOL_FIELD("graphics.better_polygons", better_polygons),
     BOOL_FIELD("graphics.hires_coordinates", hires_coordinates),
+    BOOL_FIELD("graphics.interpolate", interpolate),
     Field{"audio.volume", [](const Settings& s) { return std::to_string(s.volume); },
           [](Settings& s, const std::string& v) { return parse_int(v, 0, 100, s.volume); }},
     BOOL_FIELD("game.skip_logos", skip_logos),

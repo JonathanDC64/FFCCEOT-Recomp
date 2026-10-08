@@ -1,5 +1,23 @@
 # Third-party code built from pinned git submodules.
 
+# Configure-time text patches of third-party sources: `var` holds a file's text, and each call replaces `from` with
+# `to` in it, failing the configure if `from` is gone (the file changed upstream). The patched copy is written to the
+# build directory and compiled instead of the original. (The strings contain semicolons, so they are passed quoted and
+# never as CMake lists.)
+function(ffcc_patch var file from to)
+  string(FIND "${${var}}" "${from}" at)
+  if(at EQUAL -1)
+    message(FATAL_ERROR "${file} changed upstream: cannot apply our patch (looking for: ${from})")
+  endif()
+  string(REPLACE "${from}" "${to}" patched "${${var}}")
+  set(${var} "${patched}" PARENT_SCOPE)
+endfunction()
+
+function(ffcc_write_patched var path)
+  file(WRITE ${path}.tmp "${${var}}")
+  configure_file(${path}.tmp ${path} COPYONLY)  # (rewritten only when it changes)
+endfunction()
+
 # ---- melonDS core (GPL-3.0-or-later) ----
 # Built from our own source list rather than melonDS's CMake: we need the emulation core and its renderers only
 # (no frontend, JIT or GDB stub), and the recompiled ARM9 replaces melonDS's ARM9 interpreter at run time.
@@ -8,6 +26,26 @@ if(NOT EXISTS ${MELONDS_DIR}/src/NDS.cpp)
   message(FATAL_ERROR "third_party/melonDS is missing: run `git submodule update --init --recursive`")
 endif()
 set(MS ${MELONDS_DIR}/src)
+
+# GPU3D.cpp: hooks that see every GX command the geometry engine executes and every VBlank (for frame interpolation,
+# which records each scene's command stream and swaps in a blended polygon list), and a replay mode in which the
+# engine can be fed commands without raising GX FIFO interrupts or DMA requests on the console. The runtime declares
+# these in runtime/src/gx_hook.hpp.
+file(READ ${MS}/GPU3D.cpp gpu3d_src)
+string(REPLACE "\r\n" "\n" gpu3d_src "${gpu3d_src}")
+ffcc_patch(gpu3d_src GPU3D.cpp "using Platform::LogLevel;\n"
+  "using Platform::LogLevel;\n\n// ffcc patch\nvoid (*FfccGxCommandHook)(void* context, u8 command, u32 param) = nullptr;\nvoid (*FfccGxVBlankHook)(void* context, bool flushed) = nullptr;\nvoid* FfccGxCommandHookContext = nullptr;\nbool FfccGxReplaying = false;\n")
+ffcc_patch(gpu3d_src GPU3D.cpp "CmdFIFOEntry entry = CmdFIFORead();\n"
+  "CmdFIFOEntry entry = CmdFIFORead();\n    if (FfccGxCommandHook && !FfccGxReplaying) FfccGxCommandHook(FfccGxCommandHookContext, entry.Command, entry.Param); // ffcc patch\n")
+ffcc_patch(gpu3d_src GPU3D.cpp "void GPU3D::CheckFIFOIRQ() noexcept\n{\n"
+  "void GPU3D::CheckFIFOIRQ() noexcept\n{\n    if (FfccGxReplaying) return; // ffcc patch\n")
+ffcc_patch(gpu3d_src GPU3D.cpp "void GPU3D::CheckFIFODMA() noexcept\n{\n"
+  "void GPU3D::CheckFIFODMA() noexcept\n{\n    if (FfccGxReplaying) return; // ffcc patch\n")
+ffcc_patch(gpu3d_src GPU3D.cpp "void GPU3D::VBlank() noexcept\n{\n"
+  "void GPU3D::VBlank() noexcept\n{\n    const bool ffcc_flushed = GeometryEnabled && RenderingEnabled && FlushRequest; // ffcc patch\n")
+ffcc_patch(gpu3d_src GPU3D.cpp "            FlushRequest = 0;\n        }\n    }\n}\n"
+  "            FlushRequest = 0;\n        }\n    }\n    if (FfccGxVBlankHook && !FfccGxReplaying) FfccGxVBlankHook(FfccGxCommandHookContext, ffcc_flushed); // ffcc patch\n}\n")
+ffcc_write_patched(gpu3d_src ${CMAKE_CURRENT_BINARY_DIR}/melonds_patched/GPU3D.cpp)
 
 set(melonDS_HOMEPAGE_URL "https://melonds.kuribo64.net")
 set(melonDS_VERSION "1.1")
@@ -20,7 +58,7 @@ add_library(melonds_core STATIC
   ${MS}/CRC32.cpp ${MS}/DMA.cpp ${MS}/DMA_Timings.cpp ${MS}/DSi.cpp ${MS}/DSi_AES.cpp ${MS}/DSi_Camera.cpp
   ${MS}/DSi_DSP.cpp ${MS}/DSi_I2C.cpp ${MS}/DSi_I2S.cpp ${MS}/DSi_NAND.cpp ${MS}/DSi_NDMA.cpp ${MS}/DSi_NWifi.cpp
   ${MS}/DSi_SD.cpp ${MS}/DSi_SPI_TSC.cpp ${MS}/FATIO.cpp ${MS}/FATStorage.cpp ${MS}/GBACart.cpp
-  ${MS}/GBACartMotionPak.cpp ${MS}/GPU.cpp ${MS}/GPU_Soft.cpp ${MS}/GPU2D.cpp ${MS}/GPU2D_Soft.cpp ${MS}/GPU3D.cpp
+  ${MS}/GBACartMotionPak.cpp ${MS}/GPU.cpp ${MS}/GPU_Soft.cpp ${MS}/GPU2D.cpp ${MS}/GPU2D_Soft.cpp ${CMAKE_CURRENT_BINARY_DIR}/melonds_patched/GPU3D.cpp
   ${MS}/GPU3D_Soft.cpp ${MS}/GPU3D_Texcache.cpp ${MS}/Mic.cpp ${MS}/NDS.cpp ${MS}/NDSCart.cpp ${MS}/ROMList.cpp
   ${MS}/FreeBIOS.cpp ${MS}/RTC.cpp ${MS}/Savestate.cpp ${MS}/SPI.cpp ${MS}/SPI_Firmware.cpp ${MS}/SPU.cpp
   ${MS}/Utils.cpp ${MS}/Wifi.cpp ${MS}/WifiAP.cpp
@@ -139,21 +177,11 @@ if(FFCC_BUILD_GAME)
   # presents through a DXGI flip-model swapchain.
   file(READ ${RMLUI_BACKENDS}/RmlUi_Renderer_GL3.cpp gl3_src)
   string(REPLACE "\r\n" "\n" gl3_src "${gl3_src}")
-  # (Text patches: the strings contain semicolons, so they are passed quoted and never as CMake lists.)
-  function(ffcc_patch_gl3 from to)
-    string(FIND "${gl3_src}" "${from}" at)
-    if(at EQUAL -1)
-      message(FATAL_ERROR "RmlUi_Renderer_GL3.cpp changed: cannot apply the output framebuffer patch")
-    endif()
-    string(REPLACE "${from}" "${to}" patched "${gl3_src}")
-    set(gl3_src "${patched}" PARENT_SCOPE)
-  endfunction()
-  ffcc_patch_gl3("void RenderInterface_GL3::BeginFrame()\n{\n"
+  ffcc_patch(gl3_src RmlUi_Renderer_GL3.cpp "void RenderInterface_GL3::BeginFrame()\n{\n"
     "static GLint rmlui_output_framebuffer = 0;\n\nvoid RenderInterface_GL3::BeginFrame()\n{\n\tglGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &rmlui_output_framebuffer);\n")
-  ffcc_patch_gl3("// Draw to backbuffer\n\tglBindFramebuffer(GL_FRAMEBUFFER, 0);"
+  ffcc_patch(gl3_src RmlUi_Renderer_GL3.cpp "// Draw to backbuffer\n\tglBindFramebuffer(GL_FRAMEBUFFER, 0);"
     "// Draw to backbuffer\n\tglBindFramebuffer(GL_FRAMEBUFFER, GLuint(rmlui_output_framebuffer));")
-  file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/rmlui_gl3/patched.tmp "${gl3_src}")
-  configure_file(${CMAKE_CURRENT_BINARY_DIR}/rmlui_gl3/patched.tmp ${CMAKE_CURRENT_BINARY_DIR}/rmlui_gl3/RmlUi_Renderer_GL3.cpp COPYONLY)
+  ffcc_write_patched(gl3_src ${CMAKE_CURRENT_BINARY_DIR}/rmlui_gl3/RmlUi_Renderer_GL3.cpp)
 
   add_library(rmlui_backend STATIC ${RMLUI_BACKENDS}/RmlUi_Platform_SDL.cpp
     ${CMAKE_CURRENT_BINARY_DIR}/rmlui_gl3/RmlUi_Renderer_GL3.cpp)

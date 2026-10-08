@@ -57,7 +57,8 @@ Milestones are ordered by dependency. Each ends with a demonstrable result. Desi
 - [ ] More layout options: PiP position/size/opacity settings, separate window, automatic swap/pop-up from game hooks
 - [ ] Widescreen: projection hook, culling hook, HUD anchoring, fades
 - [x] Measure the frame rate (`--fps-probe`): 3D at 30 Hz, top screen only, no display capture
-- [ ] Frame interpolation from the GX command stream (record, match, replay with lerped matrices, cut detection) to 60 Hz
+- [x] Frame interpolation from the GX command stream to 60 Hz (record, match, replay with blended matrices; §5.3)
+- [ ] Interpolation: check camera-cut detection on cutscenes, interpolate brightness fades
 - [ ] Display-rate interpolation beyond 60 Hz, uncapped/VRR presentation, low-latency option
 - [ ] Golden-image comparison vs reference rasteriser (local)
 - [x] Flip-model presentation on Windows (DXGI through WGL_NV_DX_interop2): seamless alt-tab with direct-to-display

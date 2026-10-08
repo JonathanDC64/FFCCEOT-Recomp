@@ -166,6 +166,7 @@ public:
         if (v.renderer == ntr::Renderer::Software) v.scale = 1;  // native only
         v.better_polygons = settings.better_polygons;
         v.hires_coordinates = settings.hires_coordinates;
+        v.interpolate = settings.interpolate;
         return v;
     }
 
@@ -359,6 +360,7 @@ private:
         case SDLK_F6: settings.scale = settings.scale == 0 ? std::max(1, scale - 1) : settings.scale - 1; break;
         case SDLK_F7: settings.scale = settings.scale == 0 ? std::min(16, scale + 1) : (settings.scale + 1) % 17; break;
         case SDLK_F8: settings.filter = video::Filter((int(settings.filter) + 1) % 3); break;
+        case SDLK_F9: settings.interpolate = !settings.interpolate; break;
         default: return;
         }
         settings_dirty_ = true;
@@ -371,7 +373,8 @@ private:
     void sync_video() {
         const ntr::VideoSettings v = wanted_video();
         if (v.renderer == sent_video_.renderer && v.scale == sent_video_.scale &&
-            v.better_polygons == sent_video_.better_polygons && v.hires_coordinates == sent_video_.hires_coordinates)
+            v.better_polygons == sent_video_.better_polygons && v.hires_coordinates == sent_video_.hires_coordinates &&
+            v.interpolate == sent_video_.interpolate)
             return;
         runtime_->set_video(v);
         sent_video_ = v;
@@ -394,7 +397,9 @@ private:
         t += std::string(", ") + ntr::renderer_name(v.renderer);
         if (v.renderer != ntr::Renderer::Software)
             t += " " + std::to_string(v.scale) + "x" + (settings.scale ? "" : " (auto)");
-        t += std::string(", ") + video::filter_name(settings.filter) + " filter  |  Esc settings";
+        t += std::string(", ") + video::filter_name(settings.filter) + " filter";
+        t += v.interpolate ? ", 60 fps 3D" : ", 30 fps 3D";
+        t += "  |  Esc settings";
         SDL_SetWindowTitle(window_, t.c_str());
     }
 
@@ -642,9 +647,10 @@ int main(int argc, char** argv) {
                      "  --filter nearest|linear|sharp        scaling to the window (default linear)\n"
                      "  --better-polygons                    opengl: better quad splitting\n"
                      "  --no-hires-coordinates               compute: snap vertices to the DS pixel grid\n"
+                     "  --no-interpolate                     3D at the game's 30 fps (default: interpolated to 60)\n"
                      "other:\n"
-                     "  --no-skip-logos --trace-calls --trace-threads --trace-files --perf --fps-probe\n"
-                     "  --profile-functions <file> --dump-at-frame <n> --exit-after-frames <n>\n"
+                     "  --no-skip-logos --trace-calls --trace-threads --trace-files --perf --fps-probe --gx-probe --gx-check\n"
+                     "  --profile-functions <file> --dump-at-frame <n> --gx-dump-at-frame <n> --exit-after-frames <n>\n"
                      "  --screenshot-at-frame <n> <file.png> --menu-at-frame <n> --menu-tab <name>\n"
                      "  --menu-keys <key,key,...>\n"
                      "  --no-flip-model                      Windows: present with a plain OpenGL swap\n"
@@ -698,6 +704,12 @@ int main(int argc, char** argv) {
             options.perf = true;
         else if (a == "--fps-probe")
             options.fps_probe = true;
+        else if (a == "--gx-probe")
+            options.gx_probe = true;
+        else if (a == "--gx-check")
+            options.gx_check = true;
+        else if (a == "--gx-dump-at-frame" && has_value)
+            options.gx_dump_at_frame = std::strtoull(argv[++i], nullptr, 10);
         else if (a == "--trace-files")
             options.trace_files = true;
         else if (a == "--profile-functions" && has_value)
@@ -744,6 +756,10 @@ int main(int argc, char** argv) {
             settings.better_polygons = true;
         else if (a == "--no-hires-coordinates")
             settings.hires_coordinates = false;
+        else if (a == "--interpolate")
+            settings.interpolate = true;
+        else if (a == "--no-interpolate")
+            settings.interpolate = false;
         else
             std::fprintf(stderr, "ignoring unknown or incomplete option %s\n", a.c_str());
     }

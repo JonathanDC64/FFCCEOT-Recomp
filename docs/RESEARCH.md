@@ -132,6 +132,10 @@ controller-navigable player UI and ImGui for developer/debug panels. See [ARCHIT
   game catches up: a gap of 3-6 frames is followed by two flushes on consecutive frames (`....##.#`), so frames do not
   arrive on a fixed two-frame grid. Loading and fades show longer gaps. The DS slows down with a full party [R]; not yet
   measured with four players.
+- GX command streams [V] (`--gx-probe`): consecutive scenes nearly always send the same sequence of GX commands
+  (12-26k FIFO entries per scene in the field), vertex data never changes between scenes (animation and skinning are
+  all matrix work), and the projection matrix stays fixed (the camera is in the position matrix). This is what makes
+  the frame interpolation in ARCHITECTURE §5.3 work.
 - An anti-piracy check exists (EU AR fix at `020CAE64`/`020CB1CC` [R]). The USA equivalent needs locating and neutralising with a hook.
 
 ### 2.4 Multiplayer

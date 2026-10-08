@@ -83,6 +83,13 @@ RuntimeImpl::RuntimeImpl(std::vector<uint8_t> rom, const GameCode& code, Host& h
     nds->SetupDirectBoot("game.nds");
     nds->Start();
     apply_video(options.video);
+    if ((options.gx_probe || options.gx_check || options.gx_dump_at_frame) && !gx_) gx_ = std::make_unique<gx::Streams>(nds->GPU.GPU3D);
+    if (gx_) {
+        gx_->probe = options.gx_probe;
+        gx_->check = options.gx_check;
+        gx_->dump_at_vblank = options.gx_dump_at_frame;
+        gx_->interpolate = video_.interpolate && !options.gx_check;
+    }
 
     read_pages_.assign(1u << 20, nullptr);
     write_pages_.assign(1u << 20, nullptr);
@@ -294,6 +301,7 @@ void RuntimeImpl::end_frame() {
 
     if (options.perf) report_perf();
     if (options.fps_probe) probe_frame();
+    if (gx_) gx_->report(frames_);
     if (options.dump_at_frame && frames_ == options.dump_at_frame) dump_state();
 
     Frame frame;
@@ -730,6 +738,8 @@ void RuntimeImpl::set_video(const VideoSettings& settings) {
 // Software when there is no usable context at all.
 void RuntimeImpl::apply_video(VideoSettings s) {
     melonDS::NDS& n = *nds;
+    if (s.interpolate && !gx_) gx_ = std::make_unique<gx::Streams>(n.GPU.GPU3D);
+    if (gx_) gx_->interpolate = s.interpolate && !options.gx_check;
     s.scale = std::clamp(s.scale, 1, 16);
     if (s.renderer != Renderer::Software && !glEnable) {
         log("video: no OpenGL context, using the software renderer\n");
@@ -756,7 +766,8 @@ void RuntimeImpl::apply_video(VideoSettings s) {
     if (s.renderer == Renderer::Software) s.scale = 1;
     video_ = s;
     video_applied_ = true;
-    log("video: %s renderer, %dx (%dx%d per screen)\n", renderer_name(s.renderer), s.scale, 256 * s.scale, 192 * s.scale);
+    log("video: %s renderer, %dx (%dx%d per screen)%s\n", renderer_name(s.renderer), s.scale, 256 * s.scale,
+        192 * s.scale, s.interpolate ? ", 3D interpolated to 60 fps" : "");
 }
 
 const char* renderer_name(Renderer r) {

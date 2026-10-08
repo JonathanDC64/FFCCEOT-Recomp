@@ -184,26 +184,50 @@ and interpolation (§5.3) need our own rasteriser:
 flushes in a row, the 3D is always on the top screen and display capture is never used. `--fps-probe` logs this per
 second (`#` = new 3D scene, `.` = repeated, `c`/`C` = display capture).
 
-- The game logic tick is left untouched (30 Hz). This is required for lockstep netplay and avoids physics/animation bugs;
-  speeding the logic up would mean retuning every per-tick constant in the game.
-- **Frame interpolation (RT64-style), at the level of GX commands.** Everything the game draws in 3D reaches the geometry
-  engine as a stream of GX commands (`GPU3D::CmdFIFOWrite`): matrix loads and multiplies (camera, objects, and the bone
-  matrices of skinned models), polygon attributes, texture parameters and vertices. The plan:
-  1. Record each scene's command stream with the VBlank at which it was flushed.
-  2. Match the streams of two consecutive scenes: identical command sequences pair one to one; otherwise align draw
-     chunks (runs between matrix restores/loads, keyed by opcodes, texture and polygon attributes) and leave unmatched
-     chunks as they are in the newer scene (they snap).
-  3. For a display frame between the two scenes' times, replay the newer stream through a geometry engine with every
-     matched matrix (and vertex) parameter interpolated, and render the resulting polygon list with melonDS's renderer.
-     Rotations are blended element-wise (fine at a half-step); a large change in the projection or camera matrix is a
-     cut and snaps.
-  4. The 2D layers (backgrounds, sprites, the bottom screen) show the latest real frame.
-  This costs one 30 Hz frame of latency (we show the step between the last two scenes) and runs at any display rate:
-  60 Hz, 120/144 Hz or VRR. Timestamps come from the flush VBlanks, so catch-up frames interpolate correctly.
-- Present with VRR/uncapped/vsync options. Optional low-latency mode with no interpolation.
-- Steps, each checkable on its own: (a) record streams and measure how often consecutive scenes match; (b) replay an
-  unmodified stream and check that the polygon list is identical to the original; (c) interpolate and show 60 Hz;
-  (d) arbitrary display rates and presentation options.
+The game logic tick is left untouched (30 Hz). This is required for lockstep netplay and avoids physics/animation bugs;
+speeding the logic up would mean retuning every per-tick constant in the game.
+
+**Today: frame interpolation from the GX command stream** (`runtime/src/gx_stream.cpp`, on by default, setting
+"60 fps 3D", F9, `--no-interpolate`). Everything the game draws in 3D reaches the geometry engine as a stream of GX
+commands: matrix loads and multiplies (camera, objects, and the bone matrices of skinned models), polygon attributes,
+texture parameters and vertices. A small configure-time patch to melonDS's `GPU3D.cpp` (third_party/CMakeLists.txt)
+adds a hook on every executed command, a hook at the end of every VBlank, and a replay mode in which the engine raises
+no GX FIFO interrupts or DMA requests.
+
+1. **Record.** Each scene's command stream is recorded up to its flush (0x50), with a copy of the geometry engine's
+   state (matrices, stacks, lighting, everything but vertex/polygon RAM) taken when its first command runs.
+2. **Match.** Measured with `--gx-probe` in the field, in town and in dialogue: most consecutive scenes have exactly the
+   same opcode sequence (12-26k FIFO entries, 2-3k of them matrix parameters), and **vertex data never changes between
+   scenes**: all animation, skinning included, is in the matrices. The projection matrix never changes either (the
+   camera is in the position matrix). When the opcodes differ (objects appearing, effects), the streams are cut into
+   chunks (runs of drawing after a matrix load/restore, keyed by opcodes and polygon/texture attributes) and aligned
+   with a longest common subsequence: 95-97% of entries line up. Unmatched chunks are taken from the new scene as is.
+3. **Replay.** At the VBlank that swaps in a new scene, that scene is run again through melonDS's own geometry engine
+   from its recorded start state, with every matched matrix parameter (commands 0x16-0x1C) blended towards the
+   previous scene, and the resulting polygon list replaces the real one as the render list. The engine's state and the
+   real list are put back afterwards, so the game never sees the replay. `--gx-check` replays every scene unchanged
+   and compares the polygon lists: identical in all 1,056 scenes of a test run. A replay costs about 0.4 ms.
+4. **Show.** The renderer (any of the three) draws the blended list on that frame. On the next frame, which on the DS
+   repeats the scene, the real list is restored and drawn. So the 3D changes every frame: the new-scene frames show
+   the step between the last two scenes, and the repeat frames show the real scenes, pixel for pixel.
+
+The blend factor is (gap - 1) / gap for a scene that arrives `gap` frames after the previous one: 1/2 normally, 2/3 after
+a late scene. One-frame catch-ups and gaps over 4 frames (loading, pauses) show the real scene. This costs one frame
+(16 ms) of latency on the new-scene frames. The 2D layers (HUD, backgrounds, the bottom screen, and brightness fades)
+stay at the game's rate.
+
+Rotations are blended element-wise (fine at a half-step). Cuts and teleports are not blended. If the camera (the first
+matrix load in position mode) jumps by more than 0.5 in a rotation element or 16 units in translation, the scene is shown
+as it is. Any other matrix command that jumps that far keeps its new value. In normal play neither happens (no cuts in a
+long test run through the field, dialogue and combat). `--gx-dump-at-frame <n>` writes one scene's commands to
+`gx_scene.txt` (local only: it is game data), marking the parameters that changed since the previous scene.
+
+**Later:**
+- Display rates above 60 Hz (120/144 Hz, VRR): replay at any fraction between scenes. This needs presentation to be
+  decoupled from the emulated frame, plus the 2D layers composited separately.
+- Checking the cut detection on cutscenes.
+- Interpolating master brightness fades.
+- A low-latency mode that extrapolates instead.
 
 ### 5.4 Screen layouts
 **Today** (`game/src/video.cpp`): single screen (default; the top screen as large as fits, the other as a framed

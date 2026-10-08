@@ -71,7 +71,7 @@ struct State {
     int layout = 0, swap = 0, pip_size = 30, side_align = 2;  // swap: 0 = top screen main, 1 = bottom
     bool second_screen = true, fullscreen = false;
     int renderer = 1, scale = 0, filter = 1;
-    bool better_polygons = false, hires_coordinates = true;
+    bool better_polygons = false, hires_coordinates = true, interpolate = true;
     int volume = 100;
     bool skip_logos = true;
     bool stick_moves = true;
@@ -206,6 +206,7 @@ struct Menu::Impl {
         state.filter = int(s.filter);
         state.better_polygons = s.better_polygons;
         state.hires_coordinates = s.hires_coordinates;
+        state.interpolate = s.interpolate;
         state.volume = s.volume;
         state.skip_logos = s.skip_logos;
         state.stick_moves = s.controls.stick_moves;
@@ -229,6 +230,7 @@ struct Menu::Impl {
         s.filter = video::Filter(std::clamp(state.filter, 0, 2));
         s.better_polygons = state.better_polygons;
         s.hires_coordinates = state.hires_coordinates;
+        s.interpolate = state.interpolate;
         s.volume = std::clamp(state.volume, 0, 100);
         s.skip_logos = state.skip_logos;
         s.controls.stick_moves = state.stick_moves;
@@ -370,6 +372,7 @@ bool Menu::init(SDL_Window* window, Settings* settings, bool compute_available) 
     c.Bind("filter", &s.filter);
     c.Bind("better_polygons", &s.better_polygons);
     c.Bind("hires_coordinates", &s.hires_coordinates);
+    c.Bind("interpolate", &s.interpolate);
     c.Bind("volume", &s.volume);
     c.Bind("skip_logos", &s.skip_logos);
     c.Bind("stick_moves", &s.stick_moves);

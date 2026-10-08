@@ -10,6 +10,7 @@
 
 #include "NDS.h"
 #include "fiber.hpp"
+#include "gx_stream.hpp"
 #include "ntr/recomp.h"
 #include "ntr/runtime.hpp"
 
@@ -173,6 +174,9 @@ private:
     std::string probe_pattern_;
     int probe_new3d_ = 0, probe_capture_frames_ = 0, probe_top_ = 0, probe_swaps_ = 0;
     bool probe_last_top_ = false;
+
+    // GX command streams: frame interpolation, --gx-probe, --gx-check.
+    std::unique_ptr<gx::Streams> gx_;
     double perf_host_s_ = 0;
     u64 perf_steps_mark_ = 0, perf_calls_mark_ = 0;
 };
