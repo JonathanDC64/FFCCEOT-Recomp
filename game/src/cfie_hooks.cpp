@@ -1,5 +1,6 @@
 // Game-specific glue for hooks listed in game/config/cfie/hooks.txt.
 #include <algorithm>
+#include <cmath>
 
 #include "cfie_game.hpp"
 #include "ntr/nitro.h"
@@ -9,6 +10,8 @@ namespace cfie {
 GameEvents events;
 OnlineBuffer online_buffer = OnlineBuffer::Low;
 bool fast_saving = true;
+bool analog_movement = true;
+Stick stick;
 }  // namespace cfie
 
 namespace {
@@ -20,6 +23,17 @@ constexpr uint32_t kOnlineTiming = 0x0212FD28;              // the online timing
 constexpr uint32_t kNetwork = 0x0212F700;                   // the game's network state (+2: 0 alone, 2 online)
 constexpr uint32_t kNetworkIsOnline = 0x020AD998;           // (network): the Wi-Fi Connection is up
 constexpr uint32_t kCardCommon = 0x020FEE40;                // the card library's common state (cardi_common)
+constexpr uint32_t kPlayers = 0x02122E98;                   // the players (572 bytes each; +328: their character)
+constexpr uint32_t kMoveYaw = 0x02057220;                   // (character): the camera's yaw its movement turns by
+constexpr uint32_t kSinCosTable = 0x020CD780;               // FX_SinCosTable_: sin, cos (4.12) per 16 angle units
+constexpr uint32_t kAnimationStep = 0x0206F1C8;             // (character): 1, or 1.5 and 0.5 under Haste and Slow
+constexpr uint32_t kRunAnimation = 0x52554E20;              // 'RUN ', at a character's +364 while it plays
+
+// How far the stick moves player `player`'s character (0 to 1), or 0 when the D-pad moves it as on the DS.
+float analog_push(NtrCpu* c, int32_t player) {
+    if (!cfie::analog_movement || player != 0 || ntr_rd8(c, kNetwork + 2) != 0) return 0;
+    return std::min(std::hypot(cfie::stick.x, cfie::stick.y), 1.0f);
+}
 }  // namespace
 
 extern "C" void cfie_os_irq_handler(NtrCpu* c) { ntr::nitro::irq_handler(c, kOsIrqTable, kOsIrqHandlerThreadSwitch); }
@@ -27,6 +41,52 @@ extern "C" void cfie_os_irq_handler(NtrCpu* c) { ntr::nitro::irq_handler(c, kOsI
 // 0x0207713C: start background music (r1 = track id, 0 = stop).
 extern "C" void cfie_on_bgm_play(NtrCpu* c) {
     if (c->r[1] != 0) cfie::events.title_bgm_started = true;
+}
+
+// 0x02056498: a character's movement (velocity out, buttons, speed, player): the D-pad's direction (one of eight,
+// length 1), turned by the camera's yaw, times the speed. Before it, the game speeds the character up over 8 ticks
+// while the D-pad is held. With analog movement the player goes in the stick's direction instead, at the speed times
+// how far it is pushed. Not in multiplayer, where every console moves every character from the buttons it is sent.
+extern "C" int cfie_analog_move(NtrCpu* c) {
+    const int32_t player = int8_t(c->r[3]);
+    const float push = analog_push(c, player);
+    if (push == 0 || !(c->r[1] & 0xF0)) return 0;
+    const cfie::Stick s = cfie::stick;
+    const float length = std::hypot(s.x, s.y);
+    const uint32_t out = c->r[0];
+    const int64_t speed = std::lround(int32_t(c->r[2]) * push);
+    // The stick's direction, z towards the bottom of the screen (the D-pad's Down).
+    const int64_t x = std::lround(s.x / length * 4096), z = std::lround(s.y / length * 4096);
+
+    const uint32_t lr = c->r[14];
+    c->r[0] = ntr_rd32(c, kPlayers + 572 * uint32_t(player) + 328);
+    ntr_call(c, kMoveYaw | 1);
+    c->r[14] = lr;
+    const uint32_t i = (c->r[0] & 0xFFFF) >> 4;
+    const int64_t sin = int16_t(ntr_rd16(c, kSinCosTable + i * 4)), cos = int16_t(ntr_rd16(c, kSinCosTable + i * 4 + 2));
+    // As MTX_RotY33 and MTX_MultVec33, then FX_Mul by the speed.
+    const int64_t vx = (x * cos + z * sin) >> 12, vz = (z * cos - x * sin) >> 12;
+    ntr_wr32(c, out, uint32_t((vx * speed + 0x800) >> 12));
+    ntr_wr32(c, out + 4, 0);
+    ntr_wr32(c, out + 8, uint32_t((vz * speed + 0x800) >> 12));
+    c->r[0] = 1;
+    return 1;
+}
+
+// 0x0206F1BC: how far a player character's animation (r0, +8 +20: the character) goes in a tick (4.12). The run has
+// one speed on the DS, so with the stick pushed part way its feet would slide: it plays slower, as much as the
+// character moves slower.
+extern "C" int cfie_player_animation_step(NtrCpu* c) {
+    const uint32_t character = ntr_rd32(c, ntr_rd32(c, c->r[0] + 8) + 20);
+    if (character != ntr_rd32(c, kPlayers + 328) || ntr_rd32(c, character + 364) != kRunAnimation) return 0;
+    const float push = analog_push(c, 0);
+    if (push == 0 || push == 1) return 0;
+    const uint32_t lr = c->r[14];
+    c->r[0] = character;
+    ntr_call(c, kAnimationStep | 1);
+    c->r[14] = lr;
+    c->r[0] = uint32_t(std::lround(int32_t(c->r[0]) * push));
+    return 1;
 }
 
 // 0x02025260: CARDi_RequestStreamCommand. The game's save thread reads and writes the save 1 KB at a time, and the

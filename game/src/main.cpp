@@ -46,6 +46,7 @@ std::vector<uint8_t> read_file(const std::filesystem::path& p) {
 //   press A+Up [frames]    hold these DS buttons for a number of frames (default 1)
 //   tap A+Up               these DS buttons went down this frame, even if not held (a tap shorter than a frame)
 //   touch x,y [frames]     touch the bottom screen at a DS pixel (default 1 frame)
+//   stick x,y [frames]     push the left stick (percent, -100 to 100, y down; default 1 frame)
 //   shot file.png          save the window
 //   quit                   exit
 // Blank lines and lines starting with # are ignored. Script input adds to the real input. --record-input writes the
@@ -55,6 +56,8 @@ struct ScriptStep {
     uint64_t frame = 0, frames = 1;
     uint32_t buttons = 0, taps = 0;
     int touch_x = -1, touch_y = -1;
+    bool stick = false;
+    int stick_x = 0, stick_y = 0;
     std::string shot;
     bool quit = false;
 };
@@ -158,10 +161,11 @@ bool load_input_script(const std::filesystem::path& path, std::vector<ScriptStep
         if (cmd == "press") ok = parse_buttons(arg, s.buttons);
         else if (cmd == "tap") ok = parse_buttons(arg, s.taps);
         else if (cmd == "touch") ok = std::sscanf(arg.c_str(), "%d,%d", &s.touch_x, &s.touch_y) == 2;
+        else if (cmd == "stick") s.stick = ok = std::sscanf(arg.c_str(), "%d,%d", &s.stick_x, &s.stick_y) == 2;
         else if (cmd == "shot") s.shot = arg, ok = !arg.empty();
         else if (cmd == "quit") s.quit = true;
         else ok = false;
-        if (cmd == "press" || cmd == "touch") {
+        if (cmd == "press" || cmd == "touch" || cmd == "stick") {
             uint64_t n = 0;
             if (in >> n) s.frames = std::max<uint64_t>(n, 1);
         }
@@ -573,13 +577,23 @@ private:
         uint32_t b = 0;
         for (int i = 0; i < input::kFirstAppAction; i++)
             if (down[i]) b |= kDsBits[i];
+        // The left stick: the D-pad direction nearest its own (one of eight), and for analog movement its direction
+        // and how far it is pushed past the deadzone.
+        float lx = 0, ly = 0;
         if (gamepad_ && c.stick_moves) {
-            const float lx = SDL_GetGamepadAxis(gamepad_, SDL_GAMEPAD_AXIS_LEFTX) / 32767.0f;
-            const float ly = SDL_GetGamepadAxis(gamepad_, SDL_GAMEPAD_AXIS_LEFTY) / 32767.0f;
-            if (lx < -dead) b |= ntr::KeyLeft;
-            if (lx > dead) b |= ntr::KeyRight;
-            if (ly < -dead) b |= ntr::KeyUp;
-            if (ly > dead) b |= ntr::KeyDown;
+            lx = SDL_GetGamepadAxis(gamepad_, SDL_GAMEPAD_AXIS_LEFTX) / 32767.0f;
+            ly = SDL_GetGamepadAxis(gamepad_, SDL_GAMEPAD_AXIS_LEFTY) / 32767.0f;
+        }
+        script_stick(lx, ly);
+        cfie::Stick stick;
+        if (const float length = std::hypot(lx, ly); length > dead) {
+            const float diagonal = 0.38268343f * length;  // sin(22.5 degrees)
+            if (lx < -diagonal) b |= ntr::KeyLeft;
+            if (lx > diagonal) b |= ntr::KeyRight;
+            if (ly < -diagonal) b |= ntr::KeyUp;
+            if (ly > diagonal) b |= ntr::KeyDown;
+            const float pushed = std::min((length - dead) / (1 - dead), 1.0f);
+            if (c.analog_movement) stick = {lx / length * pushed, ly / length * pushed};
         }
 
         // App actions fire when pressed (not while held, and not while input is on hold around the menu).
@@ -601,7 +615,9 @@ private:
             b = 0;
             touching = false;
             presses_ = 0;
+            stick = {};
         }
+        cfie::stick = stick;
         b &= ~(1u << 31);
         script_input(b, touching, sx, sy);
         const int tx = std::clamp(int(sx), 0, kScreenW - 1), ty = std::clamp(int(sy), 0, kScreenH - 1);
@@ -613,6 +629,15 @@ private:
         else
             runtime_->release_touch();
         input_active_ = b != 0 || touching;
+    }
+
+    // The left stick from --input-script steps active in the next emulated frame, if any (replacing the real one).
+    void script_stick(float& x, float& y) const {
+        const uint64_t f = frames_ + 1;
+        for (const ScriptStep& s : script) {
+            if (s.frame > f) break;
+            if (s.stick && f < s.frame + s.frames) x = s.stick_x / 100.0f, y = s.stick_y / 100.0f;
+        }
     }
 
     // Adds the --input-script steps active in the next emulated frame (frames_ + 1), the one this input is for.

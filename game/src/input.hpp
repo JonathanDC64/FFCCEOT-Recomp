@@ -35,6 +35,7 @@ struct Bindings {
     PadInput pad[kActionCount]{};
     bool stick_moves = true;  // the left stick also works as the D-pad
     int deadzone = 35;        // stick deadzone, percent of the full range
+    bool analog_movement = true;  // characters walk the stick's way at its speed, not the D-pad's eight directions
 
     static Bindings defaults();
     bool operator==(const Bindings&) const = default;

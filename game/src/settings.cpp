@@ -112,6 +112,7 @@ const Field kFields[] = {
           }},
     ENUM_FIELD("online.buffer", online_buffer, kOnlineBuffers),
     BOOL_FIELD("controls.stick_moves", controls.stick_moves),
+    BOOL_FIELD("controls.analog_movement", controls.analog_movement),
     Field{"controls.deadzone", [](const Settings& s) { return std::to_string(s.controls.deadzone); },
           [](Settings& s, const std::string& v) { return parse_int(v, 5, 90, s.controls.deadzone); }},
 };

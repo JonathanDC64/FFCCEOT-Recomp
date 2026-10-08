@@ -387,7 +387,14 @@ already; the interop goes away then.
 ## 6. Input and the "no touch screen" scheme
 **Today:** `game/src/input.cpp` binds each action (the 12 DS buttons, plus show other screen, swap screens and
 fullscreen) to one key and one gamepad input (a button, a stick direction or a trigger), with the left stick as an
-optional D-pad and a deadzone setting. The menu's Controls page rebinds them: an input already used by another action
+optional D-pad and a deadzone setting (a radial one: the D-pad direction is the nearest of eight to the stick's).
+**Analog movement** (on by default): the game builds a character's velocity from the D-pad (`0x02056498`: one of eight
+directions, turned by the camera's yaw, times a speed that ramps up over 8 ticks), and an `instead` hook gives it the
+stick's direction and scales the speed by how far the stick is pushed. The run animation has one speed, so a second
+hook on the player's animation step (`0x0206F1BC`, which already plays it at 1.5x and 0.5x under Haste and Slow)
+slows it by the same amount while the character runs. Only for player 1 in single-player: in multiplayer every console
+moves every character from the button records it is sent, so the stick there would need to go into those records.
+The menu's Controls page rebinds them: an input already used by another action
 swaps over, so nothing is bound twice. Pad inputs are saved by position (`east`, `+leftx`, `righttrigger`) and shown
 with the connected controller's names via `SDL_GetGamepadButtonLabelForType`. The menu itself stays on fixed inputs
 (Esc, Guide, Back + Start). Touch actions and glyph images come next.

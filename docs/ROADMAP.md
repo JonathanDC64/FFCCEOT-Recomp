@@ -91,7 +91,11 @@ Milestones are ordered by dependency. Each ends with a demonstrable result. Desi
 - [x] Binding system + rebinding UI (keyboard and gamepad, controller-specific button names)
 - [ ] Button glyph images, several bindings per action, more app actions (fast-forward, screenshot)
 - [ ] FFCC touch-free scheme (spell ring, menus, map), mouse-as-stylus
-- [ ] Analog movement: full 360° character movement from the stick (the game reads an 8-way D-pad; hook its movement input)
+- [x] Analog movement (Controls page, on by default): the character walks the way the left stick points, at the speed
+      times how far it is pushed, and its run plays slower to match (hooks on the movement direction and the player's
+      animation speed; single-player only)
+- [ ] Analog movement in multiplayer: send the stick in the per-tick input record, so every console moves the
+      character the same way
 - [x] RmlUi integration (OpenGL for now), FF crystal theme (original styling, OFL fonts)
 - [x] In-game settings menu (display, graphics, audio, game, controls list), settings persistence (`settings.ini`)
 - [ ] Menu: more pages (online, QoL, mods, about), reset game, button glyphs; RmlUi on SDL_GPU

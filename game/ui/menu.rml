@@ -201,6 +201,11 @@
                 <input type="range" min="10" max="80" step="5" data-value="deadzone"/>
                 <span class="value">{{ deadzone }}%</span>
             </div>
+            <div class="row nav" data-if="stick_moves">
+                <span class="label">Analog movement</span>
+                <input type="checkbox" data-checked="analog_movement"/>
+            </div>
+            <p class="note" data-if="stick_moves">Analog movement: your character walks the way the stick points, slower when it is pushed less, instead of the D-pad's eight directions (not in multiplayer).</p>
             <div class="row nav action" data-event-click="reset_controls">
                 <span class="label">Reset controls to defaults</span>
             </div>
