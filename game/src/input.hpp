@@ -3,6 +3,8 @@
 
 #include <SDL3/SDL.h>
 
+#include "cfie_game.hpp"
+
 #include <string>
 
 namespace input {
@@ -35,7 +37,8 @@ struct Bindings {
     PadInput pad[kActionCount]{};
     bool stick_moves = true;  // the left stick also works as the D-pad
     int deadzone = 35;        // stick deadzone, percent of the full range
-    bool analog_movement = true;  // characters walk the stick's way at its speed, not the D-pad's eight directions
+    // The character walks the stick's way at its speed, not the D-pad's eight directions (see cfie_pack_input).
+    cfie::AnalogMovement analog_movement = cfie::AnalogMovement::SinglePlayer;
 
     static Bindings defaults();
     bool operator==(const Bindings&) const = default;

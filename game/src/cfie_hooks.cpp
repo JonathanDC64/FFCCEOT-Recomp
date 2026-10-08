@@ -10,7 +10,7 @@ namespace cfie {
 GameEvents events;
 OnlineBuffer online_buffer = OnlineBuffer::Low;
 bool fast_saving = true;
-bool analog_movement = true;
+AnalogMovement analog_movement = AnalogMovement::SinglePlayer;
 Stick stick;
 }  // namespace cfie
 
@@ -24,15 +24,44 @@ constexpr uint32_t kNetwork = 0x0212F700;                   // the game's networ
 constexpr uint32_t kNetworkIsOnline = 0x020AD998;           // (network): the Wi-Fi Connection is up
 constexpr uint32_t kCardCommon = 0x020FEE40;                // the card library's common state (cardi_common)
 constexpr uint32_t kPlayers = 0x02122E98;                   // the players (572 bytes each; +328: their character)
+constexpr uint32_t kPlayerPresent = 0x02099780;             // (players, n): player n is in the game
 constexpr uint32_t kMoveYaw = 0x02057220;                   // (character): the camera's yaw its movement turns by
 constexpr uint32_t kSinCosTable = 0x020CD780;               // FX_SinCosTable_: sin, cos (4.12) per 16 angle units
 constexpr uint32_t kAnimationStep = 0x0206F1C8;             // (character): 1, or 1.5 and 0.5 under Haste and Slow
 constexpr uint32_t kRunAnimation = 0x52554E20;              // 'RUN ', at a character's +364 while it plays
+constexpr uint32_t kBlankInputCall = 0x020ADF81;            // return address: a slot nobody's records came in for
 
-// How far the stick moves player `player`'s character (0 to 1), or 0 when the D-pad moves it as on the DS.
-float analog_push(NtrCpu* c, int32_t player) {
-    if (!cfie::analog_movement || player != 0 || ntr_rd8(c, kNetwork + 2) != 0) return 0;
-    return std::min(std::hypot(cfie::stick.x, cfie::stick.y), 1.0f);
+// Analog movement: the stick each player slot's input records carry (see cfie_pack_input), the same on every console.
+struct SlotStick {
+    bool marked = false;  // the records come from this build
+    uint8_t angle = 0;    // 256 steps, 0 = down, 64 = right
+    uint8_t push = 0;     // how far it is pushed, 0 (at rest) to kFullPush
+};
+constexpr uint8_t kFullPush = 63;
+SlotStick slot_sticks[4];
+
+// The stick of player slot `player` (a character's +172), or null if the D-pad moves it as on the DS.
+const SlotStick* moving_stick(int32_t player) {
+    if (player < 0 || player >= 4 || slot_sticks[player].push == 0) return nullptr;
+    return &slot_sticks[player];
+}
+
+// Whether this console sends its stick: as set, and in a network session only while every player's console reads it
+// (a DS or another emulator would move the character by the D-pad bits and fall out of step).
+bool send_stick(NtrCpu* c) {
+    if (cfie::analog_movement == cfie::AnalogMovement::Off) return false;
+    if (ntr_rd8(c, kNetwork + 2) == 0) return true;
+    if (cfie::analog_movement != cfie::AnalogMovement::Multiplayer) return false;
+    const uint32_t lr = c->r[14], r0 = c->r[0], r1 = c->r[1], r2 = c->r[2], r3 = c->r[3];
+    bool all = true;
+    for (uint32_t n = 0; n < 4 && all; n++) {
+        c->r[0] = kPlayers;
+        c->r[1] = n;
+        ntr_call(c, kPlayerPresent | 1);
+        all = c->r[0] == 0 || slot_sticks[n].marked;
+    }
+    c->r[0] = r0, c->r[1] = r1, c->r[2] = r2, c->r[3] = r3, c->r[14] = lr;
+    return all;
 }
 }  // namespace
 
@@ -43,20 +72,62 @@ extern "C" void cfie_on_bgm_play(NtrCpu* c) {
     if (c->r[1] != 0) cfie::events.title_bgm_started = true;
 }
 
-// 0x02056498: a character's movement (velocity out, buttons, speed, player): the D-pad's direction (one of eight,
-// length 1), turned by the camera's yaw, times the speed. Before it, the game speeds the character up over 8 ticks
-// while the D-pad is held. With analog movement the player goes in the stick's direction instead, at the speed times
-// how far it is pushed. Not in multiplayer, where every console moves every character from the buttons it is sent.
+// 0x02082A40: pack a tick's input record (out, buttons, touch: x, y, touching): buttons (bit 13: touching), then the
+// touch x and y. While the screen isn't touched no console reads x and y (0x02077CB4 keeps the last touched point),
+// and a DS never sends y over 191 (TP_GetCalibratedPoint clamps it), so this build sends its stick there: x = its
+// angle, y = 192 + how far it is pushed. A DS still sees the D-pad bits; y = 192 alone marks a console that reads them.
+extern "C" int cfie_pack_input(NtrCpu* c) {
+    const uint32_t out = c->r[0], touch = c->r[2];
+    const bool touching = ntr_rd8(c, touch + 2) != 0;
+    const uint32_t buttons = ntr_rd16(c, c->r[1]) | (touching ? 0x2000 : 0);
+    uint8_t x = ntr_rd8(c, touch), y = ntr_rd8(c, touch + 1);
+    if (!touching) {
+        x = 0;
+        y = 192;
+        const cfie::Stick s = cfie::stick;
+        if (const float length = std::hypot(s.x, s.y); length > 0 && send_stick(c)) {
+            const long push = std::lround(std::min(length, 1.0f) * kFullPush);
+            x = uint8_t(std::lround(std::atan2(s.x, s.y) * (128 / 3.14159265358979)) & 0xFF);
+            y = uint8_t(192 + push);
+        }
+    }
+    ntr_wr8(c, out, uint8_t(buttons));
+    ntr_wr8(c, out + 1, uint8_t(buttons >> 8));
+    ntr_wr8(c, out + 2, x);
+    ntr_wr8(c, out + 3, y);
+    return 1;
+}
+
+// 0x020AF120: apply player slot r1's input record (r0) for this tick, on every console for every slot. Keeps the
+// stick it carries; while the player touches the screen, the last one.
+extern "C" void cfie_apply_input(NtrCpu* c) {
+    const uint32_t slot = c->r[1], record = c->r[0];
+    if (slot >= 4) return;
+    SlotStick& s = slot_sticks[slot];
+    if (c->r[14] == kBlankInputCall) {
+        s = {};
+        return;
+    }
+    if (ntr_rd8(c, record + 1) & 0x20) return;
+    const uint8_t y = ntr_rd8(c, record + 3);
+    s.marked = y >= 192;
+    s.angle = s.marked ? ntr_rd8(c, record + 2) : 0;
+    s.push = s.marked ? uint8_t(std::min(y - 192, int(kFullPush))) : 0;
+}
+
+// 0x02056498: a character's movement (velocity out, buttons, speed, player slot): the D-pad's direction (one of
+// eight, length 1), turned by the camera's yaw, times the speed. Before it, the game speeds the character up over 8
+// ticks while the D-pad is held. With a stick in the player's records the character goes the stick's way instead, at
+// the speed times how far it is pushed. Fixed point only, so every console moves it the same.
 extern "C" int cfie_analog_move(NtrCpu* c) {
     const int32_t player = int8_t(c->r[3]);
-    const float push = analog_push(c, player);
-    if (push == 0 || !(c->r[1] & 0xF0)) return 0;
-    const cfie::Stick s = cfie::stick;
-    const float length = std::hypot(s.x, s.y);
+    const SlotStick* s = moving_stick(player);
+    if (!s || !(c->r[1] & 0xF0)) return 0;
     const uint32_t out = c->r[0];
-    const int64_t speed = std::lround(int32_t(c->r[2]) * push);
-    // The stick's direction, z towards the bottom of the screen (the D-pad's Down).
-    const int64_t x = std::lround(s.x / length * 4096), z = std::lround(s.y / length * 4096);
+    const int64_t speed = int64_t(int32_t(c->r[2])) * s->push / kFullPush;
+    // The stick's direction (x = sin, z = cos of its angle), z towards the bottom of the screen (the D-pad's Down).
+    const uint32_t a = uint32_t(s->angle) << 4;
+    const int64_t x = int16_t(ntr_rd16(c, kSinCosTable + a * 4)), z = int16_t(ntr_rd16(c, kSinCosTable + a * 4 + 2));
 
     const uint32_t lr = c->r[14];
     c->r[0] = ntr_rd32(c, kPlayers + 572 * uint32_t(player) + 328);
@@ -78,14 +149,15 @@ extern "C" int cfie_analog_move(NtrCpu* c) {
 // character moves slower.
 extern "C" int cfie_player_animation_step(NtrCpu* c) {
     const uint32_t character = ntr_rd32(c, ntr_rd32(c, c->r[0] + 8) + 20);
-    if (character != ntr_rd32(c, kPlayers + 328) || ntr_rd32(c, character + 364) != kRunAnimation) return 0;
-    const float push = analog_push(c, 0);
-    if (push == 0 || push == 1) return 0;
+    if (ntr_rd32(c, character + 364) != kRunAnimation) return 0;
+    const int32_t player = int8_t(ntr_rd8(c, character + 172));
+    const SlotStick* s = moving_stick(player);
+    if (!s || s->push >= kFullPush || character != ntr_rd32(c, kPlayers + 572 * uint32_t(player) + 328)) return 0;
     const uint32_t lr = c->r[14];
     c->r[0] = character;
     ntr_call(c, kAnimationStep | 1);
     c->r[14] = lr;
-    c->r[0] = uint32_t(std::lround(int32_t(c->r[0]) * push));
+    c->r[0] = uint32_t(int64_t(int32_t(c->r[0])) * s->push / kFullPush);
     return 1;
 }
 

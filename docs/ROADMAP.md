@@ -91,12 +91,12 @@ Milestones are ordered by dependency. Each ends with a demonstrable result. Desi
 - [x] Binding system + rebinding UI (keyboard and gamepad, controller-specific button names)
 - [ ] Button glyph images, several bindings per action, more app actions (fast-forward, screenshot)
 - [ ] FFCC touch-free scheme (spell ring, menus, map), mouse-as-stylus
-- [x] Analog movement (Controls page, on by default): the character walks the way the left stick points, at the speed
-      times how far it is pushed, and its run plays slower to match (hooks on the movement direction and the player's
-      animation speed; single-player only)
-- [ ] Analog movement in multiplayer (feasible, researched; [ARCHITECTURE.md §6](ARCHITECTURE.md#6-input-and-the-no-touch-screen-scheme)):
-      the stick in the touch bytes of the per-tick input record, which are unused while not touching; only while
-      every player in the session runs this build
+- [x] Analog movement (Controls page: off, single-player (default), or single-player and multiplayer): the character
+      walks the way the left stick points, at the speed times how far it is pushed, and its run plays slower to match.
+      The stick travels in the input records' unused touch bytes, so every console moves every character the same;
+      only sent while every player runs this build ([ARCHITECTURE.md §6](ARCHITECTURE.md#6-input-and-the-no-touch-screen-scheme))
+- [ ] Analog movement online: test over the Wi-Fi Connection (local wireless between instances is tested: positions
+      stay identical on both consoles, and a console without the marker keeps everyone on the D-pad)
 - [x] RmlUi integration (OpenGL for now), FF crystal theme (original styling, OFL fonts)
 - [x] In-game settings menu (display, graphics, audio, game, controls list), settings persistence (`settings.ini`)
 - [ ] Menu: more pages (online, QoL, mods, about), reset game, button glyphs; RmlUi on SDL_GPU

@@ -388,34 +388,29 @@ already; the interop goes away then.
 **Today:** `game/src/input.cpp` binds each action (the 12 DS buttons, plus show other screen, swap screens and
 fullscreen) to one key and one gamepad input (a button, a stick direction or a trigger), with the left stick as an
 optional D-pad and a deadzone setting (a radial one: the D-pad direction is the nearest of eight to the stick's).
-**Analog movement** (on by default): the game builds a character's velocity from the D-pad (`0x02056498`: one of eight
-directions, turned by the camera's yaw, times a speed that ramps up over 8 ticks), and an `instead` hook gives it the
-stick's direction and scales the speed by how far the stick is pushed. The run animation has one speed, so a second
-hook on the player's animation step (`0x0206F1BC`, which already plays it at 1.5x and 0.5x under Haste and Slow)
-slows it by the same amount while the character runs. Only for player 1 in single-player: in multiplayer every console
-moves every character from the input records it is sent (lockstep: the records carry no positions), so a console that
-moved a character by the stick while the others moved it by the D-pad would drift out of sync.
+**Analog movement** (Controls page: off, single-player by default, or also multiplayer; `game/src/cfie_hooks.cpp`).
+The game is lockstep: each console sends a 9-byte input record per tick (built by `0x020AF034`: buttons with bit 13
+for touching, touch x and y, a sequence number, a 16-bit value and a flags byte), and every console applies every
+player slot's record (`0x020AF120` → `0x021218AC + n * 32`, single-player included) and moves every character from
+it. The records carry no positions, so a console moving a character differently drifts out of step for good.
+- The stick goes in the records (`0x02082A40`, `instead`): while the screen isn't touched no console reads the touch
+  x and y (`0x02077CB4` keeps the last touched point), and the touch read clamps y to 0-191 (TP calibration), so
+  y = 192-255 never comes from a DS. This build sends x = the stick's angle (256 steps) and y = 192 + how far it is
+  pushed (0-63); y = 192 alone marks a console that reads them. The D-pad bits stay as they were.
+- Every console keeps each slot's stick from its records (`0x020AF120`, `before`), whatever its own setting. While a
+  player touches the screen, their last stick stays.
+- The movement hook (`0x02056498`: the D-pad's direction, turned by the camera's yaw, times a speed that ramps up over
+  8 ticks) takes the slot's stick instead: its direction from the game's sine table, and the speed scaled by the
+  push, in fixed point. The run animation has one speed, so the player's animation step (`0x0206F1BC`, which already
+  plays it at 1.5x and 0.5x under Haste and Slow) is scaled the same way while the character runs.
+- In a network session (`0x0212F700 + 2`: 1 local wireless, 2 online) a console sends its stick only with the
+  multiplayer choice, and only while every present player (`0x02099780`) has sent the marker. With a DS or another
+  emulator in the room, everyone stays on the D-pad. New players join when the host enters the next area.
+- Tested with two instances over local wireless, with scripted stick and D-pad movement: every character's position
+  matched on both consoles each tick. A console without the marker kept the host on the D-pad, and the positions still
+  matched. With the check turned off, the positions split, which shows the comparison catches a desync. Not yet
+  tested online.
 
-*Analog movement in multiplayer (researched, not built).* Each player sends a 9-byte record per tick (built by
-`0x020AF034`): buttons (bit 13: touching), touch x and y, a sequence number, a 16-bit value and a flags byte; every
-console applies player n's record to its input state (`0x020AF120` → `0x021218AC + n * 32`). While the touch bit is
-clear, the receiver never reads x and y (`0x02077CB4` keeps the last touched point), and the touch read clamps y to
-0-191 (TP calibration), so y = 192-255 can never come from a DS. A plan:
-- Sender (a hook where the record's touch bytes are packed, `0x02082A40`): while not touching, x = the stick's angle
-  (256 steps) and y = 192 + how far it is pushed (0-63); y = 192 alone marks a capable console with the stick at rest.
-  The D-pad bits stay, so a DS still sees eight-way movement.
-- Receiver (a `before` hook on `0x020AF120`): keep each player's last stick from their records, the same on every
-  console, since all see the same records. The movement and animation hooks read it by player index instead of the
-  live stick (and in fixed point, not floats). While a player touches the screen, their last stick stays.
-- Mixed sessions (a DS, or another emulator, in the room): its console would move the character by the D-pad bits
-  and fall out of sync. So a console sends the stick only once every other player's records carry the marker, and
-  stops, with a margin of some ticks, when anyone joins.
-- To check when building it:
-  - the player index passed to the movement function is the network slot;
-  - local wireless and Wi-Fi both apply records through `0x020AF120`;
-  - the host forwards a guest's record bytes unchanged.
-
-  Then test two instances (local wireless and online), and one instance with melonDS online for the mixed case.
 The menu's Controls page rebinds them: an input already used by another action
 swaps over, so nothing is bound twice. Pad inputs are saved by position (`east`, `+leftx`, `righttrigger`) and shown
 with the connected controller's names via `SDL_GetGamepadButtonLabelForType`. The menu itself stays on fixed inputs

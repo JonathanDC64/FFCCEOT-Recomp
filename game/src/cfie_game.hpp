@@ -19,12 +19,16 @@ extern OnlineBuffer online_buffer;
 // Save reads and writes at once instead of at the DS's pace (see cfie_card_backup_request).
 extern bool fast_saving;
 
-// Analog movement (see cfie_analog_move): the left stick as the frontend last read it, x to the right and y down, its
-// length how far it is pushed past the deadzone (0 to 1); zero when it is not.
+// Analog movement (see cfie_pack_input): when this console sends its stick in its input records. Every console of
+// this build moves a character by the stick its records carry, whatever its own setting, so all stay in step.
+enum class AnalogMovement { Off, SinglePlayer, Multiplayer };
+extern AnalogMovement analog_movement;
+
+// The left stick as the frontend last read it, x to the right and y down, its length how far it is pushed past the
+// deadzone (0 to 1); zero when it is not.
 struct Stick {
     float x = 0, y = 0;
 };
-extern bool analog_movement;
 extern Stick stick;
 
 }  // namespace cfie

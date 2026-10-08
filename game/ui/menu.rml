@@ -203,9 +203,14 @@
             </div>
             <div class="row nav" data-if="stick_moves">
                 <span class="label">Analog movement</span>
-                <input type="checkbox" data-checked="analog_movement"/>
+                <select data-value="analog_movement">
+                    <option value="0">Off</option>
+                    <option value="1">Single-player</option>
+                    <option value="2">Single-player and multiplayer</option>
+                </select>
             </div>
-            <p class="note" data-if="stick_moves">Analog movement: your character walks the way the stick points, slower when it is pushed less, instead of the D-pad's eight directions (not in multiplayer).</p>
+            <p class="note" data-if="stick_moves">Analog movement: your character walks the way the stick points, slower when it is pushed less, instead of the D-pad's eight directions.</p>
+            <p class="note warning" data-if="stick_moves &amp;&amp; analog_movement == 2">Multiplayer: every player must use this PC version. A DS or another emulator moves your character in eight directions, so its game falls out of step with yours. This version only sends your stick while every player's game is known to be this one, but a player who joins as you enter a new area could still fall out of step. Choose Single-player when playing with a DS or an emulator.</p>
             <div class="row nav action" data-event-click="reset_controls">
                 <span class="label">Reset controls to defaults</span>
             </div>

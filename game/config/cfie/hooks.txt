@@ -31,7 +31,9 @@ main 020ae314 replace cfie_set_online_timing
 # Save reads and writes (CARDi_RequestStreamCommand): with fast saving, done on the save memory at once.
 main 02025260 instead cfie_card_backup_request
 
-# A character's movement from the D-pad: with analog movement, the stick's direction and how far it is pushed.
+# Analog movement: the stick goes in the input records' touch bytes while the screen isn't touched, every console
+# keeps each player's, and moves that player's character by it (direction and speed, and the run's pace).
+main 02082a40 instead cfie_pack_input
+main 020af120 before cfie_apply_input
 main 02056498 instead cfie_analog_move
-# A player character's animation speed: the run slows with the stick pushed part way.
 main 0206f1bc instead cfie_player_animation_step

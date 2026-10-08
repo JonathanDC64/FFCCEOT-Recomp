@@ -593,7 +593,7 @@ private:
             if (ly < -diagonal) b |= ntr::KeyUp;
             if (ly > diagonal) b |= ntr::KeyDown;
             const float pushed = std::min((length - dead) / (1 - dead), 1.0f);
-            if (c.analog_movement) stick = {lx / length * pushed, ly / length * pushed};
+            if (c.analog_movement != cfie::AnalogMovement::Off) stick = {lx / length * pushed, ly / length * pushed};
         }
 
         // App actions fire when pressed (not while held, and not while input is on hold around the menu).
@@ -618,6 +618,7 @@ private:
             stick = {};
         }
         cfie::stick = stick;
+        cfie::analog_movement = c.analog_movement;
         b &= ~(1u << 31);
         script_input(b, touching, sx, sy);
         const int tx = std::clamp(int(sx), 0, kScreenW - 1), ty = std::clamp(int(sy), 0, kScreenH - 1);
@@ -872,6 +873,7 @@ int main(int argc, char** argv) {
                      "game:\n"
                      "  --no-fast-loading                    cartridge reads at the card's speed\n"
                      "  --cpu-speed 1|2|4                    the ARM9 at this many times the DS's clock (default 4)\n"
+                     "  --analog-movement off|single-player|multiplayer   the stick's direction and speed (default single-player)\n"
                      "online:\n"
                      "  --online-server wiilink|kaeru|host|<DNS address>   Wi-Fi Connection server (default kaeru)\n"
                      "testing:\n"
@@ -943,6 +945,16 @@ int main(int argc, char** argv) {
         else if (a == "--cpu-speed" && has_value) {
             const int n = std::atoi(argv[++i]);
             settings.cpu_speed = n >= 4 ? 4 : n >= 2 ? 2 : 1;
+        }
+        else if (a == "--analog-movement" && has_value) {
+            const std::string v = argv[++i];
+            if (v == "off") settings.controls.analog_movement = cfie::AnalogMovement::Off;
+            else if (v == "single-player") settings.controls.analog_movement = cfie::AnalogMovement::SinglePlayer;
+            else if (v == "multiplayer") settings.controls.analog_movement = cfie::AnalogMovement::Multiplayer;
+            else {
+                std::fprintf(stderr, "--analog-movement: off, single-player or multiplayer\n");
+                return 2;
+            }
         }
         else if (a == "--online-server" && has_value) {
             std::array<uint8_t, 4> dns;

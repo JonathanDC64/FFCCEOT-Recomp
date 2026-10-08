@@ -84,7 +84,7 @@ struct State {
     int online_buffer = 0;   // 0 = low, 1 = medium, 2 = the game's own
     bool stick_moves = true;
     int deadzone = 35;
-    bool analog_movement = true;
+    int analog_movement = 1;  // 0 = off, 1 = single-player, 2 = also multiplayer
     bool operator==(const State&) const = default;
 };
 
@@ -261,7 +261,7 @@ struct Menu::Impl {
         state.online_buffer = int(s.online_buffer);
         state.stick_moves = s.controls.stick_moves;
         state.deadzone = s.controls.deadzone;
-        state.analog_movement = s.controls.analog_movement;
+        state.analog_movement = int(s.controls.analog_movement);
         applied = state;
         model.DirtyAllVariables();
     }
@@ -296,7 +296,7 @@ struct Menu::Impl {
         s.online_buffer = cfie::OnlineBuffer(std::clamp(state.online_buffer, 0, 2));
         s.controls.stick_moves = state.stick_moves;
         s.controls.deadzone = std::clamp(state.deadzone, 5, 90);
-        s.controls.analog_movement = state.analog_movement;
+        s.controls.analog_movement = cfie::AnalogMovement(std::clamp(state.analog_movement, 0, 2));
         applied = state;
         return true;
     }

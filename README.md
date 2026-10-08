@@ -42,9 +42,11 @@ the tools, recompiler and runtime are built.
 
 Controls (defaults): arrows, X = A, Z = B, S = X, A = Y, Q = L, W = R, Enter = Start, Right Shift = Select, mouse = touch
 screen, Esc = settings menu. Gamepads use the Nintendo button positions (DS A is the right face button, B the bottom one),
-and the left stick works as the D-pad. With analog movement (on by default, Controls page) your character walks the
-way the stick points, slower when it is pushed less, instead of in the D-pad's eight directions (in single-player; in
-multiplayer the stick works as the D-pad). Every DS button and the screen/fullscreen actions can be rebound to a key and a
+and the left stick works as the D-pad. With analog movement (Controls page) your character walks the way the stick
+points, slower when it is pushed less, instead of in the D-pad's eight directions. It is on in single-player by
+default. In multiplayer it needs every player on this PC version: choose "Single-player and multiplayer". With a DS or
+another emulator in the room, everyone stays on the eight directions (`--analog-movement
+off|single-player|multiplayer` sets it for one run). Every DS button and the screen/fullscreen actions can be rebound to a key and a
 gamepad input on the menu's Controls page, which names buttons for the connected controller (Xbox, PlayStation,
 Nintendo). The company logos before the title screen are skipped; pass `--no-skip-logos` to watch them.
 

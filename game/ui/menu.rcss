@@ -111,6 +111,14 @@ body {
     color: #9aa6bf;
 }
 
+/* A note on a setting that can cause trouble. */
+.note.warning {
+    padding: 8dp 12dp;
+    color: #ffd9a0;
+    background-color: #ff8a3020;
+    border-left: 3dp #ff9a40;
+}
+
 /* Drop-down lists. */
 select {
     float: right;
