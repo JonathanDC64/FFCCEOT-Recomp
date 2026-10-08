@@ -42,6 +42,11 @@ struct RuntimeOptions {
     std::vector<uint8_t> save_data;  // initial cartridge save memory (may be empty)
     bool trace_calls = false;
     bool trace_threads = false;
+    bool perf = false;         // log emulation cost and interpreter use every 60 frames
+    bool trace_files = false;  // log which ROM file each cartridge read hits (with the frame number)
+    // Builds with FFCC_TRACE_ENTRY only: write each function's first/last frame and call count here on exit.
+    std::string profile_path;
+    uint64_t dump_at_frame = 0;  // print the CPU state and recent function entries at this frame (debugging)
 };
 
 class Runtime {

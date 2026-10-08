@@ -41,7 +41,8 @@ The recompiler runs at build time and writes the generated C to `build/` (never 
 the tools, recompiler and runtime are built.
 
 Controls: arrows, X = A, Z = B, S = X, A = Y, Q = L, W = R, Enter = Start, Right Shift = Select, mouse = touch screen,
-Esc = quit. Gamepads use the Nintendo button layout, and the left stick works as the D-pad.
+Esc = quit. Gamepads use the Nintendo button layout, and the left stick works as the D-pad. The company logos
+before the title screen are skipped; pass `--no-skip-logos` to watch them.
 
 ## Documentation
 

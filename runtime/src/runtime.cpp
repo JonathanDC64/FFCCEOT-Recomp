@@ -14,6 +14,7 @@
 #include "GPU.h"
 #include "NDSCart.h"
 #include "SPU.h"
+#include "ntr/rom.hpp"
 #include "runtime_internal.hpp"
 
 namespace ntr {
@@ -52,6 +53,15 @@ std::unique_ptr<Runtime> Runtime::create(std::vector<uint8_t> rom, const GameCod
 RuntimeImpl::RuntimeImpl(std::vector<uint8_t> rom, const GameCode& code, Host& h, RuntimeOptions opts)
     : host(h), options(std::move(opts)) {
     build_function_index(code);
+    if (options.trace_files) {
+        const Rom r = Rom::from_bytes(rom);
+        for (const NitroFile& f : r.files()) rom_spans_.push_back({f.offset, f.offset + f.size, f.path});
+        for (const OverlayEntry& ov : r.overlays9()) {
+            const auto bytes = r.fat_file(ov.file_id);
+            const u32 off = u32(bytes.data() - r.bytes().data());
+            rom_spans_.push_back({off, off + u32(bytes.size()), "overlay " + std::to_string(ov.id)});
+        }
+    }
 
     melonDS::NDSArgs args;
     args.JIT = std::nullopt;
@@ -97,6 +107,25 @@ RuntimeImpl::RuntimeImpl(std::vector<uint8_t> rom, const GameCode& code, Host& h
 }
 
 RuntimeImpl::~RuntimeImpl() {
+    if (!options.profile_path.empty()) {
+        if (FILE* f = std::fopen(options.profile_path.c_str(), "w")) {
+            std::fprintf(f, "# address first_frame last_frame calls (%llu frames)\n", (unsigned long long)frames_);
+            std::vector<std::pair<u32, FuncProfile>> v(profile_.begin(), profile_.end());
+            std::sort(v.begin(), v.end(), [](auto& a, auto& b) { return a.first < b.first; });
+            for (auto& [a, p] : v)
+                std::fprintf(f, "%08x %llu %llu %llu\n", a, (unsigned long long)p.first, (unsigned long long)p.last,
+                             (unsigned long long)p.count);
+            std::fclose(f);
+        }
+    }
+    if (!interp_stats_.empty()) {
+        std::vector<std::pair<u32, InterpStat>> v(interp_stats_.begin(), interp_stats_.end());
+        std::sort(v.begin(), v.end(), [](auto& a, auto& b) { return a.second.steps > b.second.steps; });
+        log("interpreter coverage: %zu entry points, %llu calls, %llu instructions\n", v.size(),
+            (unsigned long long)interp_calls_, (unsigned long long)interp_steps_);
+        for (auto& [a, st] : v)
+            log("  %08x  %10llu calls  %12llu instructions\n", a, (unsigned long long)st.calls, (unsigned long long)st.steps);
+    }
     for (GuestFiber& f : fibers_)
         if (f.fiber) fiber_destroy(f.fiber);
 }
@@ -146,19 +175,43 @@ u32 RuntimeImpl::bus_read8(u32 a) {
     return nds->ARM9Read8(a);
 }
 void RuntimeImpl::bus_write32(u32 a, u32 v) {
+    if (options.trace_files && (a & ~0xFu) == 0x040001A0u) trace_cart_write(a, v, 4);
     nds->ARM9Timestamp = u64(cpu.cycles);
     nds->ARM9Write32(a, v);
     sync_after_io(a);
 }
 void RuntimeImpl::bus_write16(u32 a, u32 v) {
+    if (options.trace_files && (a & ~0xFu) == 0x040001A0u) trace_cart_write(a, v, 2);
     nds->ARM9Timestamp = u64(cpu.cycles);
     nds->ARM9Write16(a, u16(v));
     sync_after_io(a);
 }
 void RuntimeImpl::bus_write8(u32 a, u32 v) {
+    if (options.trace_files && (a & ~0xFu) == 0x040001A0u) trace_cart_write(a, v, 1);
     nds->ARM9Timestamp = u64(cpu.cycles);
     nds->ARM9Write8(a, u8(v));
     sync_after_io(a);
+}
+
+void RuntimeImpl::trace_cart_write(u32 a, u32 v, u32 size) {
+    bool start = false;
+    for (u32 i = 0; i < size; i++) {
+        const u32 b = a + i;
+        const u8 byte = u8(v >> (8 * i));
+        if (b >= 0x040001A8u && b < 0x040001B0u) cart_cmd_[b - 0x040001A8u] = byte;
+        if (b == 0x040001A7u && (byte & 0x80)) start = true;  // ROMCTRL bit 31: start the transfer
+    }
+    if (!start || cart_cmd_[0] != 0xB7) return;
+    const u32 off = u32(cart_cmd_[1]) << 24 | u32(cart_cmd_[2]) << 16 | u32(cart_cmd_[3]) << 8 | cart_cmd_[4];
+    std::string name = "?";
+    for (const RomSpan& s : rom_spans_)
+        if (off >= s.begin && off < s.end) {
+            name = s.name;
+            break;
+        }
+    if (name == last_traced_file_) return;
+    last_traced_file_ = name;
+    log("frame %llu: cart read %08x  %s\n", (unsigned long long)frames_, off, name.c_str());
 }
 
 void RuntimeImpl::sync_after_io(u32 addr) {
@@ -235,6 +288,9 @@ void RuntimeImpl::end_frame() {
         if (got > 0) host.on_audio(audio_buf_.data(), size_t(got));
     }
 
+    if (options.perf) report_perf();
+    if (options.dump_at_frame && frames_ == options.dump_at_frame) dump_state();
+
     void* top = nullptr;
     void* bottom = nullptr;
     n.GPU.GetFramebuffers(&top, &bottom);
@@ -242,6 +298,22 @@ void RuntimeImpl::end_frame() {
         quit_ = true;
         fiber_switch(fibers_[current_fiber_].fiber, root_fiber_);
     }
+    perf_mark_ = std::chrono::steady_clock::now();  // the frontend's frame pacing is not emulation time
+}
+
+void RuntimeImpl::report_perf() {
+    const auto now = std::chrono::steady_clock::now();
+    if (perf_mark_ != std::chrono::steady_clock::time_point{})
+        perf_host_s_ += std::chrono::duration<double>(now - perf_mark_).count();
+    constexpr u64 kFrames = 60;
+    if (frames_ % kFrames) return;
+    const double ms = perf_host_s_ * 1000.0 / kFrames;
+    log("perf: frame %llu: %.2f ms/frame emulating (%.0f%% of a DS frame), interpreter %llu calls, %llu instructions/frame\n",
+        (unsigned long long)frames_, ms, ms / (1000.0 / 59.8261) * 100.0,
+        (unsigned long long)(interp_calls_ - perf_calls_mark_), (unsigned long long)((interp_steps_ - perf_steps_mark_) / kFrames));
+    perf_host_s_ = 0;
+    perf_calls_mark_ = interp_calls_;
+    perf_steps_mark_ = interp_steps_;
 }
 
 void RuntimeImpl::poll() {
@@ -483,6 +555,9 @@ void RuntimeImpl::interpret(u32 target, u32 stop) {
     const u32 stop_sp = cpu.r[13];
     stop &= ~1u;
     interp_calls_++;
+    InterpStat& stat = interp_stats_[target];
+    if (stat.calls++ == 0) log("interpreter: first entry at %08x (returns to %08x)\n", target, stop);
+    const u64 steps_before = interp_steps_;
     if (options.trace_calls) log("interpret %08x until %08x\n", target, stop);
 
     auto load = [&](u32 pc) {
@@ -531,6 +606,7 @@ void RuntimeImpl::interpret(u32 target, u32 stop) {
             load(resume);
         }
     }
+    stat.steps += interp_steps_ - steps_before;  // unordered_map references stay valid across inserts
     store();
 }
 
@@ -643,7 +719,8 @@ using namespace ntr;
 extern "C" {
 
 void ntr_trace_enter(NtrCpu* c, uint32_t addr) {
-    g_entries[g_entry_pos++ % 64] = {rt(c).current_token() - kFiberTokenBase >> 2, addr, c->r[14], c->r[13]};
+    g_entries[g_entry_pos++ % 64] = {(rt(c).current_token() - kFiberTokenBase) >> 2, addr, c->r[14], c->r[13]};
+    rt(c).note_entry(addr);
 }
 
 uint32_t ntr_read32_slow(NtrCpu* c, uint32_t a) { return rt(c).bus_read32(a); }

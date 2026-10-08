@@ -74,6 +74,7 @@ public:
             return out_;
         }
         out_ += "    const uint32_t entry_lr = R(14);\n    (void)entry_lr;\n    NTR_ENTER(" + hexc(fn_.entry | (fn_.thumb ? 1u : 0u)) + ");\n    POLL();\n";
+        if (!fn_.hook_before.empty()) out_ += "    " + fn_.hook_before + "(c);\n";
         for (const std::string& w : fn_.warnings) out_ += "    /* warning: " + w + " */\n";
         if (!fn_.instrs.empty() && fn_.instrs.begin()->first != fn_.entry) line(fmt("goto L_%08x;", fn_.entry));
 
@@ -742,6 +743,7 @@ EmitStats emit_c(const Program& program, const Analysis& analysis, const std::fi
         for (const Function* f : order) {
             h << "void " << f->c_name() << "(NtrCpu* c);\n";
             if (!f->hook.empty()) hooks.insert(f->hook);
+            if (!f->hook_before.empty()) hooks.insert(f->hook_before);
         }
         for (const std::string& hk : hooks) h << "void " << hk << "(NtrCpu* c);\n";
         h << "\n#endif\n";

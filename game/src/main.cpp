@@ -15,6 +15,7 @@
 #include <thread>
 #include <vector>
 
+#include "cfie_game.hpp"
 #include "ntr/rom.hpp"
 #include "ntr/runtime.hpp"
 
@@ -52,6 +53,8 @@ public:
         audio_ = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &spec, nullptr, nullptr);
         if (audio_) SDL_ResumeAudioStreamDevice(audio_);
         next_frame_ = std::chrono::steady_clock::now();
+        skipping_ = skip_logos;
+        if (skipping_) present(nullptr, nullptr);  // black until the title screen
         return true;
     }
 
@@ -68,6 +71,15 @@ public:
 
     bool on_frame(const uint32_t* top, const uint32_t* bottom) override {
         if (!pump_events()) return false;
+        ++frames_;
+        if (exit_after_frames && frames_ >= exit_after_frames) return false;
+        if (skipping_) {
+            // The company logos before the title cannot be skipped in the game: run through them unseen and
+            // unheard at full speed. Stop at the title music, on any input, or after a safety limit.
+            if (!cfie::events.title_bgm_started && !input_active_ && frames_ < kMaxLogoSkipFrames) return true;
+            skipping_ = false;
+            next_frame_ = std::chrono::steady_clock::now();
+        }
         present(top, bottom);
         if (++frames_since_save_ > 120) flush_save();
         pace();
@@ -75,7 +87,7 @@ public:
     }
 
     void on_audio(const int16_t* samples, size_t frames) override {
-        if (!audio_) return;
+        if (!audio_ || skipping_) return;
         // Keep latency bounded: drop audio if the queue grows past ~100 ms.
         if (SDL_GetAudioStreamQueued(audio_) > 48000 * 4 / 10) return;
         SDL_PutAudioStreamData(audio_, samples, int(frames * 4));
@@ -170,12 +182,19 @@ private:
             }
         }
         if (!touching) runtime_->release_touch();
+        input_active_ = b != 0 || touching;
     }
 
     void present(const uint32_t* top, const uint32_t* bottom) {
         void* pixels;
         int pitch;
-        if (top && bottom && SDL_LockTexture(texture_, nullptr, &pixels, &pitch)) {
+        if (!top || !bottom) {
+            SDL_SetRenderDrawColor(renderer_, 0, 0, 0, 255);
+            SDL_RenderClear(renderer_);
+            SDL_RenderPresent(renderer_);
+            return;
+        }
+        if (SDL_LockTexture(texture_, nullptr, &pixels, &pitch)) {
             for (int y = 0; y < kScreenH; y++) {
                 std::memcpy(static_cast<uint8_t*>(pixels) + y * pitch, top + y * kScreenW, kScreenW * 4);
                 std::memcpy(static_cast<uint8_t*>(pixels) + (y + kScreenH) * pitch, bottom + y * kScreenW, kScreenW * 4);
@@ -227,22 +246,46 @@ private:
     std::vector<uint8_t> save_;
     bool save_dirty_ = false;
     int frames_since_save_ = 0;
+    uint64_t frames_ = 0;
+
+    bool skipping_ = false;
+    bool input_active_ = false;
+    static constexpr uint64_t kMaxLogoSkipFrames = 900;  // the logos end around frame 564
+
+public:
+    uint64_t exit_after_frames = 0;  // 0 = run until the window closes
+    bool skip_logos = true;
 };
 
 }  // namespace
 
 int main(int argc, char** argv) {
     if (argc < 2) {
-        std::fprintf(stderr, "usage: %s <your Echoes of Time (USA) dump.nds> [--trace-calls]\n", argv[0]);
+        std::fprintf(stderr, "usage: %s <your Echoes of Time (USA) dump.nds> [--no-skip-logos] [--trace-calls] [--trace-threads] [--trace-files] [--perf]\n"
+                     "       [--profile-functions <file>] [--dump-at-frame <n>] [--exit-after-frames <n>]\n", argv[0]);
         return 2;
     }
     const std::filesystem::path rom_path = argv[1];
     ntr::RuntimeOptions options;
+    uint64_t exit_after_frames = 0;
+    bool skip_logos = true;
     for (int i = 2; i < argc; i++)
         if (std::string(argv[i]) == "--trace-calls")
             options.trace_calls = true;
         else if (std::string(argv[i]) == "--trace-threads")
             options.trace_threads = true;
+        else if (std::string(argv[i]) == "--no-skip-logos")
+            skip_logos = false;
+        else if (std::string(argv[i]) == "--perf")
+            options.perf = true;
+        else if (std::string(argv[i]) == "--trace-files")
+            options.trace_files = true;
+        else if (std::string(argv[i]) == "--profile-functions" && i + 1 < argc)
+            options.profile_path = argv[++i];
+        else if (std::string(argv[i]) == "--dump-at-frame" && i + 1 < argc)
+            options.dump_at_frame = std::strtoull(argv[++i], nullptr, 10);
+        else if (std::string(argv[i]) == "--exit-after-frames" && i + 1 < argc)
+            exit_after_frames = std::strtoull(argv[++i], nullptr, 10);
 
     std::vector<uint8_t> rom = read_file(rom_path);
     if (rom.empty()) {
@@ -264,10 +307,14 @@ int main(int argc, char** argv) {
     if (!save_path.empty() && std::filesystem::exists(save_path)) options.save_data = read_file(save_path);
 
     SdlHost host;
+    host.exit_after_frames = exit_after_frames;
+    host.skip_logos = skip_logos;
     if (!host.init(save_path)) return 1;
 
     ntr::GameCode code{ntr_recomp_functions, ntr_recomp_function_count, ntr_recomp_overlays, ntr_recomp_overlay_count};
     auto runtime = ntr::Runtime::create(std::move(rom), code, host, std::move(options));
     host.attach(runtime.get());
-    return runtime->run();
+    const int rc = runtime->run();
+    runtime.reset();  // writes the exit reports (interpreter coverage, function profile)
+    return rc;
 }

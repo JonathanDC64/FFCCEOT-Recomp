@@ -155,9 +155,9 @@ Config load_config(const Program& program, const std::filesystem::path& dir) {
         std::string mod, addr, kind, repl;
         ss >> mod >> addr >> kind >> repl;
         const Module* m = program.module_by_name(mod);
-        if (!m || kind != "replace" || repl.empty())
-            throw std::runtime_error("hooks.txt:" + std::to_string(lineno) + ": expected '<module> <addr> replace <c_function>'");
-        cfg.hooks.push_back({m->id, uint32_t(std::stoul(addr, nullptr, 16)), repl});
+        if (!m || (kind != "replace" && kind != "before") || repl.empty())
+            throw std::runtime_error("hooks.txt:" + std::to_string(lineno) + ": expected '<module> <addr> replace|before <c_function>'");
+        cfg.hooks.push_back({m->id, uint32_t(std::stoul(addr, nullptr, 16)), repl, kind == "before"});
     }
     return cfg;
 }

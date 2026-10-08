@@ -57,6 +57,7 @@ struct Hook {
     int module = 0;
     uint32_t addr = 0;
     std::string replacement;  // C function name taking (NtrCpu*)
+    bool before = false;      // call it on entry, then run the recompiled body (instead of replacing the body)
 };
 
 struct Config {
@@ -121,6 +122,7 @@ struct Function {
     uint32_t extent = 0;  // size from the config seed (0 = unknown); BL inside it is a long branch
     std::string name;  // optional symbolic name
     std::string hook;  // non-empty: body replaced by a call to this C function
+    std::string hook_before;  // non-empty: called on entry, before the recompiled body
     bool encrypted = false;
     std::map<uint32_t, Instr> instrs;
     std::set<uint32_t> labels;

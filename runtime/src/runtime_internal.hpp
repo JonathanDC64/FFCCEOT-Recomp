@@ -1,6 +1,7 @@
 // Internal runtime state shared by the service implementations (runtime.cpp, swi.cpp, nitro.cpp).
 #pragma once
 
+#include <chrono>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -68,6 +69,13 @@ public:
     bool can_interpret(u32 target) const;
     void interpret(u32 target, u32 stop);
     void dump_state();
+    // Function-entry profile (FFCC_TRACE_ENTRY builds).
+    void note_entry(u32 addr) {
+        if (options.profile_path.empty()) return;
+        FuncProfile& p = profile_[addr];
+        if (!p.count++) p.first = frames_;
+        p.last = frames_;
+    }
     void poll();
     void halt();
     void swi(u32 number, u32 pc);
@@ -107,6 +115,8 @@ private:
     void sync_after_io(u32 addr);
     void advance();
     void end_frame();
+    void report_perf();
+    void trace_cart_write(u32 addr, u32 value, u32 size);
     bool irq_pending() const;
     void take_irq();
     void swap_banks(u32 old_mode, u32 new_mode);
@@ -136,6 +146,19 @@ private:
     std::vector<int16_t> audio_buf_;
     uint64_t frames_ = 0;
     uint64_t interp_calls_ = 0, interp_steps_ = 0;
+    struct InterpStat { u64 calls = 0, steps = 0; };
+    std::unordered_map<u32, InterpStat> interp_stats_;
+    struct FuncProfile { u64 first = 0, last = 0, count = 0; };
+    std::unordered_map<u32, FuncProfile> profile_;
+    // --trace-files: ROM layout (offset, end, name) and the cartridge command being written.
+    struct RomSpan { u32 begin, end; std::string name; };
+    std::vector<RomSpan> rom_spans_;
+    u8 cart_cmd_[8] = {};
+    std::string last_traced_file_;  // per entry address (coverage report)
+    // --perf: host time spent emulating (excluding the frontend's frame pacing) since the last report.
+    std::chrono::steady_clock::time_point perf_mark_{};
+    double perf_host_s_ = 0;
+    u64 perf_steps_mark_ = 0, perf_calls_mark_ = 0;
 };
 
 inline RuntimeImpl& rt(NtrCpu* c) { return *static_cast<RuntimeImpl*>(c->runtime); }

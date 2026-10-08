@@ -1,5 +1,7 @@
-# Recompiler hooks for CFIE: functions whose recompiled body is replaced by a C function.
-# Format: <module> <address> replace <c_function>
+# Recompiler hooks for CFIE.
+# Format: <module> <address> replace|before <c_function>
+#   replace: the recompiled body is replaced by a call to the C function.
+#   before:  the C function is called on entry, then the recompiled body runs.
 
 # NitroSDK thread context switches: guest threads run on host fibers (runtime/src/nitro.cpp).
 main 0202c8e8 replace ntr_nitro_save_context   # OS_SaveContext
@@ -13,3 +15,6 @@ itcm 01ff8128 replace cfie_os_irq_handler      # OS_IrqHandler
 main 020cb2c0 replace ntr_dsprot_not_detected
 main 020cb398 replace ntr_dsprot_not_detected
 main 020cb470 replace ntr_dsprot_not_detected
+
+# Sound: start background music. The first call is the title screen's BGM (game/src/cfie_hooks.cpp: logo skip).
+main 0207713c before cfie_on_bgm_play

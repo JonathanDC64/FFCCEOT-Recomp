@@ -39,10 +39,12 @@ Milestones are ordered by dependency. Each ends with a demonstrable result. Desi
 **Result: start a new game and finish the first area, with sound.**
 - [x] SPU + SDL3 audio (melonDS SPU output)
 - [x] Movies play (the ITCM decoder runs on the interpreter fallback)
+- [x] Perf readout (`--perf`): boot/title cost 1.3–4.6 ms per DS frame (budget 16.7 ms)
 - [ ] Measure interpreter cost during movies; recompile the decoder region if it matters
 - [ ] Long play sessions without crashes; save/load works and matches real-cart dumps
-- [ ] Coverage report: log every interpreter entry and fix the ones outside known regions
-- [ ] Option to skip the unskippable company logos before the title screen (first QoL feature)
+- [x] Coverage report: every new interpreter entry is logged, with a per-address summary on exit
+- [ ] Fix interpreter entries outside known regions as they show up
+- [x] Skip the unskippable company logos before the title screen (on by default, `--no-skip-logos`; first QoL feature)
 
 ## M5: Modern renderer
 **Result: 4K, widescreen, 60+ FPS.**

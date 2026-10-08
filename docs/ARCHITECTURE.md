@@ -134,7 +134,10 @@ emulated hardware state as the source of truth.
 | Frontend | `game/src/main.cpp` (SDL3): stacked screens, keyboard/gamepad/mouse-touch, 48 kHz audio stream, save file in the SDL pref path, frame pacing at 59.83 Hz. |
 
 **Debugging.** `ffcc.exe <rom> --trace-calls --trace-threads` logs indirect calls, interpreter entries and thread
-switches. Configure with `-DFFCC_TRACE_ENTRY=ON` to record every function entry (thread, address, LR, SP). The last 64
+switches. `--trace-files` logs which ROM file (or overlay) each cartridge read hits, by frame. `--perf` reports emulation
+cost per frame. `--exit-after-frames N` quits cleanly for scripted runs, and `--dump-at-frame N` prints the CPU state.
+In `FFCC_TRACE_ENTRY` builds, `--profile-functions <file>` writes each function's first and last frame and call count.
+Diffing two frame ranges of that profile is how the logo and title scenes were found. Configure with `-DFFCC_TRACE_ENTRY=ON` to record every function entry (thread, address, LR, SP). The last 64
 entries are printed with the register and stack dump on a fatal error.
 
 **Planned replacements** (unchanged goals): GX → GPU renderer (§5), better audio interpolation, net HLE (§8). The
@@ -213,7 +216,7 @@ Modelled on Dusklight but simpler, with a Final Fantasy crystal look. All art is
 - The friend code / profile lives in the emulated WFC config (`dwc/utility.bin` settings), created by the runtime.
 
 ## 9. Quality-of-life backlog (initial)
-Skip the boot company logos (option, on by default) · fast-forward and turbo · faster text · skip or speed up cutscenes and movies · camera options (zoom, smoothing) · always-run / sensible deadzones ·
+Skip the boot company logos (done: runs through them unseen until the title music starts) · fast-forward and turbo · faster text · skip or speed up cutscenes and movies · camera options (zoom, smoothing) · always-run / sensible deadzones ·
 debug warp/teleport menu (TCRF addresses) · save backups and slots · screenshot mode (hide HUD) · texture pack loader · discord presence (optional) ·
 accessibility (button holds → toggles, colour filters) · Steam Deck profile.
 
