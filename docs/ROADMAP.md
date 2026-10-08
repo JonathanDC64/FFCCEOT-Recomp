@@ -75,6 +75,7 @@ Milestones are ordered by dependency. Each ends with a demonstrable result. Desi
       pairing two different items
 - [x] Hitches when attacks land (the game loads and sets up data past its tick): fast loading and CPU speed settings
       (on, 4x by default), cycle accounting per straight run of instructions; presses wait for the game's next read
+- [ ] Fast saving option: finish the game's save writes at once instead of at the DS save chip's speed
 - [x] Rotation blending by decomposition + slerp (object matrices; camera stays element-wise)
 - [x] Feasibility of a variable-rate (delta time) logic tick: fixed 30 Hz step, not planned (§5.3)
 - [ ] Golden-image comparison vs reference rasteriser (local)
@@ -103,11 +104,14 @@ Milestones are ordered by dependency. Each ends with a demonstrable result. Desi
       rejects it (error 33020); report it upstream
 - [x] An online session between two instances on one PC: each instance's console gets its own address on a LAN
       between instances (`runtime/src/instance_lan.cpp`), since DWC connects to the private address of players behind
-      the same public address. Each instance has its own WFC user ID and friend code (derived from its MAC)
-- [ ] Guest input delay online: the game exchanges state about every 100 ms and the host decides, so a guest's
-      input waits for the next exchange and the host's reply (median 32 ms, up to ~95 ms after it is sent); the LAN between
-      instances adds only a few ms. Compare with local wireless and with real hardware before changing anything
-- [ ] Online with real DS/emulator clients; persist firmware writes (the WFC user ID is regenerated from the MAC today)
+      the same public address
+- [x] Friend codes that last: the console's WFC user ID and password (firmware Wi-Fi settings) are kept beside the
+      save (`cfie.wfc`); without them the game registered a new account, and friend code, on every launch
+- [x] Guest input delay online: the game's online timing batched a guest's inputs 3 frames at a time and buffered them
+      on the host at least 5 frames (about 200 ms in all); hooks give online play local wireless margins, with the
+      buffer still growing with the ping (`game/src/cfie_hooks.cpp`)
+- [ ] Online with real DS/emulator clients, and a save launched in another instance (another MAC) keeping its account
+- [ ] Network tab: a larger online input buffer for poor connections, if late packets make play stutter
 - [ ] Determinism harness (input replay + per-frame state hashes)
 - [x] Local wireless between instances on one PC (MP frames through shared memory, own MAC per instance)
 - [ ] Local wireless between PCs: MP frames over UDP, discovery

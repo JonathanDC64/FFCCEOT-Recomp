@@ -67,6 +67,9 @@ public:
     // Interleaved stereo samples at 48000 Hz produced during the last frame.
     virtual void on_audio(const int16_t* samples, size_t frames) {}
     virtual void on_save(const uint8_t* data, size_t size) {}
+    // The console's Wi-Fi settings changed (its three connections, 3 x 256 bytes of firmware): the game registered
+    // with the Wi-Fi Connection. Give them back in RuntimeOptions::wifi_settings to keep its user ID and friend code.
+    virtual void on_wifi_settings(const uint8_t* data, size_t size) {}
 };
 
 struct RuntimeOptions {
@@ -86,6 +89,7 @@ struct RuntimeOptions {
     // Online play: the DNS server the console's Wi-Fi settings use, which sends the game's Nintendo Wi-Fi Connection
     // lookups to a revival server (0.0.0.0: the host's own DNS).
     std::array<uint8_t, 4> online_dns{};
+    std::vector<uint8_t> wifi_settings;  // from Host::on_wifi_settings in an earlier run (may be empty)
     // Builds with FFCC_TRACE_ENTRY only: write each function's first/last frame and call count here on exit.
     std::string profile_path;
     uint64_t dump_at_frame = 0;  // print the CPU state and recent function entries at this frame (debugging)

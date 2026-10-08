@@ -180,7 +180,10 @@ void WriteNDSSave(const u8* savedata, u32 savelen, u32 writeoffset, u32 writelen
     if (userdata) static_cast<ntr::RuntimeImpl*>(userdata)->host.on_save(savedata, savelen);
 }
 void WriteGBASave(const u8*, u32, u32, u32, void*) {}
-void WriteFirmware(const Firmware&, u32, u32, void*) {}
+void WriteFirmware(const Firmware& firmware, u32, u32, void* userdata) {
+    if (!userdata) return;
+    static_cast<ntr::RuntimeImpl*>(userdata)->host.on_wifi_settings(firmware.GetWifiAccessPointPosition(), 0x300);
+}
 void WriteDateTime(int, int, int, int, int, int, void*) {}
 
 // ---- local wireless: with other instances on this PC (local_wireless.hpp) ----

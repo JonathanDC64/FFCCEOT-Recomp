@@ -294,6 +294,12 @@ public:
         save_.assign(data, data + size);
         save_dirty_ = true;
     }
+    // Kept beside the save (cfie.sav: cfie.wfc), so a save keeps its friend code in every instance.
+    void on_wifi_settings(const uint8_t* data, size_t size) override {
+        if (save_path_.empty() || read_only_save) return;
+        std::ofstream f(std::filesystem::path(save_path_).replace_extension(".wfc"), std::ios::binary);
+        f.write(reinterpret_cast<const char*>(data), std::streamsize(size));
+    }
 
 private:
     bool pump_events() {
@@ -991,6 +997,8 @@ int main(int argc, char** argv) {
         return 1;
     }
     if (!save_path.empty() && std::filesystem::exists(save_path)) options.save_data = read_file(save_path);
+    const auto wifi_path = std::filesystem::path(save_path).replace_extension(".wfc");
+    if (!save_path.empty() && std::filesystem::exists(wifi_path)) options.wifi_settings = read_file(wifi_path);
 
     SdlHost host;
     host.settings = settings;

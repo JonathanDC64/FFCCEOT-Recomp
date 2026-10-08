@@ -443,6 +443,11 @@ below comes with the flip-model presentation work (§5.5).
     connect to each other's private address (DWC: "behind same NAT as me"). So each console gets 10.64.0.(16 + slot),
     translated back to .16 toward its NAT (ARP, IP, DHCP; instance 0 needs nothing), and frames for another instance's
     address go to it through shared memory, with ARP requests for it answered locally (`runtime/src/instance_lan.cpp`).
+  - The console keeps its Wi-Fi Connection account (user ID and password, at 0xF0 in each of the firmware's three
+    Wi-Fi settings) in firmware, so writes to them are kept beside the save (`cfie.wfc`) and put back at boot.
+  - Online timing: the game runs online play with far more buffering than local wireless (a guest sends its inputs 3
+    frames at a time, the host holds them at least 5 frames and runs 3 at a time). Two hooks give it local wireless
+    margins, with the host's buffer still growing with the ping (`game/src/cfie_hooks.cpp`).
   - Cross-play with real DS/Wii clients works as long as our simulation is bit-exact (§4 Math, §5.3). That needs a long-running
     determinism test: two instances fed the same inputs must produce identical RAM hashes every frame.
 - **Local wireless, same PC (done)**: the game's own WM library runs on the emulated ARM7 and Wi-Fi hardware, so the

@@ -83,6 +83,16 @@ RuntimeImpl::RuntimeImpl(std::vector<uint8_t> rom, const GameCode& code, Host& h
         header.UpdateChecksum();
         args.Firmware.UpdateChecksums();
     }
+    if (options.wifi_settings.size() == 0x300) {
+        // The Wi-Fi Connection user ID and password of each connection, at 0xF0 (the rest is melonDS's access point,
+        // set up below).
+        auto& aps = args.Firmware.GetAccessPoints();
+        for (size_t i = 0; i < aps.size(); i++) {
+            std::memcpy(&aps[i].Bytes[0xF0], &options.wifi_settings[i * 256 + 0xF0], 14);
+            aps[i].UpdateChecksum();
+        }
+        args.Firmware.UpdateChecksums();
+    }
     if (options.online_dns != std::array<uint8_t, 4>{}) {
         auto& ap = args.Firmware.GetAccessPoints()[0];  // melonDS's access point, which the console connects through
         ap.PrimaryDns = ap.SecondaryDns = options.online_dns;
