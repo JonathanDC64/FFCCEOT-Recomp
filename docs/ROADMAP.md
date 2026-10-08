@@ -60,7 +60,7 @@ Milestones are ordered by dependency. Each ends with a demonstrable result. Desi
 - [x] Frame interpolation from the GX command stream to 60 Hz (record, match, replay with blended matrices; §5.3)
 - [ ] Interpolation: check camera-cut detection on cutscenes, interpolate brightness fades
 - [ ] Display-rate interpolation beyond 60 Hz (GL/compute: re-render 3D + re-composite between emulated frames; §5.3), VRR, low-latency option
-- [ ] Rotation blending by decomposition + slerp (object matrices; camera stays element-wise)
+- [x] Rotation blending by decomposition + slerp (object matrices; camera stays element-wise)
 - [x] Feasibility of a variable-rate (delta time) logic tick: fixed 30 Hz step, not planned (§5.3)
 - [ ] Golden-image comparison vs reference rasteriser (local)
 - [x] Flip-model presentation on Windows (DXGI through WGL_NV_DX_interop2): seamless alt-tab with direct-to-display

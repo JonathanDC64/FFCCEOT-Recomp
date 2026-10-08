@@ -74,7 +74,7 @@ private:
     uint64_t diff_projection_ = 0;                                  // of which in the projection matrix
     uint64_t chunk_entries_ = 0, chunk_matched_ = 0;                // in the other pairs
     int checked_ = 0, check_failed_ = 0;
-    int interpolated_ = 0, not_interpolated_ = 0, cuts_ = 0;
+    int interpolated_ = 0, not_interpolated_ = 0, cuts_ = 0, snapped_ = 0;
     double replay_ms_ = 0;
 };
 

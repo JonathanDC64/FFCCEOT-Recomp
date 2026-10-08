@@ -221,6 +221,7 @@ void Streams::interpolate_scene(const Scene& prev, const Scene& scene) {
     std::vector<Entry> entries = scene.entries;
     const Blend b = blend(prev.entries, scene.entries, entries, gap - 1, gap);
     cuts_ += b.cut;
+    snapped_ += int(b.snapped);
     if (b.blended == 0) {
         ++not_interpolated_;
         return;
@@ -313,11 +314,12 @@ void Streams::report(uint64_t frame) {
         log("gx-check: frame %llu: replayed %d scenes, %d differ from the real polygon list, %.2f ms per replay\n",
             (unsigned long long)frame, checked_, check_failed_, checked_ ? replay_ms_ / checked_ : 0.0);
     if (interpolate && probe)
-        log("gx-interp: frame %llu: interpolated %d scenes, %d not (%d camera cuts), %.2f ms per replay\n",
-            (unsigned long long)frame, interpolated_, not_interpolated_, cuts_,
+        log("gx-interp: frame %llu: interpolated %d scenes, %d not (%d camera cuts), %d matrices snapped, %.2f ms per "
+            "replay\n",
+            (unsigned long long)frame, interpolated_, not_interpolated_, cuts_, snapped_,
             interpolated_ ? replay_ms_ / interpolated_ : 0.0);
     pattern_.clear();
-    scenes_ = identical_ = checked_ = check_failed_ = interpolated_ = not_interpolated_ = cuts_ = 0;
+    scenes_ = identical_ = checked_ = check_failed_ = interpolated_ = not_interpolated_ = cuts_ = snapped_ = 0;
     entries_ = matrix_params_ = vertex_params_ = diff_matrix_ = diff_vertex_ = diff_other_ = diff_projection_ = 0;
     chunk_entries_ = chunk_matched_ = same_matrix_ = same_vertex_ = 0;
     replay_ms_ = 0;

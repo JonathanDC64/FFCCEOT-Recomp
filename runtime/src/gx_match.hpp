@@ -40,10 +40,13 @@ std::vector<Chunk> chunks(const std::vector<Entry>& e);
 std::vector<std::pair<size_t, size_t>> align(const std::vector<Chunk>& a, const std::vector<Chunk>& b);
 
 // Blends the matrix parameters of `out` (a copy of `b`) back towards `a` by (den - num) / den, where the two streams
-// match (the same opcodes, or aligned chunks). Matrix commands that jumped are left as they are in `b`; if the camera
-// jumped, nothing is blended and `cut` is set.
+// match (the same opcodes, or aligned chunks). Object matrices (position mode, other than the camera) have their 3x3
+// part blended as a rotation along the shortest arc plus a linear scale/shear; everything else is blended
+// element-wise. Matrix commands that jumped are left as they are in `b`; if the camera jumped, nothing is blended and
+// `cut` is set.
 struct Blend {
     size_t blended = 0;  // parameters changed (0: nothing to interpolate)
+    size_t snapped = 0;  // matrix commands that jumped, left as they are in `b`
     bool cut = false;
 };
 Blend blend(const std::vector<Entry>& a, const std::vector<Entry>& b, std::vector<Entry>& out, int num, int den);

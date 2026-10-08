@@ -217,11 +217,30 @@ a late scene. One-frame catch-ups and gaps over 4 frames (loading, pauses) show 
 (16 ms) of latency on the new-scene frames. The 2D layers (HUD, backgrounds, the bottom screen, and brightness fades)
 stay at the game's rate.
 
-Rotations are blended element-wise (fine at a half-step). Cuts and teleports are not blended. If the camera (the first
-matrix load in position mode) jumps by more than 0.5 in a rotation element or 16 units in translation, the scene is shown
-as it is. Any other matrix command that jumps that far keeps its new value. In normal play neither happens (no cuts in a
-long test run through the field, dialogue and combat). `--gx-dump-at-frame <n>` writes one scene's commands to
-`gx_scene.txt` (local only: it is game data), marking the parameters that changed since the previous scene.
+**Rotations.** Object matrices are blended as rotations (`blend_linear` in `gx_match.cpp`); object matrices are the
+position-mode matrix loads and multiplies other than the camera.
+1. Each matrix's 3×3 part is split into a rotation and a scale/shear part by polar decomposition (Newton's iteration).
+2. The rotation turns along the shortest arc (quaternion slerp), and the scale/shear part blends linearly.
+3. A turn of more than 120°, or a scale/shear element that moves more than 0.5, is a snap: the new matrix is kept.
+4. Matrices that are degenerate (scaled to nothing) or mirrored in only one of the two scenes are blended
+   element-wise instead.
+
+The camera, projection and texture matrices stay element-wise (RT64 does the same for cameras), and the camera's jumps
+are what detect cuts.
+
+Measured over a walk/dialogue/combat run and a combat run (about 3,800 scenes):
+- About 85% of changed object matrices turn less than 10° per scene.
+- Element-wise blending shrank a 30° turn by 3.4% at the midpoint, and snapped every turn over about 30°.
+- The new blend cut the commands that snap from 567 to 104 and from 233 to 78. What is left is teleports and turns
+  over 120°.
+- The time cost was not measurable.
+
+**Cuts and teleports** are not blended. If the camera (the first matrix load in position mode) jumps by more than 0.5 in
+a rotation element or 16 units in translation, the scene is shown as it is. Any other matrix command that jumps that
+far keeps its new value. In normal play camera cuts do not happen (none in a long test run through the field, dialogue
+and combat). `--gx-probe` with interpolation logs how many matrix commands snapped each second.
+`--gx-dump-at-frame <n>` writes one scene's commands to `gx_scene.txt` (local only: it is game data), marking the
+parameters that changed since the previous scene.
 
 **Why not a variable-rate logic tick (delta time).** This was investigated (RESEARCH §2.3).
 - **Fixed step.** The logic is a fixed 30 Hz step. A frame limiter waits a fixed number of VBlanks per tick, and nothing
@@ -276,17 +295,6 @@ long test run through the field, dialogue and combat). `--gx-dump-at-frame <n>` 
 - **The software renderer** composites on the CPU line by line, so it stays at 60.
 - **Latency** is as described above: spreading each step evenly over the tick, as RT64 and Ship of Harkinian do, adds
   up to one tick.
-
-**Rotation blending (planned).** Measured over a walk/dialogue/combat run and a combat run (about 3,800 scenes, 164k
-changed matrix commands):
-- About 85% rotate under 10° between scenes and about 6% rotate 10-30°.
-- 0.3-0.6% rotate over 30°: fast turns, which `jumped()` currently snaps.
-- Element-wise lerp shrinks a 30° turn by 3.4% at the midpoint, and spaces the angle unevenly at other fractions.
-
-The plan is to decompose object matrices (polar decomposition of the 3×3 part into rotation and scale), slerp the
-rotation and lerp the rest. Turns up to about 120° would then blend, and anything mirrored or degenerate (zero scale)
-falls back to today's path. The camera stays element-wise, as in RT64. This matters more above 60 Hz, where the frames
-at 1/4 and 3/4 make uneven turns visible.
 
 **Object tagging (deferred).** RT64 tags matrices with IDs so it can pair objects exactly between frames.
 - **What it would fix here: little.** Measured: 95% of scenes have exactly the same command sequence as the previous
