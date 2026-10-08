@@ -52,6 +52,8 @@ LocalWireless* LocalWireless::get() {
     return link.get();
 }
 
+uint32_t LocalWireless::running() const { return shared_->claimed; }
+
 void LocalWireless::begin() {
     lock();
     read_offset_[0] = shared_->write_offset[0];

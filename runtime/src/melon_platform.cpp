@@ -23,6 +23,7 @@
 #include "Net_Slirp.h"
 #include "Platform.h"
 #include "SPI_Firmware.h"
+#include "instance_lan.hpp"
 #include "local_wireless.hpp"
 #include "runtime_internal.hpp"
 
@@ -344,10 +345,18 @@ int Net_SendPacket(u8* data, int len, void* userdata) {
         log_frame("out", data, len);
         log_https_request(*static_cast<ntr::RuntimeImpl*>(userdata), data, len);
     }
+    // Frames for other instances on this PC go to them; the rest to the internet (see instance_lan.hpp).
+    ntr::InstanceLan* lan = ntr::InstanceLan::get();
+    if (lan && lan->outgoing(data, len)) return len;
     return internet().SendPacket(data, len, 0);
 }
 int Net_RecvPacket(u8* data, void* userdata) {
-    const int len = internet().RecvPacket(data, 0);
+    ntr::InstanceLan* lan = ntr::InstanceLan::get();
+    int len = lan ? lan->incoming(data) : 0;
+    if (len <= 0) {
+        len = internet().RecvPacket(data, 0);
+        if (len > 0 && lan) lan->from_nat(data, len);
+    }
     if (len > 0 && net_log(userdata)) log_frame("in", data, len);
     return len;
 }

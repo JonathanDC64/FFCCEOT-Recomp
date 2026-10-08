@@ -101,8 +101,13 @@ Milestones are ordered by dependency. Each ends with a demonstrable result. Desi
 - [x] Reconnecting: the game's connection test reads a stale `errno` left by the stats server's session key (52200)
 - [ ] WiiLink WFC: its profanity check answers one result for any number of words since April 2026, and the game
       rejects it (error 33020); report it upstream
-- [ ] An online session with other players (2+ instances, then real DS/emulator clients); check that instances get
-      their own WFC user ID and friend code, and that these persist (firmware writes are not saved yet)
+- [x] An online session between two instances on one PC: each instance's console gets its own address on a LAN
+      between instances (`runtime/src/instance_lan.cpp`), since DWC connects to the private address of players behind
+      the same public address. Each instance has its own WFC user ID and friend code (derived from its MAC)
+- [ ] Guest input delay online: the game exchanges state about every 100 ms and the host decides, so a guest's
+      input waits for the next exchange and the host's reply (median 32 ms, up to ~95 ms after it is sent); the LAN between
+      instances adds only a few ms. Compare with local wireless and with real hardware before changing anything
+- [ ] Online with real DS/emulator clients; persist firmware writes (the WFC user ID is regenerated from the MAC today)
 - [ ] Determinism harness (input replay + per-frame state hashes)
 - [x] Local wireless between instances on one PC (MP frames through shared memory, own MAC per instance)
 - [ ] Local wireless between PCs: MP frames over UDP, discovery

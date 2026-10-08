@@ -15,6 +15,7 @@ public:
     static LocalWireless* get();
 
     int slot() const { return slot_; }
+    uint32_t running() const;  // the slots taken by running instances (bit i: slot i)
 
     // melonDS's MP interface, for this instance.
     void begin();

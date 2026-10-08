@@ -710,7 +710,8 @@ private:
     void flush_save() {
         frames_since_save_ = 0;
         if (!save_dirty_ || save_path_.empty() || read_only_save) return;
-        std::filesystem::create_directories(save_path_.parent_path());
+        std::error_code ec;  // (a bare file name has no folder to make)
+        if (save_path_.has_parent_path()) std::filesystem::create_directories(save_path_.parent_path(), ec);
         std::ofstream f(save_path_, std::ios::binary);
         f.write(reinterpret_cast<const char*>(save_.data()), std::streamsize(save_.size()));
         save_dirty_ = false;

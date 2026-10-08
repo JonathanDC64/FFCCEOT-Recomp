@@ -439,6 +439,10 @@ below comes with the flip-model presentation work (§5.5).
     `errno` when the test starts (`cfie_on_netcheck`).
   - `--net-log` logs DNS, TCP, the GameSpy text protocols and the conntest page, and, since HTTPS is encrypted on the
     wire, the NAS requests and answers the game builds in main RAM.
+  - Instances on one PC: every instance's NAT hands its console 10.64.0.16, but two players behind one public address
+    connect to each other's private address (DWC: "behind same NAT as me"). So each console gets 10.64.0.(16 + slot),
+    translated back to .16 toward its NAT (ARP, IP, DHCP; instance 0 needs nothing), and frames for another instance's
+    address go to it through shared memory, with ARP requests for it answered locally (`runtime/src/instance_lan.cpp`).
   - Cross-play with real DS/Wii clients works as long as our simulation is bit-exact (§4 Math, §5.3). That needs a long-running
     determinism test: two instances fed the same inputs must produce identical RAM hashes every frame.
 - **Local wireless, same PC (done)**: the game's own WM library runs on the emulated ARM7 and Wi-Fi hardware, so the
