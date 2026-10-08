@@ -8,6 +8,7 @@
 namespace cfie {
 GameEvents events;
 OnlineBuffer online_buffer = OnlineBuffer::Low;
+bool fast_saving = true;
 }  // namespace cfie
 
 namespace {
@@ -18,6 +19,7 @@ constexpr uint32_t kGuestSendAllowance = 0x0212F8A8 + 68;  // how many more inpu
 constexpr uint32_t kOnlineTiming = 0x0212FD28;              // the online timing table (see cfie_set_online_timing)
 constexpr uint32_t kNetwork = 0x0212F700;                   // the game's network state (+2: 0 alone, 2 online)
 constexpr uint32_t kNetworkIsOnline = 0x020AD998;           // (network): the Wi-Fi Connection is up
+constexpr uint32_t kCardCommon = 0x020FEE40;                // the card library's common state (cardi_common)
 }  // namespace
 
 extern "C" void cfie_os_irq_handler(NtrCpu* c) { ntr::nitro::irq_handler(c, kOsIrqTable, kOsIrqHandlerThreadSwitch); }
@@ -27,8 +29,11 @@ extern "C" void cfie_on_bgm_play(NtrCpu* c) {
     if (c->r[1] != 0) cfie::events.title_bgm_started = true;
 }
 
-// 0x020AD8C0: the game's network update, every tick (single player too: input goes through it).
-extern "C" void cfie_on_network_tick(NtrCpu* c) { cfie::events.multiplayer = ntr_rd8(c, kNetwork + 2) != 0; }
+// 0x02025260: CARDi_RequestStreamCommand. The game's save thread reads and writes the save 1 KB at a time, and the
+// card library hands each 256-byte page to the ARM7: a save of 25 KB took 3.2 s. Fast saving does it at once.
+extern "C" int cfie_card_backup_request(NtrCpu* c) {
+    return cfie::fast_saving && ntr::nitro::card_backup_request(c, kCardCommon);
+}
 
 // 0x02005BBC: the Wi-Fi Connection test (DWC netcheck). It converts the HTTP status with atoi and fails if errno is
 // ERANGE, but errno is never cleared: the stats server's session key (\sesskey\, read with atoi at 0x02040D02)

@@ -23,7 +23,7 @@ Milestones are ordered by dependency. Each ends with a demonstrable result. Desi
 - [x] Own table-driven decoder (ARMv5TE ARM + Thumb)
 - [x] Function discovery, jump tables (incl. the unbounded `add pc` division helpers), literal pools, interworking
 - [x] C emitter with direct calls, indirect calls through the runtime, overlay probes
-- [x] Hook system (`hooks.txt`: replace)
+- [x] Hook system (`hooks.txt`: replace, before, instead)
 - [x] Differential tests against Unicorn
 - [x] Interpreter fallback (melonDS ARMv5) and code regions (`regions.txt`)
 
@@ -76,8 +76,8 @@ Milestones are ordered by dependency. Each ends with a demonstrable result. Desi
 - [x] Hitches when attacks land (the game loads and sets up data past its tick): fast loading and CPU speed settings
       (on, 4x by default), cycle accounting per straight run of instructions; presses wait for the game's next read
 - [x] Fast saving (Game page, on by default): the game writes its save one 256-byte block per tick through the ARM7
-      (25 KB in 3.2 s); the frontend runs unseen and unheard at full speed while writes come in (0.2 s), except in
-      multiplayer sessions
+      (25 KB in 3.2 s); a hook on the card library's request does each read and write on the save memory at once
+      (45 ms, the game's own sleeps between 1 KB chunks), with no pause in the picture
 - [x] Rotation blending by decomposition + slerp (object matrices; camera stays element-wise)
 - [x] Feasibility of a variable-rate (delta time) logic tick: fixed 30 Hz step, not planned (§5.3)
 - [ ] Golden-image comparison vs reference rasteriser (local)

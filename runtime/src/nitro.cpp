@@ -100,6 +100,46 @@ void ntr_dsprot_not_detected(NtrCpu* c) { c->r[0] = 0; }
 
 namespace ntr::nitro {
 
+// CARDi_RequestStreamCommand(src, dst, len, callback, arg, is_async, req, retry, mode). The ARM9 hands each backup
+// request to the ARM7's card code, one page (256 bytes of EEPROM) at a time, each taking about a tick:
+// a few seconds for a save of tens of kilobytes. Here a synchronous read, write or verify is done on the save memory
+// itself, as on a save chip that takes no time.
+bool card_backup_request(NtrCpu* c, u32 common) {
+    enum : u32 { kReadBackup = 6, kWriteBackup = 7, kProgramBackup = 8, kVerifyBackup = 9 };
+    constexpr u32 kCommonFlags = 69 * 4, kFlagBusy = 4;  // a request in progress (an asynchronous one)
+    const u32 sp = c->r[13], src = c->r[0], dst = c->r[1], len = c->r[2];
+    const u32 is_async = ntr_rd32(c, sp + 4), req = ntr_rd32(c, sp + 8);
+    if (is_async || (ntr_rd32(c, common + kCommonFlags) & kFlagBusy)) return false;
+
+    RuntimeImpl& r = rt(c);
+    u8* save = r.nds->NDSCartSlot.GetSaveMemory();
+    const u32 size = r.nds->NDSCartSlot.GetSaveMemoryLength();
+    // Backup offset and RAM address.
+    const u32 offset = req == kReadBackup ? src : dst, ram = req == kReadBackup ? dst : src;
+    if (!save || offset > size || len > size - offset) return false;
+    bool same = true;
+    switch (req) {
+    case kReadBackup:
+        for (u32 i = 0; i < len; i++) ntr_wr8(c, ram + i, save[offset + i]);
+        break;
+    case kWriteBackup:
+    case kProgramBackup:
+        for (u32 i = 0; i < len; i++) save[offset + i] = u8(ntr_rd8(c, ram + i));
+        r.host.on_save(save, size);
+        break;
+    case kVerifyBackup:
+        for (u32 i = 0; i < len && same; i++) same = save[offset + i] == ntr_rd8(c, ram + i);
+        break;
+    default:
+        return false;
+    }
+    // The command block shared with the ARM7 (first word of the common state) starts with the result.
+    constexpr u32 kResultSuccess = 0, kResultFailure = 1;
+    ntr_wr32(c, ntr_rd32(c, common), same ? kResultSuccess : kResultFailure);
+    c->r[0] = same ? 1 : 0;
+    return true;
+}
+
 // OS_IrqHandler: acknowledges the lowest pending enabled IRQ, calls its handler from OS_IRQTable, then
 // runs OS_IrqHandler_ThreadSwitch (which the original enters by setting LR before jumping to the handler).
 void irq_handler(NtrCpu* c, uint32_t irq_table, uint32_t thread_switch) {

@@ -213,7 +213,8 @@ Analysis analyze(const Program& program) {
             out.warnings.push_back("hook target is not a known function: " + hex(h.addr));
             continue;
         }
-        (h.before ? out.functions[it->second].hook_before : out.functions[it->second].hook) = h.replacement;
+        Function& f = out.functions[it->second];
+        (h.instead ? f.hook_instead : h.before ? f.hook_before : f.hook) = h.replacement;
     }
     size_t seeds = out.functions.size();
 

@@ -58,6 +58,7 @@ struct Hook {
     uint32_t addr = 0;
     std::string replacement;  // C function name taking (NtrCpu*)
     bool before = false;      // call it on entry, then run the recompiled body (instead of replacing the body)
+    bool instead = false;     // call it on entry; it returns nonzero if it did the call, 0 to run the recompiled body
 };
 
 struct Config {
@@ -123,6 +124,7 @@ struct Function {
     std::string name;  // optional symbolic name
     std::string hook;  // non-empty: body replaced by a call to this C function
     std::string hook_before;  // non-empty: called on entry, before the recompiled body
+    std::string hook_instead;  // non-empty: called on entry; the recompiled body runs if it returns 0
     bool encrypted = false;
     std::map<uint32_t, Instr> instrs;
     std::set<uint32_t> labels;

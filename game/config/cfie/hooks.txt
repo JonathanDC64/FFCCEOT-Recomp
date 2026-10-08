@@ -1,7 +1,8 @@
 # Recompiler hooks for CFIE.
-# Format: <module> <address> replace|before <c_function>
+# Format: <module> <address> replace|before|instead <c_function>
 #   replace: the recompiled body is replaced by a call to the C function.
 #   before:  the C function is called on entry, then the recompiled body runs.
+#   instead: the C function (returning int) is called on entry; the recompiled body runs if it returns 0.
 
 # NitroSDK thread context switches: guest threads run on host fibers (runtime/src/nitro.cpp).
 main 0202c8e8 replace ntr_nitro_save_context   # OS_SaveContext
@@ -27,5 +28,5 @@ main 02005bbc before cfie_on_netcheck
 main 020addbc replace cfie_guest_inputs_to_send
 main 020ae314 replace cfie_set_online_timing
 
-# The game's network update: whether a multiplayer session is on (fast saving waits it out; game/src/main.cpp).
-main 020ad8c0 before cfie_on_network_tick
+# Save reads and writes (CARDi_RequestStreamCommand): with fast saving, done on the save memory at once.
+main 02025260 instead cfie_card_backup_request

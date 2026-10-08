@@ -75,6 +75,7 @@ public:
         }
         out_ += "    const uint32_t entry_lr = R(14);\n    (void)entry_lr;\n    NTR_ENTER(" + hexc(fn_.entry | (fn_.thumb ? 1u : 0u)) + ");\n    POLL();\n";
         if (!fn_.hook_before.empty()) out_ += "    " + fn_.hook_before + "(c);\n";
+        if (!fn_.hook_instead.empty()) out_ += "    if (" + fn_.hook_instead + "(c)) return;\n";
         for (const std::string& w : fn_.warnings) out_ += "    /* warning: " + w + " */\n";
         if (!fn_.instrs.empty() && fn_.instrs.begin()->first != fn_.entry) line(fmt("goto L_%08x;", fn_.entry));
 
@@ -748,13 +749,15 @@ EmitStats emit_c(const Program& program, const Analysis& analysis, const std::fi
     {
         std::ofstream h(out_dir / "funcs.h", std::ios::binary);
         h << banner << "#ifndef NTR_RECOMP_FUNCS_H\n#define NTR_RECOMP_FUNCS_H\n#include \"ntr/recomp.h\"\n\n";
-        std::set<std::string> hooks;
+        std::set<std::string> hooks, instead_hooks;
         for (const Function* f : order) {
             h << "void " << f->c_name() << "(NtrCpu* c);\n";
             if (!f->hook.empty()) hooks.insert(f->hook);
             if (!f->hook_before.empty()) hooks.insert(f->hook_before);
+            if (!f->hook_instead.empty()) instead_hooks.insert(f->hook_instead);
         }
         for (const std::string& hk : hooks) h << "void " << hk << "(NtrCpu* c);\n";
+        for (const std::string& hk : instead_hooks) h << "int " << hk << "(NtrCpu* c);\n";
         h << "\n#endif\n";
     }
 

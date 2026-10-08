@@ -148,7 +148,7 @@
                 <span class="label">Fast saving</span>
                 <input type="checkbox" data-checked="fast_saving"/>
             </div>
-            <p class="note">The game writes its save a little at a time, a few seconds at the DS's pace. Fast saving runs the game at full speed until it is done (not in multiplayer).</p>
+            <p class="note">The game writes its save a little at a time, a few seconds at the DS's pace. Fast saving writes it at once.</p>
         </div>
 
         <div class="page" data-if="tab == 'network'">

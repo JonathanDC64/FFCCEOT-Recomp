@@ -25,7 +25,7 @@ struct Settings {
     // Game
     bool skip_logos = true;
     bool fast_loading = true;  // cartridge reads without the card's delays
-    bool fast_saving = true;   // run at full speed while the game writes its save
+    bool fast_saving = true;   // save reads and writes at once instead of at the DS's pace
     int cpu_speed = 4;         // ARM9 clock: 1, 2 or 4 times the DS's
     // Online
     std::string online_server = "kaeru";  // a Wi-Fi Connection revival server (see online_dns), or a DNS address

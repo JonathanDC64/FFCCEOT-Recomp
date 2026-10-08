@@ -24,6 +24,11 @@ void ntr_dsprot_not_detected(NtrCpu* c);
 namespace ntr::nitro {
 /* OS_IrqHandler, given the addresses of OS_IRQTable and OS_IrqHandler_ThreadSwitch. */
 void irq_handler(NtrCpu* c, uint32_t irq_table, uint32_t thread_switch);
+
+/* CARDi_RequestStreamCommand, given the address of the card library's common state (cardi_common): a synchronous
+   backup read, write or verify, done on the save memory at once. Returns false (nothing done) for any other request,
+   which then has to run as usual. */
+bool card_backup_request(NtrCpu* c, uint32_t common);
 }  // namespace ntr::nitro
 #endif
 
