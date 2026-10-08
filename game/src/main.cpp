@@ -44,23 +44,85 @@ std::vector<uint8_t> read_file(const std::filesystem::path& p) {
 // Testing: scripted input (--input-script). One step per line, "<frame> <command> [args]", where <frame> is a frame
 // number or +N (N frames after the previous step's frame) and the commands are
 //   press A+Up [frames]    hold these DS buttons for a number of frames (default 1)
+//   tap A+Up               these DS buttons went down this frame, even if not held (a tap shorter than a frame)
 //   touch x,y [frames]     touch the bottom screen at a DS pixel (default 1 frame)
 //   shot file.png          save the window
 //   quit                   exit
-// Blank lines and lines starting with # are ignored. Script input adds to the real input.
+// Blank lines and lines starting with # are ignored. Script input adds to the real input. --record-input writes the
+// real input in this form, so a session can be replayed: the emulation is deterministic (the DS clock starts at the
+// same date on every boot) as long as the save file and the CPU speed and fast loading settings are the same.
 struct ScriptStep {
     uint64_t frame = 0, frames = 1;
-    uint32_t buttons = 0;
+    uint32_t buttons = 0, taps = 0;
     int touch_x = -1, touch_y = -1;
     std::string shot;
     bool quit = false;
 };
 
+const std::pair<const char*, uint32_t> kButtonNames[] = {
+    {"A", ntr::KeyA},   {"B", ntr::KeyB},       {"X", ntr::KeyX},       {"Y", ntr::KeyY},
+    {"L", ntr::KeyL},   {"R", ntr::KeyR},       {"Start", ntr::KeyStart}, {"Select", ntr::KeySelect},
+    {"Up", ntr::KeyUp}, {"Down", ntr::KeyDown}, {"Left", ntr::KeyLeft}, {"Right", ntr::KeyRight}};
+
+std::string button_names(uint32_t buttons) {
+    std::string s;
+    for (const auto& [n, bit] : kButtonNames)
+        if (buttons & bit) s += (s.empty() ? "" : "+") + std::string(n);
+    return s;
+}
+
+// --record-input: the input of every emulated frame, as input script steps (held buttons and touches as runs).
+class InputRecorder {
+public:
+    bool open(const std::filesystem::path& path) {
+        f_ = std::fopen(path.string().c_str(), "w");
+        if (!f_) return false;
+        std::fprintf(f_, "# recorded with --record-input\n");
+        return true;
+    }
+    ~InputRecorder() {
+        if (!f_) return;
+        end_runs(~0ull);
+        std::fclose(f_);
+    }
+    // The input for emulated frame `frame`: buttons held, buttons that went down since the last frame, the touch.
+    void add(uint64_t frame, uint32_t held, uint32_t pressed, bool touching, int x, int y) {
+        if (!f_) return;
+        const uint32_t edges = held & ~last_held_;
+        if (pressed & ~edges) std::fprintf(f_, "%llu tap %s\n", (unsigned long long)frame, button_names(pressed & ~edges).c_str());
+        if (held != last_held_ || touching != last_touching_ || (touching && (x != last_x_ || y != last_y_))) {
+            end_runs(frame);
+            if (held) held_from_ = frame;
+            if (touching) touch_from_ = frame;
+        }
+        last_held_ = held;
+        last_touching_ = touching;
+        last_x_ = x;
+        last_y_ = y;
+        last_frame_ = frame;
+    }
+
+private:
+    void end_runs(uint64_t frame) {
+        const uint64_t end = frame == ~0ull ? last_frame_ + 1 : frame;
+        if (last_held_)
+            std::fprintf(f_, "%llu press %s %llu\n", (unsigned long long)held_from_, button_names(last_held_).c_str(),
+                         (unsigned long long)(end - held_from_));
+        if (last_touching_)
+            std::fprintf(f_, "%llu touch %d,%d %llu\n", (unsigned long long)touch_from_, last_x_, last_y_,
+                         (unsigned long long)(end - touch_from_));
+        std::fflush(f_);
+    }
+
+    FILE* f_ = nullptr;
+    uint32_t last_held_ = 0;
+    bool last_touching_ = false;
+    int last_x_ = 0, last_y_ = 0;
+    uint64_t held_from_ = 0, touch_from_ = 0, last_frame_ = 0;
+};
+
 bool parse_buttons(const std::string& s, uint32_t& out) {
-    static const std::pair<const char*, uint32_t> kNames[] = {
-        {"A", ntr::KeyA},         {"B", ntr::KeyB},         {"X", ntr::KeyX},       {"Y", ntr::KeyY},
-        {"L", ntr::KeyL},         {"R", ntr::KeyR},         {"Start", ntr::KeyStart}, {"Select", ntr::KeySelect},
-        {"Up", ntr::KeyUp},       {"Down", ntr::KeyDown},   {"Left", ntr::KeyLeft}, {"Right", ntr::KeyRight}};
+    const auto& kNames = kButtonNames;
     out = 0;
     std::stringstream in(s);
     for (std::string name; std::getline(in, name, '+');) {
@@ -94,6 +156,7 @@ bool load_input_script(const std::filesystem::path& path, std::vector<ScriptStep
                                  : std::strtoull(when.c_str(), nullptr, 10);
         bool ok = true;
         if (cmd == "press") ok = parse_buttons(arg, s.buttons);
+        else if (cmd == "tap") ok = parse_buttons(arg, s.taps);
         else if (cmd == "touch") ok = std::sscanf(arg.c_str(), "%d,%d", &s.touch_x, &s.touch_y) == 2;
         else if (cmd == "shot") s.shot = arg, ok = !arg.empty();
         else if (cmd == "quit") s.quit = true;
@@ -533,10 +596,12 @@ private:
         }
         b &= ~(1u << 31);
         script_input(b, touching, sx, sy);
+        const int tx = std::clamp(int(sx), 0, kScreenW - 1), ty = std::clamp(int(sy), 0, kScreenH - 1);
+        recorder.add(frames_ + 1, b, presses_, touching, tx, ty);
         runtime_->set_buttons(b, presses_);
         presses_ = 0;
         if (touching)
-            runtime_->touch(std::clamp(int(sx), 0, kScreenW - 1), std::clamp(int(sy), 0, kScreenH - 1));
+            runtime_->touch(tx, ty);
         else
             runtime_->release_touch();
         input_active_ = b != 0 || touching;
@@ -551,6 +616,7 @@ private:
             if (!s.shot.empty()) screenshots.emplace(s.frame, s.shot);
             if (f >= s.frame + s.frames) continue;
             b |= s.buttons;
+            presses_ |= s.taps;
             if (s.touch_x >= 0) {
                 touching = true;
                 sx = float(s.touch_x);
@@ -696,6 +762,7 @@ public:
     uint64_t exit_after_frames = 0;  // 0 = run until the window closes
     std::map<uint64_t, std::string> screenshots;  // debugging: save the window at these frames
     std::vector<ScriptStep> script;  // testing: scripted input, in frame order
+    InputRecorder recorder;          // testing: --record-input (writes nothing unless opened)
     bool read_only_save = false;     // testing: the game may save, but nothing is written to disk
     bool unpaced = false;            // testing: run as fast as possible
     uint64_t menu_at_frame = 0;      // debugging: open the menu at this frame
@@ -773,6 +840,7 @@ int main(int argc, char** argv) {
                      "  --cpu-speed 1|2|4                    the ARM9 at this many times the DS's clock (default 4)\n"
                      "testing:\n"
                      "  --input-script <file>                scripted input, screenshots and exit (see main.cpp)\n"
+                     "  --record-input <file>                write the input of every frame as an input script\n"
                      "  --save-file <file>                   use this save file instead of the usual one\n"
                      "  --read-only-save                     never write the save file\n"
                      "  --no-settings                        ignore settings.ini (neither read nor written)\n"
@@ -807,6 +875,7 @@ int main(int argc, char** argv) {
     double virtual_display_hz = 144;
     std::map<uint64_t, std::string> screenshots;
     std::vector<ScriptStep> script;
+    std::filesystem::path record_path;
     std::string menu_tab, menu_keys;
     for (int i = 2; i < argc; i++) {
         const std::string a = argv[i];
@@ -859,6 +928,8 @@ int main(int argc, char** argv) {
             if (!load_input_script(argv[++i], script)) return 2;
             std::stable_sort(script.begin(), script.end(),
                              [](const ScriptStep& x, const ScriptStep& y) { return x.frame < y.frame; });
+        } else if (a == "--record-input" && has_value) {
+            record_path = argv[++i];
         } else if (a == "--save-file" && has_value)
             ++i;
         else if (a == "--no-settings" || a == "--read-only-save" || a == "--unpaced")
@@ -914,6 +985,10 @@ int main(int argc, char** argv) {
     host.exit_after_frames = exit_after_frames;
     host.screenshots = screenshots;
     host.script = std::move(script);
+    if (!record_path.empty() && !host.recorder.open(record_path)) {
+        std::fprintf(stderr, "cannot write %s\n", record_path.string().c_str());
+        return 2;
+    }
     host.read_only_save = read_only_save;
     host.unpaced = unpaced;
     host.virtual_display_hz = virtual_display_hz;
