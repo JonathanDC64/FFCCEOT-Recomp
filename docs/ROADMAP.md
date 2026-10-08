@@ -75,7 +75,9 @@ Milestones are ordered by dependency. Each ends with a demonstrable result. Desi
       pairing two different items
 - [x] Hitches when attacks land (the game loads and sets up data past its tick): fast loading and CPU speed settings
       (on, 4x by default), cycle accounting per straight run of instructions; presses wait for the game's next read
-- [ ] Fast saving option: finish the game's save writes at once instead of at the DS save chip's speed
+- [x] Fast saving (Game page, on by default): the game writes its save one 256-byte block per tick through the ARM7
+      (25 KB in 3.2 s); the frontend runs unseen and unheard at full speed while writes come in (0.2 s), except in
+      multiplayer sessions
 - [x] Rotation blending by decomposition + slerp (object matrices; camera stays element-wise)
 - [x] Feasibility of a variable-rate (delta time) logic tick: fixed 30 Hz step, not planned (§5.3)
 - [ ] Golden-image comparison vs reference rasteriser (local)

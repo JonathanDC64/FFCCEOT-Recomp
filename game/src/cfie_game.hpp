@@ -8,6 +8,8 @@ namespace cfie {
 struct GameEvents {
     // Background music started for the first time: the title screen (nothing before it plays BGM).
     bool title_bgm_started = false;
+    // In a multiplayer session (local wireless or online), as of the game's last tick.
+    bool multiplayer = false;
 };
 
 extern GameEvents events;

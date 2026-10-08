@@ -144,6 +144,11 @@
                 </select>
             </div>
             <p class="note">When an attack lands, the game loads and sets up data for longer than a frame, and the picture hitches (on the DS too). Fast loading and a faster CPU remove the hitch. The short freeze on a combo's last hit is the game's own.</p>
+            <div class="row nav">
+                <span class="label">Fast saving</span>
+                <input type="checkbox" data-checked="fast_saving"/>
+            </div>
+            <p class="note">The game writes its save a little at a time, a few seconds at the DS's pace. Fast saving runs the game at full speed until it is done (not in multiplayer).</p>
         </div>
 
         <div class="page" data-if="tab == 'network'">

@@ -26,3 +26,6 @@ main 02005bbc before cfie_on_netcheck
 # Online play buffers inputs much more than local wireless, so a guest's controls lag (game/src/cfie_hooks.cpp).
 main 020addbc replace cfie_guest_inputs_to_send
 main 020ae314 replace cfie_set_online_timing
+
+# The game's network update: whether a multiplayer session is on (fast saving waits it out; game/src/main.cpp).
+main 020ad8c0 before cfie_on_network_tick

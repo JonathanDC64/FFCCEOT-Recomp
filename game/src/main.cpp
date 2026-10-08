@@ -269,6 +269,12 @@ public:
             menu_key_pos_ = 0;
         }
         if (menu_.is_open()) return run_menu(frame);
+        if (frames_ < fast_save_until_) {
+            // Fast saving: the game writes its save one block a tick, a few seconds at the DS's pace. Run through
+            // it unseen and unheard at full speed (the picture stays on the save message).
+            if (script_quit_ && frames_ >= script_quit_) return false;
+            return true;
+        }
         const auto shot = screenshots.find(frames_);
         const char* shot_path = shot != screenshots.end() ? shot->second.c_str() : nullptr;
         if (runtime_->video().display_rate) {
@@ -284,7 +290,7 @@ public:
     }
 
     void on_audio(const int16_t* samples, size_t frames) override {
-        if (!audio_ || skipping_) return;
+        if (!audio_ || skipping_ || frames_ < fast_save_until_) return;
         // Keep latency bounded: drop audio if the queue grows past ~100 ms.
         if (SDL_GetAudioStreamQueued(audio_) > 48000 * 4 / 10) return;
         SDL_PutAudioStreamData(audio_, samples, int(frames * 4));
@@ -293,6 +299,8 @@ public:
     void on_save(const uint8_t* data, size_t size) override {
         save_.assign(data, data + size);
         save_dirty_ = true;
+        // The other consoles in a multiplayer session keep real time.
+        if (settings.fast_saving && !cfie::events.multiplayer) fast_save_until_ = frames_ + kFastSaveFrames;
     }
     // Kept beside the save (cfie.sav: cfie.wfc), so a save keeps its friend code in every instance.
     void on_wifi_settings(const uint8_t* data, size_t size) override {
@@ -749,6 +757,9 @@ private:
     uint64_t frames_ = 0;
 
     bool skipping_ = false;
+    uint64_t fast_save_until_ = 0;  // fast saving: run unpaced until this frame
+    // How long fast saving lasts after a save write: the game writes a block every tick (2 frames).
+    static constexpr uint64_t kFastSaveFrames = 30;
     bool input_active_ = false;
     bool input_hold_ = false;
     bool app_down_[input::kActionCount] = {};  // app action inputs held last frame

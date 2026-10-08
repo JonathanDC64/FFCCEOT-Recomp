@@ -77,6 +77,7 @@ struct State {
     int volume = 100;
     bool skip_logos = true;
     bool fast_loading = true;
+    bool fast_saving = true;
     int cpu_speed = 2;  // 0 = the DS's clock, 1 = twice, 2 = four times
     int online_server = 0;   // 0 = Kaeru WFC, 1 = WiiLink WFC, 2 = custom
     Rml::String custom_dns;  // the custom server's DNS address
@@ -252,6 +253,7 @@ struct Menu::Impl {
         state.volume = s.volume;
         state.skip_logos = s.skip_logos;
         state.fast_loading = s.fast_loading;
+        state.fast_saving = s.fast_saving;
         state.cpu_speed = s.cpu_speed >= 4 ? 2 : s.cpu_speed >= 2 ? 1 : 0;
         state.online_server = s.online_server == "kaeru" ? 0 : s.online_server == "wiilink" ? 1 : 2;
         if (state.online_server == 2) state.custom_dns = s.online_server;
@@ -282,6 +284,7 @@ struct Menu::Impl {
         s.volume = std::clamp(state.volume, 0, 100);
         s.skip_logos = state.skip_logos;
         s.fast_loading = state.fast_loading;
+        s.fast_saving = state.fast_saving;
         s.cpu_speed = 1 << std::clamp(state.cpu_speed, 0, 2);
         std::array<uint8_t, 4> dns;
         if (state.online_server < 2)
@@ -436,6 +439,7 @@ bool Menu::init(SDL_Window* window, Settings* settings, bool compute_available) 
     c.Bind("volume", &s.volume);
     c.Bind("skip_logos", &s.skip_logos);
     c.Bind("fast_loading", &s.fast_loading);
+    c.Bind("fast_saving", &s.fast_saving);
     c.Bind("cpu_speed", &s.cpu_speed);
     c.Bind("online_server", &s.online_server);
     c.Bind("custom_dns", &s.custom_dns);

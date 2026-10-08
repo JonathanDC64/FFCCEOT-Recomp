@@ -95,6 +95,7 @@ const Field kFields[] = {
           [](Settings& s, const std::string& v) { return parse_int(v, 0, 100, s.volume); }},
     BOOL_FIELD("game.skip_logos", skip_logos),
     BOOL_FIELD("game.fast_loading", fast_loading),
+    BOOL_FIELD("game.fast_saving", fast_saving),
     Field{"game.cpu_speed", [](const Settings& s) { return std::to_string(s.cpu_speed); },
           [](Settings& s, const std::string& v) {
               int n;
