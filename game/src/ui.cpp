@@ -80,6 +80,7 @@ struct State {
     int cpu_speed = 2;  // 0 = the DS's clock, 1 = twice, 2 = four times
     int online_server = 0;   // 0 = Kaeru WFC, 1 = WiiLink WFC, 2 = custom
     Rml::String custom_dns;  // the custom server's DNS address
+    int online_buffer = 0;   // 0 = low, 1 = medium, 2 = the game's own
     bool stick_moves = true;
     int deadzone = 35;
     bool operator==(const State&) const = default;
@@ -254,6 +255,7 @@ struct Menu::Impl {
         state.cpu_speed = s.cpu_speed >= 4 ? 2 : s.cpu_speed >= 2 ? 1 : 0;
         state.online_server = s.online_server == "kaeru" ? 0 : s.online_server == "wiilink" ? 1 : 2;
         if (state.online_server == 2) state.custom_dns = s.online_server;
+        state.online_buffer = int(s.online_buffer);
         state.stick_moves = s.controls.stick_moves;
         state.deadzone = s.controls.deadzone;
         applied = state;
@@ -286,6 +288,7 @@ struct Menu::Impl {
             s.online_server = state.online_server == 0 ? "kaeru" : "wiilink";
         else if (online_dns(state.custom_dns, dns))  // (a partly typed address leaves the server as it was)
             s.online_server = state.custom_dns;
+        s.online_buffer = cfie::OnlineBuffer(std::clamp(state.online_buffer, 0, 2));
         s.controls.stick_moves = state.stick_moves;
         s.controls.deadzone = std::clamp(state.deadzone, 5, 90);
         applied = state;
@@ -437,6 +440,7 @@ bool Menu::init(SDL_Window* window, Settings* settings, bool compute_available) 
     c.Bind("online_server", &s.online_server);
     c.Bind("custom_dns", &s.custom_dns);
     c.Bind("editing_dns", &m.editing_dns);
+    c.Bind("online_buffer", &s.online_buffer);
     c.BindEventCallback("edit_dns", [&m](Rml::DataModelHandle, Rml::Event&, const Rml::VariantList&) {
         if (!m.editing_dns) m.start_dns_edit();
     });

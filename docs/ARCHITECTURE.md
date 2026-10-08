@@ -447,7 +447,8 @@ below comes with the flip-model presentation work (§5.5).
     Wi-Fi settings) in firmware, so writes to them are kept beside the save (`cfie.wfc`) and put back at boot.
   - Online timing: the game runs online play with far more buffering than local wireless (a guest sends its inputs 3
     frames at a time, the host holds them at least 5 frames and runs 3 at a time). Two hooks give it local wireless
-    margins, with the host's buffer still growing with the ping (`game/src/cfie_hooks.cpp`).
+    margins, with the host's buffer still growing with the ping (`game/src/cfie_hooks.cpp`). The Network tab's input
+    buffer setting (`online.buffer`: low, medium, original) picks these margins, twice them, or the game's own timing.
   - Cross-play with real DS/Wii clients works as long as our simulation is bit-exact (§4 Math, §5.3). That needs a long-running
     determinism test: two instances fed the same inputs must produce identical RAM hashes every frame.
 - **Local wireless, same PC (done)**: the game's own WM library runs on the emulated ARM7 and Wi-Fi hardware, so the

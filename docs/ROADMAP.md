@@ -111,7 +111,8 @@ Milestones are ordered by dependency. Each ends with a demonstrable result. Desi
       on the host at least 5 frames (about 200 ms in all); hooks give online play local wireless margins, with the
       buffer still growing with the ping (`game/src/cfie_hooks.cpp`)
 - [ ] Online with real DS/emulator clients, and a save launched in another instance (another MAC) keeping its account
-- [ ] Network tab: a larger online input buffer for poor connections, if late packets make play stutter
+- [x] Network tab: input buffer (Low delay by default, Medium, or the game's Original) for connections whose packets
+      come late
 - [ ] Determinism harness (input replay + per-frame state hashes)
 - [x] Local wireless between instances on one PC (MP frames through shared memory, own MAC per instance)
 - [ ] Local wireless between PCs: MP frames over UDP, discovery

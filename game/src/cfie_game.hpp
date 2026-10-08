@@ -12,4 +12,8 @@ struct GameEvents {
 
 extern GameEvents events;
 
+// Online play: how much the host buffers a guest's inputs (see cfie_set_online_timing).
+enum class OnlineBuffer { Low, Medium, Original };
+extern OnlineBuffer online_buffer;
+
 }  // namespace cfie

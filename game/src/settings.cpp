@@ -51,6 +51,7 @@ const char* const kLayouts[] = {"single", "main-side", "stacked", "side"};
 const char* const kAligns[] = {"top", "middle", "bottom"};
 const char* const kRenderers[] = {"software", "opengl", "compute"};
 const char* const kFilters[] = {"nearest", "linear", "sharp"};
+const char* const kOnlineBuffers[] = {"low", "medium", "original"};
 
 #define BOOL_FIELD(key, member)                                                   \
     Field {                                                                       \
@@ -108,6 +109,7 @@ const Field kFields[] = {
               s.online_server = v;
               return true;
           }},
+    ENUM_FIELD("online.buffer", online_buffer, kOnlineBuffers),
     BOOL_FIELD("controls.stick_moves", controls.stick_moves),
     Field{"controls.deadzone", [](const Settings& s) { return std::to_string(s.controls.deadzone); },
           [](Settings& s, const std::string& v) { return parse_int(v, 5, 90, s.controls.deadzone); }},

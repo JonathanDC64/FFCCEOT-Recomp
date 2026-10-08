@@ -3,6 +3,7 @@
 
 #include <filesystem>
 
+#include "cfie_game.hpp"
 #include "input.hpp"
 #include "ntr/runtime.hpp"
 #include "video.hpp"
@@ -27,6 +28,7 @@ struct Settings {
     int cpu_speed = 4;         // ARM9 clock: 1, 2 or 4 times the DS's
     // Online
     std::string online_server = "kaeru";  // a Wi-Fi Connection revival server (see online_dns), or a DNS address
+    cfie::OnlineBuffer online_buffer = cfie::OnlineBuffer::Low;
     // Controls
     input::Bindings controls = input::Bindings::defaults();
 };

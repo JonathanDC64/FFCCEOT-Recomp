@@ -419,6 +419,7 @@ private:
         if (settings.fullscreen != fullscreen_) set_fullscreen(settings.fullscreen);
         update_layout();
         if (audio_) SDL_SetAudioStreamGain(audio_, settings.volume / 100.0f);
+        cfie::online_buffer = settings.online_buffer;
         title_dirty_ = true;
     }
 
@@ -1026,6 +1027,7 @@ int main(int argc, char** argv) {
     options.fast_cart = host.settings.fast_loading;
     options.cpu_speed = host.settings.cpu_speed;
     online_dns(host.settings.online_server, options.online_dns);
+    cfie::online_buffer = host.settings.online_buffer;
 
     ntr::GameCode code{ntr_recomp_functions, ntr_recomp_function_count, ntr_recomp_overlays, ntr_recomp_overlay_count};
     auto runtime = ntr::Runtime::create(std::move(rom), code, host, std::move(options));
