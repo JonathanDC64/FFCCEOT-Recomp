@@ -78,6 +78,8 @@ Milestones are ordered by dependency. Each ends with a demonstrable result. Desi
 - [x] Fast saving (Game page, on by default): the game writes its save one 256-byte block per tick through the ARM7
       (25 KB in 3.2 s); a hook on the card library's request does each read and write on the save memory at once
       (45 ms, the game's own sleeps between 1 KB chunks), with no pause in the picture
+- [ ] Save screen (later, with fast saving): the message stays up about 0.25 s after the save is done, inside 1.3 s of
+      fades and hold (measured at the first Wi-Fi save, frames 4420-4500); shorten the hold, maybe the fades
 - [x] Rotation blending by decomposition + slerp (object matrices; camera stays element-wise)
 - [x] Feasibility of a variable-rate (delta time) logic tick: fixed 30 Hz step, not planned (§5.3)
 - [ ] Golden-image comparison vs reference rasteriser (local)
