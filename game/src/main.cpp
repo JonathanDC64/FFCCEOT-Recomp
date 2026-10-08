@@ -4,7 +4,8 @@
 //
 // Shows the screens in a choice of layouts (by default the top screen with the bottom one as a picture-in-picture),
 // with keyboard/gamepad input, touch via the mouse and audio output. Video goes through OpenGL, which also lets
-// melonDS render the screens at a multiple of the DS resolution.
+// melonDS render the screens at a multiple of the DS resolution. Esc (or Guide / Back + Start) opens the settings
+// menu, which pauses the game; the settings are kept in settings.ini next to the save.
 #include <SDL3/SDL.h>
 
 #include <algorithm>
@@ -21,6 +22,8 @@
 #include "cfie_game.hpp"
 #include "ntr/rom.hpp"
 #include "ntr/runtime.hpp"
+#include "settings.hpp"
+#include "ui.hpp"
 #include "video.hpp"
 
 namespace {
@@ -34,15 +37,6 @@ std::vector<uint8_t> read_file(const std::filesystem::path& p) {
     return std::vector<uint8_t>(std::istreambuf_iterator<char>(f), {});
 }
 
-// Video choices: the renderer and its internal resolution, and how the result is scaled to the window.
-struct VideoChoice {
-    ntr::Renderer renderer = ntr::Renderer::OpenGL;
-    int scale = 0;  // 0 = match the window
-    video::Filter filter = video::Filter::Linear;
-    bool better_polygons = false;
-    bool hires_coordinates = true;
-};
-
 class SdlHost final : public ntr::Host {
 public:
     bool init(const std::filesystem::path& save_path) {
@@ -51,8 +45,9 @@ public:
             std::fprintf(stderr, "SDL_Init failed: %s\n", SDL_GetError());
             return false;
         }
-        const bool wide = layout.layout == video::Layout::Single || layout.layout == video::Layout::MainSide;
-        const bool stacked = layout.layout == video::Layout::Stacked;
+        const video::Layout l = settings.layout.layout;
+        const bool wide = l == video::Layout::Single || l == video::Layout::MainSide;
+        const bool stacked = l == video::Layout::Stacked;
         window_ = SDL_CreateWindow(kTitle, wide ? 1280 : stacked ? kScreenW * 3 : kScreenW * 2 * 3,
                                    wide ? 720 : stacked ? kScreenH * 2 * 3 : kScreenH * 3,
                                    SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY);
@@ -61,35 +56,42 @@ public:
             return false;
         }
         update_layout();
+        if (!menu_.init(window_, &settings, presenter_.has_compute()))
+            std::fprintf(stderr, "the settings menu is unavailable\n");
 
         SDL_AudioSpec spec{SDL_AUDIO_S16, 2, 48000};
         audio_ = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &spec, nullptr, nullptr);
-        if (audio_) SDL_ResumeAudioStreamDevice(audio_);
+        if (audio_) {
+            SDL_SetAudioStreamGain(audio_, settings.volume / 100.0f);
+            SDL_ResumeAudioStreamDevice(audio_);
+        }
         next_frame_ = std::chrono::steady_clock::now();
-        skipping_ = skip_logos;
-        if (skipping_) presenter_.present(nullptr, choice.filter);  // black until the title screen
+        skipping_ = settings.skip_logos;
+        if (skipping_) presenter_.present(nullptr, settings.filter);  // black until the title screen
         return true;
     }
 
     ~SdlHost() override {
         flush_save();
+        if (settings_dirty_) save_settings(settings_path, settings);
+        menu_.shutdown();
         if (audio_) SDL_DestroyAudioStream(audio_);
         presenter_.shutdown();
         if (window_) SDL_DestroyWindow(window_);
         SDL_Quit();
     }
 
-    // The renderer settings `choice` asks for at the current window size.
+    // The renderer settings that `settings` asks for at the current window size.
     ntr::VideoSettings wanted_video() const {
         ntr::VideoSettings v;
-        v.renderer = choice.renderer;
+        v.renderer = settings.renderer;
         if (v.renderer == ntr::Renderer::Compute && !presenter_.has_compute()) v.renderer = ntr::Renderer::OpenGL;
         // Match the window: render at least as many pixels as a screen covers (any excess is filtered down).
-        v.scale = choice.scale ? choice.scale
-                               : std::clamp(int(std::ceil(presenter_.largest_screen_height() / kScreenH - 0.01f)), 1, 16);
+        v.scale = settings.scale ? settings.scale
+                                 : std::clamp(int(std::ceil(presenter_.largest_screen_height() / kScreenH - 0.01f)), 1, 16);
         if (v.renderer == ntr::Renderer::Software) v.scale = 1;  // native only
-        v.better_polygons = choice.better_polygons;
-        v.hires_coordinates = choice.hires_coordinates;
+        v.better_polygons = settings.better_polygons;
+        v.hires_coordinates = settings.hires_coordinates;
         return v;
     }
 
@@ -104,7 +106,7 @@ public:
         if (title_dirty_) update_title();  // before handling input: a change made last frame is now in effect
         if (!pump_events()) return false;
         ++frames_;
-        if (exit_after_frames && frames_ >= exit_after_frames) return false;
+        if (exit_after_frames && frames_ >= exit_after_frames && frames_ != menu_at_frame) return false;
         if (skipping_) {
             // The company logos before the title cannot be skipped in the game: run through them unseen and
             // unheard at full speed. Stop at the title music, on any input, or after a safety limit.
@@ -112,8 +114,10 @@ public:
             skipping_ = false;
             next_frame_ = std::chrono::steady_clock::now();
         }
+        if (menu_at_frame && frames_ == menu_at_frame) open_menu();
+        if (menu_.is_open()) return run_menu(frame);
         const bool shot = screenshot_frame && frames_ == screenshot_frame;
-        presenter_.present(&frame, choice.filter, shot ? screenshot_path.c_str() : nullptr);
+        presenter_.present(&frame, settings.filter, shot ? screenshot_path.c_str() : nullptr);
         if (++frames_since_save_ > 120) flush_save();
         pace();
         return true;
@@ -135,29 +139,23 @@ private:
     bool pump_events() {
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
+            if (!handle_common_event(e)) return false;
             switch (e.type) {
-            case SDL_EVENT_QUIT: return false;
             case SDL_EVENT_KEY_DOWN:
-                if (e.key.key == SDLK_ESCAPE) return false;
-                if (!e.key.repeat) hotkey(e.key.key);
+                if (e.key.key == SDLK_ESCAPE) open_menu();
+                else if (!e.key.repeat) hotkey(e.key.key);
                 break;
-            case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
-                update_layout();
-                sync_video();
+            case SDL_EVENT_GAMEPAD_BUTTON_DOWN: {
+                // Right stick click shows or hides the second screen; Guide, or Back and Start together, opens
+                // the menu.
+                const auto b = SDL_GamepadButton(e.gbutton.button);
+                const auto held = [&](SDL_GamepadButton o) { return gamepad_ && SDL_GetGamepadButton(gamepad_, o); };
+                if (b == SDL_GAMEPAD_BUTTON_RIGHT_STICK) hotkey(SDLK_F3);
+                else if (b == SDL_GAMEPAD_BUTTON_GUIDE || (b == SDL_GAMEPAD_BUTTON_START && held(SDL_GAMEPAD_BUTTON_BACK)) ||
+                         (b == SDL_GAMEPAD_BUTTON_BACK && held(SDL_GAMEPAD_BUTTON_START)))
+                    open_menu();
                 break;
-            case SDL_EVENT_GAMEPAD_BUTTON_DOWN:
-                // Right stick click shows or hides the second screen.
-                if (e.gbutton.button == SDL_GAMEPAD_BUTTON_RIGHT_STICK) hotkey(SDLK_F3);
-                break;
-            case SDL_EVENT_GAMEPAD_ADDED:
-                if (!gamepad_) gamepad_ = SDL_OpenGamepad(e.gdevice.which);
-                break;
-            case SDL_EVENT_GAMEPAD_REMOVED:
-                if (gamepad_ && SDL_GetGamepadID(gamepad_) == e.gdevice.which) {
-                    SDL_CloseGamepad(gamepad_);
-                    gamepad_ = nullptr;
-                }
-                break;
+            }
             default: break;
             }
         }
@@ -165,10 +163,91 @@ private:
         return true;
     }
 
-    // Hotkeys (until there is a settings menu): F1 layout, F2 swap screens, F3 second screen on/off (single screen),
-    // F4 side screen position (main + side), F5 renderer, F6/F7 resolution down/up, F8 filter, F11 fullscreen.
-    // Stepping the resolution past 1x or 16x returns to matching the window.
+    // Events handled the same way whether or not the menu is open. Returns false to quit.
+    bool handle_common_event(const SDL_Event& e) {
+        switch (e.type) {
+        case SDL_EVENT_QUIT: return false;
+        case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
+            update_layout();
+            sync_video();
+            break;
+        case SDL_EVENT_GAMEPAD_ADDED:
+            if (!gamepad_) gamepad_ = SDL_OpenGamepad(e.gdevice.which);
+            break;
+        case SDL_EVENT_GAMEPAD_REMOVED:
+            if (gamepad_ && SDL_GetGamepadID(gamepad_) == e.gdevice.which) {
+                SDL_CloseGamepad(gamepad_);
+                gamepad_ = nullptr;
+            }
+            break;
+        default: break;
+        }
+        return true;
+    }
+
+    void open_menu() {
+        if (menu_.is_open()) return;
+        menu_.open();
+        if (menu_.is_open() && audio_) SDL_PauseAudioStreamDevice(audio_);
+        input_hold_ = true;  // whatever opened the menu is not game input
+    }
+
+    // The game is paused while the menu is open: this frame stays on screen under the menu until it closes.
+    bool run_menu(const ntr::Frame& frame) {
+        int menu_frames = 0;
+        while (menu_.is_open()) {
+            SDL_Event e;
+            while (SDL_PollEvent(&e)) {
+                if (!handle_common_event(e)) return false;
+                if (e.type == SDL_EVENT_KEY_DOWN && e.key.key == SDLK_F11 && !e.key.repeat) {
+                    toggle_fullscreen();
+                    menu_.reload();
+                } else {
+                    menu_.handle_event(e);
+                }
+            }
+            if (menu_.quit_requested) return false;
+
+            int w = 0, h = 0;
+            SDL_GetWindowSizeInPixels(window_, &w, &h);
+            presenter_.draw(&frame, settings.filter);
+            menu_.render(w, h);
+            if (menu_.changed) {
+                menu_.changed = false;
+                apply_settings();
+            }
+            // Debugging: a screenshot asked for at or before this frame is taken once the menu has settled.
+            const bool shot = screenshot_frame && frames_ >= screenshot_frame && ++menu_frames == 10;
+            presenter_.swap(shot ? screenshot_path.c_str() : nullptr);
+            if (shot && exit_after_frames && frames_ >= exit_after_frames) return false;
+            SDL_Delay(15);
+        }
+        // Resumed: renderer changes take effect now, and the game picks up where it was.
+        sync_video();
+        if (settings_dirty_) {
+            save_settings(settings_path, settings);
+            settings_dirty_ = false;
+        }
+        if (audio_) SDL_ResumeAudioStreamDevice(audio_);
+        input_hold_ = true;  // the button or key that closed the menu is not game input either
+        next_frame_ = std::chrono::steady_clock::now();
+        return true;
+    }
+
+    // Puts edited settings into effect (except the renderer ones, which wait for the game to resume).
+    void apply_settings() {
+        settings_dirty_ = true;
+        if (settings.fullscreen != fullscreen_) set_fullscreen(settings.fullscreen);
+        update_layout();
+        if (audio_) SDL_SetAudioStreamGain(audio_, settings.volume / 100.0f);
+        title_dirty_ = true;
+    }
+
+    // Hotkeys: F1 layout, F2 swap screens, F3 second screen on/off (single screen), F4 side screen position
+    // (main + side), F5 renderer, F6/F7 resolution down/up, F8 filter, F11 fullscreen. Stepping the resolution past
+    // 1x or 16x returns to matching the window.
     void hotkey(SDL_Keycode key) {
+        video::LayoutSettings& layout = settings.layout;
         const int scale = runtime_->video().scale;
         switch (key) {
         case SDLK_F11: toggle_fullscreen(); return;
@@ -182,26 +261,19 @@ private:
             if (layout.layout != video::Layout::MainSide) return;
             layout.side_align = video::Align((int(layout.side_align) + 1) % 3);
             break;
-        default: break;
-        }
-        if (key == SDLK_F1 || key == SDLK_F2 || key == SDLK_F3 || key == SDLK_F4) {
-            update_layout();
-            sync_video();
-            title_dirty_ = true;
-            return;
-        }
-        switch (key) {
-        case SDLK_F5: choice.renderer = ntr::Renderer((int(choice.renderer) + 1) % 3); break;
-        case SDLK_F6: choice.scale = choice.scale == 0 ? std::max(1, scale - 1) : choice.scale - 1; break;
-        case SDLK_F7: choice.scale = choice.scale == 0 ? std::min(16, scale + 1) : (choice.scale + 1) % 17; break;
-        case SDLK_F8: choice.filter = video::Filter((int(choice.filter) + 1) % 3); break;
+        case SDLK_F5: settings.renderer = ntr::Renderer((int(settings.renderer) + 1) % 3); break;
+        case SDLK_F6: settings.scale = settings.scale == 0 ? std::max(1, scale - 1) : settings.scale - 1; break;
+        case SDLK_F7: settings.scale = settings.scale == 0 ? std::min(16, scale + 1) : (settings.scale + 1) % 17; break;
+        case SDLK_F8: settings.filter = video::Filter((int(settings.filter) + 1) % 3); break;
         default: return;
         }
+        settings_dirty_ = true;
+        update_layout();
         sync_video();
         title_dirty_ = true;
     }
 
-    // Asks the runtime for new renderer settings when the choice or the window size calls for them.
+    // Asks the runtime for new renderer settings when the settings or the window size call for them.
     void sync_video() {
         const ntr::VideoSettings v = wanted_video();
         if (v.renderer == sent_video_.renderer && v.scale == sent_video_.scale &&
@@ -215,6 +287,7 @@ private:
     // The title shows the video settings in use (a change applies at the end of the frame that made it).
     void update_title() {
         title_dirty_ = false;
+        const video::LayoutSettings& layout = settings.layout;
         const ntr::VideoSettings v = runtime_->video();
         std::string t = std::string(kTitle) + "  |  " + video::layout_name(layout.layout);
         if (layout.layout == video::Layout::Single)
@@ -226,9 +299,8 @@ private:
             t += " (swapped)";
         t += std::string(", ") + ntr::renderer_name(v.renderer);
         if (v.renderer != ntr::Renderer::Software)
-            t += " " + std::to_string(v.scale) + "x" + (choice.scale ? "" : " (auto)");
-        t += std::string(", ") + video::filter_name(choice.filter) +
-             " filter  |  F1-F4 screens, F5-F8 video, F11 fullscreen";
+            t += " " + std::to_string(v.scale) + "x" + (settings.scale ? "" : " (auto)");
+        t += std::string(", ") + video::filter_name(settings.filter) + " filter  |  Esc settings";
         SDL_SetWindowTitle(window_, t.c_str());
     }
 
@@ -236,6 +308,7 @@ public:
     // Borderless fullscreen: a borderless window over the whole display, so the display mode never changes and
     // switching away is seamless.
     void set_fullscreen(bool on) {
+        settings.fullscreen = on;
         if (on == fullscreen_) return;
 #ifdef _WIN32
         // On Windows a GL window that exactly covers the monitor gets promoted to exclusive-style presentation by
@@ -273,13 +346,16 @@ public:
     }
 
 private:
-    void toggle_fullscreen() { set_fullscreen(!fullscreen_); }
+    void toggle_fullscreen() {
+        set_fullscreen(!fullscreen_);
+        settings_dirty_ = true;
+    }
 
     void update_layout() {
         int w = 0, h = 0, pw = 0, ph = 0;
         SDL_GetWindowSize(window_, &w, &h);
         SDL_GetWindowSizeInPixels(window_, &pw, &ph);
-        presenter_.layout(pw, ph, layout);
+        presenter_.layout(pw, ph, settings.layout);
         pixel_ratio_ = w > 0 ? float(pw) / w : 1.0f;
     }
 
@@ -326,18 +402,26 @@ private:
             if (ly < -dead) b |= ntr::KeyUp;
             if (ly > dead) b |= ntr::KeyDown;
         }
-        runtime_->set_buttons(b);
 
         // Mouse on the bottom screen (wherever the layout puts it, picture-in-picture included) = stylus.
-        float mx, my;
-        SDL_MouseButtonFlags mb = SDL_GetMouseState(&mx, &my);
-        bool touching = false;
-        float sx, sy;
-        if ((mb & SDL_BUTTON_LMASK) && presenter_.screen_at(mx * pixel_ratio_, my * pixel_ratio_, &sx, &sy) == 1) {
-            runtime_->touch(std::clamp(int(sx), 0, kScreenW - 1), std::clamp(int(sy), 0, kScreenH - 1));
-            touching = true;
+        float mx, my, sx = 0, sy = 0;
+        const SDL_MouseButtonFlags mb = SDL_GetMouseState(&mx, &my);
+        bool touching =
+            (mb & SDL_BUTTON_LMASK) && presenter_.screen_at(mx * pixel_ratio_, my * pixel_ratio_, &sx, &sy) == 1;
+        if (mb & SDL_BUTTON_LMASK) b |= 1u << 31;  // (only for the hold below: any click)
+
+        // Around the menu, input is ignored until everything is let go.
+        if (input_hold_) {
+            if (b == 0) input_hold_ = false;
+            b = 0;
+            touching = false;
         }
-        if (!touching) runtime_->release_touch();
+        b &= ~(1u << 31);
+        runtime_->set_buttons(b);
+        if (touching)
+            runtime_->touch(std::clamp(int(sx), 0, kScreenW - 1), std::clamp(int(sy), 0, kScreenH - 1));
+        else
+            runtime_->release_touch();
         input_active_ = b != 0 || touching;
     }
 
@@ -366,10 +450,12 @@ private:
 
     SDL_Window* window_ = nullptr;
     video::Presenter presenter_;
+    ui::Menu menu_;
     float pixel_ratio_ = 1;  // window pixels per window coordinate (high-DPI displays)
     bool fullscreen_ = false;
     SDL_Rect windowed_{};    // the window's place before going fullscreen
     bool windowed_maximized_ = false;
+    bool settings_dirty_ = false;  // changed since settings.ini was written
     ntr::VideoSettings sent_video_;
     bool title_dirty_ = false;
     SDL_AudioStream* audio_ = nullptr;
@@ -384,15 +470,17 @@ private:
 
     bool skipping_ = false;
     bool input_active_ = false;
+    bool input_hold_ = false;
     static constexpr uint64_t kMaxLogoSkipFrames = 900;  // the logos end around frame 564
 
 public:
+    Settings settings;
+    std::filesystem::path settings_path;
     uint64_t exit_after_frames = 0;  // 0 = run until the window closes
-    bool skip_logos = true;
-    VideoChoice choice;
-    video::LayoutSettings layout;
     uint64_t screenshot_frame = 0;   // debugging: save the window at this frame
     std::string screenshot_path;
+    uint64_t menu_at_frame = 0;      // debugging: open the menu at this frame
+    ui::Menu& menu() { return menu_; }
 };
 
 bool parse_renderer(const std::string& s, ntr::Renderer& r) {
@@ -434,6 +522,7 @@ int main(int argc, char** argv) {
     if (argc < 2) {
         std::fprintf(stderr,
                      "usage: %s <your Echoes of Time (USA) dump.nds> [options]\n"
+                     "Settings are kept in settings.ini (Esc opens the settings menu); these options override them:\n"
                      "screens:\n"
                      "  --layout single|main-side|stacked|side   (default single)\n"
                      "  --side-align top|middle|bottom       main-side: the side screen's position (default bottom)\n"
@@ -449,19 +538,24 @@ int main(int argc, char** argv) {
                      "other:\n"
                      "  --no-skip-logos --trace-calls --trace-threads --trace-files --perf\n"
                      "  --profile-functions <file> --dump-at-frame <n> --exit-after-frames <n>\n"
-                     "  --screenshot-at-frame <n> <file.png>\n",
+                     "  --screenshot-at-frame <n> <file.png> --menu-at-frame <n> --menu-tab <name>\n",
                      argv[0]);
         return 2;
     }
     const std::filesystem::path rom_path = argv[1];
+
+    std::filesystem::path save_path, settings_path;
+    if (char* pref = SDL_GetPrefPath("FFCCEOT-Recomp", "EchoesOfTime")) {
+        save_path = std::filesystem::path(pref) / "saves" / "cfie.sav";
+        settings_path = std::filesystem::path(pref) / "settings.ini";
+        SDL_free(pref);
+    }
+    Settings settings;
+    if (!settings_path.empty()) load_settings(settings_path, settings);
+
     ntr::RuntimeOptions options;
-    uint64_t exit_after_frames = 0;
-    bool skip_logos = true;
-    VideoChoice choice;
-    video::LayoutSettings layout;
-    bool fullscreen = false;
-    uint64_t screenshot_frame = 0;
-    std::string screenshot_path;
+    uint64_t exit_after_frames = 0, screenshot_frame = 0, menu_at_frame = 0;
+    std::string screenshot_path, menu_tab;
     for (int i = 2; i < argc; i++) {
         const std::string a = argv[i];
         const bool has_value = i + 1 < argc;
@@ -470,7 +564,7 @@ int main(int argc, char** argv) {
         else if (a == "--trace-threads")
             options.trace_threads = true;
         else if (a == "--no-skip-logos")
-            skip_logos = false;
+            settings.skip_logos = false;
         else if (a == "--perf")
             options.perf = true;
         else if (a == "--trace-files")
@@ -481,30 +575,34 @@ int main(int argc, char** argv) {
             options.dump_at_frame = std::strtoull(argv[++i], nullptr, 10);
         else if (a == "--exit-after-frames" && has_value)
             exit_after_frames = std::strtoull(argv[++i], nullptr, 10);
-        else if (a == "--renderer" && has_value && parse_renderer(argv[i + 1], choice.renderer))
+        else if (a == "--renderer" && has_value && parse_renderer(argv[i + 1], settings.renderer))
             ++i;
         else if (a == "--scale" && has_value) {
             const std::string v = argv[++i];
-            choice.scale = v == "auto" ? 0 : std::clamp(std::atoi(v.c_str()), 1, 16);
-        } else if (a == "--filter" && has_value && parse_filter(argv[i + 1], choice.filter))
+            settings.scale = v == "auto" ? 0 : std::clamp(std::atoi(v.c_str()), 1, 16);
+        } else if (a == "--filter" && has_value && parse_filter(argv[i + 1], settings.filter))
             ++i;
         else if (a == "--screenshot-at-frame" && i + 2 < argc) {
             screenshot_frame = std::strtoull(argv[++i], nullptr, 10);
             screenshot_path = argv[++i];
-        } else if (a == "--layout" && has_value && parse_layout(argv[i + 1], layout.layout))
+        } else if (a == "--menu-at-frame" && has_value)
+            menu_at_frame = std::strtoull(argv[++i], nullptr, 10);
+        else if (a == "--menu-tab" && has_value)
+            menu_tab = argv[++i];
+        else if (a == "--layout" && has_value && parse_layout(argv[i + 1], settings.layout.layout))
             ++i;
-        else if (a == "--side-align" && has_value && parse_align(argv[i + 1], layout.side_align))
+        else if (a == "--side-align" && has_value && parse_align(argv[i + 1], settings.layout.side_align))
             ++i;
         else if (a == "--fullscreen")
-            fullscreen = true;
+            settings.fullscreen = true;
         else if (a == "--swap-screens")
-            layout.swap = true;
+            settings.layout.swap = true;
         else if (a == "--no-second-screen")
-            layout.second_screen = false;
+            settings.layout.second_screen = false;
         else if (a == "--better-polygons")
-            choice.better_polygons = true;
+            settings.better_polygons = true;
         else if (a == "--no-hires-coordinates")
-            choice.hires_coordinates = false;
+            settings.hires_coordinates = false;
         else
             std::fprintf(stderr, "ignoring unknown or incomplete option %s\n", a.c_str());
     }
@@ -520,22 +618,19 @@ int main(int argc, char** argv) {
                      rom_path.string().c_str());
         return 1;
     }
-
-    std::filesystem::path save_path;
-    if (char* pref = SDL_GetPrefPath("FFCCEOT-Recomp", "EchoesOfTime")) {
-        save_path = std::filesystem::path(pref) / "saves" / "cfie.sav";
-        SDL_free(pref);
-    }
     if (!save_path.empty() && std::filesystem::exists(save_path)) options.save_data = read_file(save_path);
 
     SdlHost host;
+    host.settings = settings;
+    host.settings_path = settings_path;
     host.exit_after_frames = exit_after_frames;
-    host.skip_logos = skip_logos;
-    host.choice = choice;
-    host.layout = layout;
     host.screenshot_frame = screenshot_frame;
     host.screenshot_path = screenshot_path;
+    host.menu_at_frame = menu_at_frame;
+    const bool fullscreen = settings.fullscreen;
+    host.settings.fullscreen = false;  // the window starts windowed; set_fullscreen below records the state
     if (!host.init(save_path)) return 1;
+    if (!menu_tab.empty()) host.menu().set_tab(menu_tab.c_str());
     if (fullscreen) host.set_fullscreen(true);
     options.video = host.wanted_video();  // the GL context is current: melonDS's GL renderers can start
 

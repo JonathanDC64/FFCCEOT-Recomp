@@ -1,0 +1,395 @@
+#include "ui.hpp"
+
+#include <RmlUi/Core.h>
+#include <RmlUi/Core/Elements/ElementFormControlInput.h>
+#include <RmlUi/Core/Elements/ElementFormControlSelect.h>
+#include <SDL3/SDL.h>
+
+#include <algorithm>
+#include <cstdio>
+#include <cstring>
+#include <string>
+
+#include "RmlUi_Platform_SDL.h"
+#include "RmlUi_Renderer_GL3.h"
+#include "ui_assets.hpp"
+
+namespace ui {
+
+namespace {
+
+// Serves the embedded UI files to RmlUi.
+class EmbeddedFiles final : public Rml::FileInterface {
+    struct Open {
+        const Asset* asset;
+        size_t pos;
+    };
+
+public:
+    Rml::FileHandle Open(const Rml::String& path) override {
+        const Asset* a = find_asset(path);
+        if (!a) return 0;
+        return reinterpret_cast<Rml::FileHandle>(new struct Open{a, 0});
+    }
+    void Close(Rml::FileHandle file) override { delete reinterpret_cast<struct Open*>(file); }
+    size_t Read(void* buffer, size_t size, Rml::FileHandle file) override {
+        auto* f = reinterpret_cast<struct Open*>(file);
+        const size_t n = std::min(size, f->asset->size - f->pos);
+        std::memcpy(buffer, f->asset->data + f->pos, n);
+        f->pos += n;
+        return n;
+    }
+    bool Seek(Rml::FileHandle file, long offset, int origin) override {
+        auto* f = reinterpret_cast<struct Open*>(file);
+        const long base = origin == SEEK_SET ? 0 : origin == SEEK_CUR ? long(f->pos) : long(f->asset->size);
+        const long p = base + offset;
+        if (p < 0 || size_t(p) > f->asset->size) return false;
+        f->pos = size_t(p);
+        return true;
+    }
+    size_t Tell(Rml::FileHandle file) override { return reinterpret_cast<struct Open*>(file)->pos; }
+};
+
+// RmlUi's SDL system interface, with its log messages printed.
+class System final : public SystemInterface_SDL {
+public:
+    using SystemInterface_SDL::SystemInterface_SDL;
+    bool LogMessage(Rml::Log::Type type, const Rml::String& message) override {
+        if (type <= Rml::Log::LT_WARNING) std::fprintf(stderr, "ui: %s\n", message.c_str());
+        return true;
+    }
+};
+
+const char* const kTabs[] = {"display", "graphics", "audio", "game", "controls"};
+constexpr int kTabCount = int(std::size(kTabs));
+
+}  // namespace
+
+// The menu's view of the settings: plain ints and bools for RmlUi's data bindings.
+struct State {
+    int layout = 0, swap = 0, pip_size = 30, side_align = 2;  // swap: 0 = top screen main, 1 = bottom
+    bool second_screen = true, fullscreen = false;
+    int renderer = 1, scale = 0, filter = 1;
+    bool better_polygons = false, hires_coordinates = true;
+    int volume = 100;
+    bool skip_logos = true;
+    bool operator==(const State&) const = default;
+};
+
+struct Menu::Impl {
+    SDL_Window* window = nullptr;
+    Settings* settings = nullptr;
+    EmbeddedFiles files;
+    std::unique_ptr<System> system;
+    std::unique_ptr<RenderInterface_GL3> render;
+    Rml::Context* context = nullptr;
+    Rml::ElementDocument* document = nullptr;
+    Rml::DataModelHandle model;
+    State state, applied;
+    Rml::String tab = "display";
+    bool compute_available = true;
+    int focus = 0;           // index into the focusable rows of the current page
+    bool stick_held = false;  // left stick past the threshold (one step per push)
+
+    void load_state() {
+        const Settings& s = *settings;
+        state.layout = int(s.layout.layout);
+        state.swap = s.layout.swap ? 1 : 0;
+        state.second_screen = s.layout.second_screen;
+        state.pip_size = int(s.layout.pip_size * 100 + 0.5f);
+        state.side_align = int(s.layout.side_align);
+        state.fullscreen = s.fullscreen;
+        state.renderer = int(s.renderer);
+        state.scale = s.scale;
+        state.filter = int(s.filter);
+        state.better_polygons = s.better_polygons;
+        state.hires_coordinates = s.hires_coordinates;
+        state.volume = s.volume;
+        state.skip_logos = s.skip_logos;
+        applied = state;
+        model.DirtyAllVariables();
+    }
+
+    // Copies edits back into the settings. Returns true if anything changed.
+    bool store_state() {
+        if (state == applied) return false;
+        Settings& s = *settings;
+        s.layout.layout = video::Layout(std::clamp(state.layout, 0, 3));
+        s.layout.swap = state.swap != 0;
+        s.layout.second_screen = state.second_screen;
+        s.layout.pip_size = std::clamp(state.pip_size, 10, 50) / 100.0f;
+        s.layout.side_align = video::Align(std::clamp(state.side_align, 0, 2));
+        s.fullscreen = state.fullscreen;
+        s.renderer = ntr::Renderer(std::clamp(state.renderer, 0, 2));
+        s.scale = std::clamp(state.scale, 0, 16);
+        s.filter = video::Filter(std::clamp(state.filter, 0, 2));
+        s.better_polygons = state.better_polygons;
+        s.hires_coordinates = state.hires_coordinates;
+        s.volume = std::clamp(state.volume, 0, 100);
+        s.skip_logos = state.skip_logos;
+        applied = state;
+        return true;
+    }
+
+    // The rows that keyboard/gamepad navigation moves between: the current page's settings, then the buttons.
+    Rml::ElementList rows() {
+        Rml::ElementList all, out;
+        document->QuerySelectorAll(all, ".nav");
+        for (Rml::Element* e : all)
+            if (e->IsVisible(true)) out.push_back(e);
+        return out;
+    }
+
+    void update_focus() {
+        Rml::ElementList r = rows();
+        if (r.empty()) return;
+        focus = std::clamp(focus, 0, int(r.size()) - 1);
+        for (int i = 0; i < int(r.size()); i++) r[i]->SetClass("focused", i == focus);
+        r[focus]->ScrollIntoView(false);
+    }
+
+    void switch_tab(int dir) {
+        int i = 0;
+        while (i < kTabCount && tab != kTabs[i]) i++;
+        tab = kTabs[(i + dir + kTabCount) % kTabCount];
+        model.DirtyVariable("tab");
+        focus = 0;
+    }
+
+    // Left/right on a row: step its select, slider or checkbox.
+    void adjust(int dir) {
+        Rml::ElementList r = rows();
+        if (r.empty()) return;
+        Rml::Element* row = r[std::clamp(focus, 0, int(r.size()) - 1)];
+        Rml::ElementList controls;
+        row->QuerySelectorAll(controls, "select, input");
+        if (controls.empty()) return;
+        Rml::Element* c = controls[0];
+        if (auto* sel = rmlui_dynamic_cast<Rml::ElementFormControlSelect*>(c)) {
+            sel->SetSelection(std::clamp(sel->GetSelection() + dir, 0, sel->GetNumOptions() - 1));
+        } else if (auto* in = rmlui_dynamic_cast<Rml::ElementFormControlInput*>(c)) {
+            const Rml::String type = in->GetAttribute<Rml::String>("type", "");
+            if (type == "range") {
+                const float step = in->GetAttribute<float>("step", 1.0f), lo = in->GetAttribute<float>("min", 0.0f),
+                            hi = in->GetAttribute<float>("max", 100.0f);
+                const float v = std::clamp(std::stof("0" + in->GetValue()) + dir * step, lo, hi);
+                in->SetValue(std::to_string(int(v)));
+            } else if (type == "checkbox") {
+                in->Click();
+            }
+        }
+    }
+
+    // Enter / gamepad confirm on a row: toggle a checkbox, press a button, or step a select forward.
+    void activate() {
+        Rml::ElementList r = rows();
+        if (r.empty()) return;
+        Rml::Element* row = r[std::clamp(focus, 0, int(r.size()) - 1)];
+        if (row->IsClassSet("button")) {
+            row->Click();
+            return;
+        }
+        Rml::ElementList controls;
+        row->QuerySelectorAll(controls, "select");
+        if (!controls.empty()) {
+            auto* sel = rmlui_dynamic_cast<Rml::ElementFormControlSelect*>(controls[0]);
+            if (sel) sel->SetSelection((sel->GetSelection() + 1) % std::max(1, sel->GetNumOptions()));
+            return;
+        }
+        adjust(+1);
+    }
+};
+
+Menu::Menu() : impl_(std::make_unique<Impl>()) {}
+Menu::~Menu() { shutdown(); }
+
+bool Menu::init(SDL_Window* window, Settings* settings, bool compute_available) {
+    Impl& m = *impl_;
+    m.window = window;
+    m.settings = settings;
+    m.compute_available = compute_available;
+    RmlGL3::Initialize();  // no-op: the GL functions come from melonDS's glad
+    m.render = std::make_unique<RenderInterface_GL3>();
+    if (!*m.render) {
+        std::fprintf(stderr, "ui: the OpenGL renderer could not start (needs OpenGL 3.3)\n");
+        return false;
+    }
+    m.system = std::make_unique<System>(window);
+    Rml::SetFileInterface(&m.files);
+    Rml::SetSystemInterface(m.system.get());
+    Rml::SetRenderInterface(m.render.get());
+    if (!Rml::Initialise()) return false;
+
+    struct Font {
+        const char* file;
+        const char* family;
+        Rml::Style::FontWeight weight;
+    };
+    for (const Font& f : {Font{"fonts/Cinzel.ttf", "Cinzel", Rml::Style::FontWeight::Auto},
+                          Font{"fonts/AlegreyaSans-Regular.ttf", "Alegreya Sans", Rml::Style::FontWeight::Normal},
+                          Font{"fonts/AlegreyaSans-Bold.ttf", "Alegreya Sans", Rml::Style::FontWeight::Bold}}) {
+        const Asset* a = find_asset(f.file);
+        if (!a || !Rml::LoadFontFace({reinterpret_cast<const Rml::byte*>(a->data), a->size}, f.family,
+                                     Rml::Style::FontStyle::Normal, f.weight))
+            std::fprintf(stderr, "ui: cannot load font %s\n", f.file);
+    }
+
+    int w = 0, h = 0;
+    SDL_GetWindowSizeInPixels(window, &w, &h);
+    m.context = Rml::CreateContext("main", {std::max(w, 1), std::max(h, 1)});
+    if (!m.context) return false;
+
+    Rml::DataModelConstructor c = m.context->CreateDataModel("settings");
+    State& s = m.state;
+    c.Bind("tab", &m.tab);
+    c.Bind("compute_available", &m.compute_available);
+    c.Bind("layout", &s.layout);
+    c.Bind("swap", &s.swap);
+    c.Bind("second_screen", &s.second_screen);
+    c.Bind("pip_size", &s.pip_size);
+    c.Bind("side_align", &s.side_align);
+    c.Bind("fullscreen", &s.fullscreen);
+    c.Bind("renderer", &s.renderer);
+    c.Bind("scale", &s.scale);
+    c.Bind("filter", &s.filter);
+    c.Bind("better_polygons", &s.better_polygons);
+    c.Bind("hires_coordinates", &s.hires_coordinates);
+    c.Bind("volume", &s.volume);
+    c.Bind("skip_logos", &s.skip_logos);
+    c.BindEventCallback("resume", [this](Rml::DataModelHandle, Rml::Event&, const Rml::VariantList&) { close(); });
+    c.BindEventCallback("quit", [this](Rml::DataModelHandle, Rml::Event&, const Rml::VariantList&) {
+        quit_requested = true;
+    });
+    c.BindEventCallback("set_tab", [&m](Rml::DataModelHandle h, Rml::Event&, const Rml::VariantList& args) {
+        if (args.empty()) return;
+        m.tab = args[0].Get<Rml::String>();
+        m.focus = 0;
+        h.DirtyVariable("tab");
+    });
+    m.model = c.GetModelHandle();
+
+    m.document = m.context->LoadDocument("menu.rml");
+    if (!m.document) {
+        std::fprintf(stderr, "ui: cannot load menu.rml\n");
+        return false;
+    }
+    return true;
+}
+
+void Menu::shutdown() {
+    Impl& m = *impl_;
+    if (!m.render) return;
+    if (m.context) Rml::RemoveContext("main");
+    m.context = nullptr;
+    m.document = nullptr;
+    Rml::Shutdown();
+    m.render.reset();
+    m.system.reset();
+    open_ = false;
+}
+
+void Menu::open() {
+    Impl& m = *impl_;
+    if (!m.document || open_) return;
+    m.load_state();
+    m.focus = 0;
+    m.document->Show();
+    open_ = true;
+}
+
+void Menu::close() {
+    Impl& m = *impl_;
+    if (!open_) return;
+    m.document->Hide();
+    open_ = false;
+}
+
+void Menu::reload() {
+    if (open_) impl_->load_state();
+}
+
+void Menu::set_tab(const char* name) {
+    Impl& m = *impl_;
+    m.tab = name;
+    m.focus = 0;
+    m.model.DirtyVariable("tab");
+}
+
+void Menu::handle_event(const SDL_Event& event) {
+    Impl& m = *impl_;
+    if (!open_ || !m.context) return;
+    SDL_Event e = event;
+    switch (e.type) {
+    case SDL_EVENT_KEY_DOWN:
+        switch (e.key.key) {
+        case SDLK_ESCAPE: close(); break;
+        case SDLK_UP: m.focus--; break;
+        case SDLK_DOWN: m.focus++; break;
+        case SDLK_LEFT: m.adjust(-1); break;
+        case SDLK_RIGHT: m.adjust(+1); break;
+        case SDLK_RETURN:
+        case SDLK_SPACE: m.activate(); break;
+        case SDLK_Q:
+        case SDLK_PAGEUP: m.switch_tab(-1); break;
+        case SDLK_E:
+        case SDLK_PAGEDOWN:
+        case SDLK_TAB: m.switch_tab(+1); break;
+        default: break;
+        }
+        return;
+    case SDL_EVENT_GAMEPAD_BUTTON_DOWN:
+        // Nintendo positions, as in the game: the right face button confirms and the bottom one goes back.
+        switch (e.gbutton.button) {
+        case SDL_GAMEPAD_BUTTON_DPAD_UP: m.focus--; break;
+        case SDL_GAMEPAD_BUTTON_DPAD_DOWN: m.focus++; break;
+        case SDL_GAMEPAD_BUTTON_DPAD_LEFT: m.adjust(-1); break;
+        case SDL_GAMEPAD_BUTTON_DPAD_RIGHT: m.adjust(+1); break;
+        case SDL_GAMEPAD_BUTTON_EAST: m.activate(); break;
+        case SDL_GAMEPAD_BUTTON_SOUTH:
+        case SDL_GAMEPAD_BUTTON_START:
+        case SDL_GAMEPAD_BUTTON_GUIDE: close(); break;
+        case SDL_GAMEPAD_BUTTON_LEFT_SHOULDER: m.switch_tab(-1); break;
+        case SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER: m.switch_tab(+1); break;
+        default: break;
+        }
+        return;
+    case SDL_EVENT_GAMEPAD_AXIS_MOTION: {
+        if (e.gaxis.axis != SDL_GAMEPAD_AXIS_LEFTX && e.gaxis.axis != SDL_GAMEPAD_AXIS_LEFTY) return;
+        const int v = e.gaxis.value;
+        if (std::abs(v) < 16000) {
+            m.stick_held = false;
+            return;
+        }
+        if (m.stick_held) return;
+        m.stick_held = true;
+        if (e.gaxis.axis == SDL_GAMEPAD_AXIS_LEFTY)
+            m.focus += v > 0 ? 1 : -1;
+        else
+            m.adjust(v > 0 ? 1 : -1);
+        return;
+    }
+    case SDL_EVENT_MOUSE_MOTION:  // RmlUi's backend scales mouse positions to pixels itself
+    case SDL_EVENT_MOUSE_BUTTON_DOWN:
+    case SDL_EVENT_MOUSE_BUTTON_UP:
+    case SDL_EVENT_MOUSE_WHEEL:
+    case SDL_EVENT_WINDOW_MOUSE_LEAVE: break;
+    default: return;  // other window events are handled by the host
+    }
+    RmlSDL::InputEventHandler(m.context, m.window, e);
+}
+
+void Menu::render(int width, int height) {
+    Impl& m = *impl_;
+    if (!open_ || !m.context) return;
+    if (m.context->GetDimensions() != Rml::Vector2i{width, height}) m.context->SetDimensions({width, height});
+    m.context->SetDensityIndependentPixelRatio(std::max(0.75f, height / 720.0f));
+    m.update_focus();
+    m.context->Update();
+    if (m.store_state()) changed = true;
+    m.render->SetViewport(width, height);
+    m.render->BeginFrame();
+    m.context->Render();
+    m.render->EndFrame();
+}
+
+}  // namespace ui

@@ -99,14 +99,14 @@ bool Presenter::init(SDL_Window* window) {
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, SDL_GL_CONTEXT_FORWARD_COMPATIBLE_FLAG);
 #endif
     SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
-    // 4.3 adds the compute shaders melonDS's compute renderer needs; 3.2 is enough for everything else.
-    for (auto [major, minor] : {std::pair{4, 3}, std::pair{3, 2}}) {
+    // 4.3 adds the compute shaders melonDS's compute renderer needs; 3.3 is enough for everything else, including the menu.
+    for (auto [major, minor] : {std::pair{4, 3}, std::pair{3, 3}}) {
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, major);
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, minor);
         if ((context_ = SDL_GL_CreateContext(window))) break;
     }
     if (!context_) {
-        std::fprintf(stderr, "cannot create an OpenGL 3.2 context: %s\n", SDL_GetError());
+        std::fprintf(stderr, "cannot create an OpenGL 3.3 context: %s\n", SDL_GetError());
         return false;
     }
     SDL_GL_MakeCurrent(window, static_cast<SDL_GLContext>(context_));
@@ -228,7 +228,7 @@ float Presenter::largest_screen_height() const {
     return h;
 }
 
-void Presenter::present(const ntr::Frame* frame, Filter filter, const char* screenshot) {
+void Presenter::draw(const ntr::Frame* frame, Filter filter) {
     // melonDS's GL renderers share this context: put back the state the screen pass relies on.
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     glDisable(GL_DEPTH_TEST);
@@ -286,6 +286,9 @@ void Presenter::present(const ntr::Frame* frame, Filter filter, const char* scre
         }
         glUseProgram(0);
     }
+}
+
+void Presenter::swap(const char* screenshot) {
     if (screenshot) save_png(screenshot);
     SDL_GL_SwapWindow(window_);
 }

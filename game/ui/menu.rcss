@@ -1,0 +1,244 @@
+/* Settings menu: deep blue crystal panel with gold trim. Original styling (no game assets). */
+
+div, p, h1 { display: block; }
+
+body {
+    width: 100%;
+    height: 100%;
+    font-family: "Alegreya Sans";
+    font-size: 19dp;
+    color: #e9e3d2;
+    background-color: #050a18b0;
+}
+
+#panel {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 760dp;
+    height: 580dp;
+    margin-left: -380dp;
+    margin-top: -290dp;
+    padding: 18dp 30dp 14dp 30dp;
+    box-sizing: border-box;
+    border: 2dp #c8a764;
+    border-radius: 12dp;
+    decorator: linear-gradient(180deg, #1a2d55f4, #0a1430f4);
+    box-shadow: #6fc8ff55 0 0 30dp 2dp, #000000a0 0 8dp 24dp 0;
+}
+
+/* Title with a crystal on each side. */
+#header {
+    text-align: center;
+    height: 52dp;
+}
+#header h1 {
+    display: inline-block;
+    font-family: "Cinzel";
+    font-weight: bold;
+    font-size: 34dp;
+    letter-spacing: 2dp;
+    color: #e6c77f;
+    font-effect: glow(2dp 0dp 0dp 0dp #7fd0ff60);
+    margin: 0 18dp;
+}
+.crystal {
+    display: inline-block;
+    width: 14dp;
+    height: 14dp;
+    margin-bottom: 10dp;
+    transform: rotate(45deg);
+    border: 1dp #e8f7ff;
+    decorator: linear-gradient(135deg, #d8f4ff, #4a9de0 60%, #1d4f9a);
+    box-shadow: #7fd0ff90 0 0 10dp 1dp;
+}
+
+/* Tabs. */
+#tabs {
+    text-align: center;
+    margin: 6dp 0 10dp 0;
+    padding-bottom: 6dp;
+    border-bottom: 1dp #c8a76470;
+}
+.tab {
+    display: inline-block;
+    font-family: "Cinzel";
+    font-size: 17dp;
+    padding: 4dp 14dp;
+    margin: 0 2dp;
+    color: #a9b3c8;
+    border-bottom: 2dp transparent;
+}
+.tab:hover { color: #ffffff; }
+.tab.selected {
+    color: #ffffff;
+    border-bottom: 2dp #7fd0ff;
+    font-effect: glow(1dp 0dp 0dp 0dp #7fd0ff80);
+}
+
+#pages {
+    height: 360dp;
+    overflow-y: auto;
+}
+
+/* A setting: label on the left, control on the right. */
+.row {
+    height: 44dp;
+    line-height: 44dp;
+    padding: 0 12dp 0 14dp;
+    margin: 2dp 0;
+    border-left: 3dp transparent;
+    border-radius: 4dp;
+}
+.row:hover { background-color: #7fd0ff14; }
+.row.focused {
+    background-color: #7fd0ff22;
+    border-left: 3dp #7fd0ff;
+}
+.label { display: inline-block; width: 300dp; }
+/* The number next to a slider (after the slider in the markup, so it floats to its left). */
+.value {
+    float: right;
+    width: 60dp;
+    text-align: right;
+    color: #e6c77f;
+    margin-right: 14dp;
+}
+
+.note {
+    margin: 12dp 14dp 0 14dp;
+    font-size: 16dp;
+    color: #9aa6bf;
+}
+
+/* Drop-down lists. */
+select {
+    float: right;
+    width: 280dp;
+    height: 32dp;
+    margin-top: 6dp;
+    line-height: 30dp;
+    text-align: left;
+    color: #f2ecd9;
+    border: 1dp #c8a76490;
+    border-radius: 4dp;
+    background-color: #0b1530;
+}
+select:hover, .row.focused select { border-color: #7fd0ff; }
+select selectvalue {
+    width: auto;
+    height: 30dp;
+    margin-right: 28dp;
+    padding-left: 10dp;
+}
+select selectarrow {
+    width: 28dp;
+    height: 30dp;
+    background-color: #1c3366;
+    decorator: image(images/chevron.tga contain center center);
+    image-color: #e6c77f;
+    border-left: 1dp #c8a76460;
+}
+select:hover selectarrow, .row.focused select selectarrow { image-color: #ffffff; }
+select selectbox {
+    margin-top: 2dp;
+    width: 280dp;
+    padding: 4dp 0;
+    background-color: #0d1838f8;
+    border: 1dp #c8a764;
+    border-radius: 4dp;
+}
+select selectbox option {
+    width: auto;
+    height: 28dp;
+    line-height: 28dp;
+    padding-left: 10dp;
+}
+select selectbox option:hover { background-color: #7fd0ff30; }
+select selectbox option:checked { color: #e6c77f; }
+
+/* Check boxes. */
+input.checkbox {
+    float: right;
+    width: 24dp;
+    height: 24dp;
+    margin-top: 10dp;
+    margin-right: 6dp;
+    border: 2dp #c8a764;
+    border-radius: 5dp;
+    background-color: #0b1530;
+}
+input.checkbox:hover, .row.focused input.checkbox { border-color: #7fd0ff; }
+input.checkbox:checked {
+    decorator: linear-gradient(135deg, #d8f4ff, #4a9de0 60%, #1d4f9a);
+}
+
+/* Sliders. */
+input.range {
+    float: right;
+    width: 260dp;
+    height: 22dp;
+    margin-top: 11dp;
+}
+input.range slidertrack {
+    height: 6dp;
+    margin-top: 8dp;
+    border-radius: 3dp;
+    background-color: #ffffff28;
+}
+input.range sliderprogress {  /* positioned inside the track */
+    height: 6dp;
+    border-radius: 3dp;
+    background-color: #4a9de0;
+}
+input.range sliderbar {
+    width: 16dp;
+    height: 22dp;
+    border-radius: 4dp;
+    border: 1dp #fff4d0;
+    background-color: #e6c77f;
+}
+input.range sliderbar:hover, .row.focused input.range sliderbar { background-color: #fff0c4; }
+input.range sliderarrowdec, input.range sliderarrowinc { width: 0; height: 0; }
+
+/* Controls reference. */
+.keyrow {
+    height: 34dp;
+    line-height: 34dp;
+    padding: 0 14dp;
+    border-bottom: 1dp #ffffff12;
+}
+.keyrow .label { width: 220dp; color: #e6c77f; }
+.key { color: #e9e3d2; }
+
+/* Resume / Quit. */
+#footer {
+    text-align: center;
+    margin-top: 12dp;
+}
+.button {
+    display: inline-block;
+    width: 180dp;
+    height: 40dp;
+    line-height: 40dp;
+    margin: 0 10dp;
+    text-align: center;
+    font-family: "Cinzel";
+    font-size: 18dp;
+    color: #f4e6bf;
+    border: 2dp #c8a764;
+    border-radius: 6dp;
+    decorator: linear-gradient(180deg, #2b4a85, #142a58);
+}
+.button:hover, .button.focused {
+    color: #ffffff;
+    border-color: #7fd0ff;
+    box-shadow: #7fd0ff70 0 0 12dp 0;
+}
+
+#hint {
+    text-align: center;
+    margin-top: 10dp;
+    font-size: 15dp;
+    color: #8090ac;
+}

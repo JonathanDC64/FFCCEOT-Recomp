@@ -66,8 +66,10 @@ Milestones are ordered by dependency. Each ends with a demonstrable result. Desi
 - [ ] Binding system + rebinding UI, glyph sets
 - [ ] FFCC touch-free scheme (spell ring, menus, map), mouse-as-stylus
 - [ ] Analog movement: full 360° character movement from the stick (the game reads an 8-way D-pad; hook its movement input)
-- [ ] RmlUi integration on SDL_GPU, FF crystal theme (original art)
-- [ ] Launcher/installer flow, in-game menu, settings persistence
+- [x] RmlUi integration (OpenGL for now), FF crystal theme (original styling, OFL fonts)
+- [x] In-game settings menu (display, graphics, audio, game, controls list), settings persistence (`settings.ini`)
+- [ ] Menu: more pages (online, QoL, mods, about), reset game, button glyphs; RmlUi on SDL_GPU with flip-model presentation
+- [ ] Launcher/installer flow
 - [ ] ImGui dev tools (`--dev`)
 
 ## M7: Online and LAN multiplayer
@@ -83,6 +85,9 @@ Milestones are ordered by dependency. Each ends with a demonstrable result. Desi
 - [ ] QoL features ([ARCHITECTURE.md §9](ARCHITECTURE.md#9-quality-of-life-backlog-initial))
 - [ ] Release mode: bundled libtcc install-time recompilation, caching, benchmarks
 - [ ] Packaging (Windows first, then Linux/Steam Deck, macOS), crash reporting, updater (optional)
+- [ ] Release workflow: pushing a `v*` tag builds the game-code-free packages (runtime, recompiler, libtcc; the
+      game is recompiled from the user's ROM on first run) and publishes a GitHub Release. Until then CI only builds,
+      because a built `ffcc.exe` contains recompiled game code and must never be published
 - [ ] Mod / texture-pack loader
 
 ## Later

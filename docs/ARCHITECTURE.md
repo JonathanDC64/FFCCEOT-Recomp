@@ -147,7 +147,7 @@ original plan to recompile the ARM7 too is dropped for now. melonDS's ARM7 inter
 
 ### 5.1 GX → GPU renderer
 
-**Today:** the frontend owns an OpenGL context (4.3 core, or 3.2 without compute shaders) and melonDS renders into it.
+**Today:** the frontend owns an OpenGL context (4.3 core, or 3.3 without compute shaders) and melonDS renders into it.
 The runtime switches between melonDS's three renderers at a frame boundary (`Runtime::set_video`):
 
 | Renderer | Output | Notes |
@@ -230,6 +230,18 @@ exactly to the display.
 
 ## 7. UI shell
 Modelled on Dusklight but simpler, with a Final Fantasy crystal look. All art is our own.
+
+**Today:** an in-game settings menu (`game/src/ui.cpp`, documents in `game/ui/`) built on RmlUi 6.3 with its SDL3
+platform and GL3 renderer backends, drawing into the same OpenGL context as the game (which is why that context is at
+least 3.3). Esc, Guide or Back + Start pauses the game and draws the last frame with the menu over it. Tabs: Display,
+Graphics, Audio, Game, Controls (a key list for now). Layout, filter, fullscreen and volume apply at once; renderer
+changes apply on resume. The menu edits a `Settings` struct (`game/src/settings.cpp`) saved as `key = value` lines in
+`settings.ini` in the user data folder (simple enough that TOML can wait). The documents, fonts (OFL) and images are
+embedded in the executable by `cmake/EmbedFiles.cmake`. Keyboard and gamepad navigation are our own (a `focused` class
+on `.nav` rows) rather than RmlUi's spatial navigation, so left/right can change a value. The SDL_GPU render interface
+below comes with the flip-model presentation work (§5.5).
+
+**Plan:**
 - **RmlUi** (HTML/CSS) renders through an SDL_GPU render interface and is fully controller-navigable.
   - **Launcher/Installer**: select ROM → verify (SHA-1 against known dumps, clear errors for wrong region/bad dump/not a ROM) →
     extract → recompile and compile with a progress bar (release mode) → done. Also: language, data folder, portable mode (`portable.txt`).

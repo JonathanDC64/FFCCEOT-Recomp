@@ -1,0 +1,148 @@
+<rml>
+<head>
+    <title>Settings</title>
+    <link type="text/rcss" href="menu.rcss"/>
+</head>
+<body data-model="settings">
+<div id="panel">
+    <div id="header">
+        <div class="crystal"></div>
+        <h1>Echoes of Time</h1>
+        <div class="crystal"></div>
+    </div>
+
+    <div id="tabs">
+        <span class="tab" data-class-selected="tab == 'display'" data-event-click="set_tab('display')">Display</span>
+        <span class="tab" data-class-selected="tab == 'graphics'" data-event-click="set_tab('graphics')">Graphics</span>
+        <span class="tab" data-class-selected="tab == 'audio'" data-event-click="set_tab('audio')">Audio</span>
+        <span class="tab" data-class-selected="tab == 'game'" data-event-click="set_tab('game')">Game</span>
+        <span class="tab" data-class-selected="tab == 'controls'" data-event-click="set_tab('controls')">Controls</span>
+    </div>
+
+    <div id="pages">
+        <div class="page" data-if="tab == 'display'">
+            <div class="row nav">
+                <span class="label">Screen layout</span>
+                <select data-value="layout">
+                    <option value="0">Single screen</option>
+                    <option value="1">Main + side</option>
+                    <option value="2">Stacked</option>
+                    <option value="3">Side by side</option>
+                </select>
+            </div>
+            <div class="row nav">
+                <span class="label">Main screen</span>
+                <select data-value="swap">
+                    <option value="0">Top screen</option>
+                    <option value="1">Bottom screen</option>
+                </select>
+            </div>
+            <div class="row nav" data-if="layout == 0">
+                <span class="label">Show the other screen</span>
+                <input type="checkbox" data-checked="second_screen"/>
+            </div>
+            <div class="row nav" data-if="layout == 0 &amp;&amp; second_screen">
+                <span class="label">Picture-in-picture size</span>
+                <input type="range" min="10" max="50" step="5" data-value="pip_size"/>
+                <span class="value">{{ pip_size }}%</span>
+            </div>
+            <div class="row nav" data-if="layout == 1">
+                <span class="label">Side screen position</span>
+                <select data-value="side_align">
+                    <option value="0">Top</option>
+                    <option value="1">Middle</option>
+                    <option value="2">Bottom</option>
+                </select>
+            </div>
+            <div class="row nav">
+                <span class="label">Fullscreen</span>
+                <input type="checkbox" data-checked="fullscreen"/>
+            </div>
+            <p class="note">Click the second screen with the mouse to touch it.</p>
+        </div>
+
+        <div class="page" data-if="tab == 'graphics'">
+            <div class="row nav">
+                <span class="label">Renderer</span>
+                <select data-value="renderer">
+                    <option value="0">Software (exact, native)</option>
+                    <option value="1">OpenGL (upscaled)</option>
+                    <option value="2">Compute (upscaled, accurate)</option>
+                </select>
+            </div>
+            <div class="row nav" data-if="renderer != 0">
+                <span class="label">Internal resolution</span>
+                <select data-value="scale">
+                    <option value="0">Match the window</option>
+                    <option value="1">1x (256x192)</option>
+                    <option value="2">2x</option>
+                    <option value="3">3x</option>
+                    <option value="4">4x</option>
+                    <option value="5">5x</option>
+                    <option value="6">6x</option>
+                    <option value="7">7x</option>
+                    <option value="8">8x</option>
+                    <option value="10">10x</option>
+                    <option value="12">12x</option>
+                    <option value="16">16x</option>
+                </select>
+            </div>
+            <div class="row nav">
+                <span class="label">Scaling filter</span>
+                <select data-value="filter">
+                    <option value="0">Nearest (pixel edges)</option>
+                    <option value="1">Linear (smooth)</option>
+                    <option value="2">Sharp (crisp pixels)</option>
+                </select>
+            </div>
+            <div class="row nav" data-if="renderer == 1">
+                <span class="label">Better polygons</span>
+                <input type="checkbox" data-checked="better_polygons"/>
+            </div>
+            <div class="row nav" data-if="renderer == 2">
+                <span class="label">High-precision vertices</span>
+                <input type="checkbox" data-checked="hires_coordinates"/>
+            </div>
+            <p class="note" data-if="renderer == 2 &amp;&amp; !compute_available">Compute needs OpenGL 4.3: OpenGL is used instead.</p>
+            <p class="note">Renderer and resolution changes take effect when you resume.</p>
+        </div>
+
+        <div class="page" data-if="tab == 'audio'">
+            <div class="row nav">
+                <span class="label">Volume</span>
+                <input type="range" min="0" max="100" step="5" data-value="volume"/>
+                <span class="value">{{ volume }}%</span>
+            </div>
+        </div>
+
+        <div class="page" data-if="tab == 'game'">
+            <div class="row nav">
+                <span class="label">Skip the company logos</span>
+                <input type="checkbox" data-checked="skip_logos"/>
+            </div>
+            <p class="note">Takes effect the next time the game starts.</p>
+        </div>
+
+        <div class="page" data-if="tab == 'controls'">
+            <div class="keys">
+                <div class="keyrow"><span class="label">Move</span><span class="key">Arrows / left stick / D-pad</span></div>
+                <div class="keyrow"><span class="label">A / B / X / Y</span><span class="key">X / Z / S / A, or the face buttons</span></div>
+                <div class="keyrow"><span class="label">L / R</span><span class="key">Q / W, or the shoulder buttons</span></div>
+                <div class="keyrow"><span class="label">Start / Select</span><span class="key">Enter / Right Shift</span></div>
+                <div class="keyrow"><span class="label">Touch screen</span><span class="key">Mouse on the bottom screen</span></div>
+                <div class="keyrow"><span class="label">This menu</span><span class="key">Esc, or Guide / Back + Start</span></div>
+                <div class="keyrow"><span class="label">Show other screen</span><span class="key">F3 or right stick click</span></div>
+                <div class="keyrow"><span class="label">Fullscreen</span><span class="key">F11</span></div>
+            </div>
+            <p class="note">Rebinding comes in a later update.</p>
+        </div>
+    </div>
+
+    <div id="footer">
+        <span class="button nav" data-event-click="resume">Resume</span>
+        <span class="button nav" data-event-click="quit">Quit game</span>
+    </div>
+    <p id="hint">Up/Down choose · Left/Right change · Q/E or L/R switch tabs · Esc resume</p>
+</div>
+</body>
+</rml>

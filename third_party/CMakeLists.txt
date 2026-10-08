@@ -104,4 +104,43 @@ if(FFCC_BUILD_GAME)
     GIT_SHALLOW TRUE
     EXCLUDE_FROM_ALL)
   FetchContent_MakeAvailable(SDL3)
+
+  # ---- FreeType (FTL, BSD-style) and RmlUi (MIT): the in-game settings UI ----
+  set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+  foreach(dep ZLIB BZIP2 PNG HARFBUZZ BROTLI)
+    set(FT_DISABLE_${dep} ON CACHE BOOL "" FORCE)
+  endforeach()
+  FetchContent_Declare(freetype
+    GIT_REPOSITORY https://github.com/freetype/freetype.git
+    GIT_TAG VER-2-14-3
+    GIT_SHALLOW TRUE
+    EXCLUDE_FROM_ALL)
+  FetchContent_MakeAvailable(freetype)
+  if(NOT TARGET Freetype::Freetype)
+    add_library(Freetype::Freetype ALIAS freetype)  # what RmlUi looks for
+  endif()
+
+  set(RMLUI_SAMPLES OFF CACHE BOOL "" FORCE)
+  set(RMLUI_FONT_ENGINE "freetype" CACHE STRING "" FORCE)
+  set(RMLUI_PRECOMPILED_HEADERS OFF CACHE BOOL "" FORCE)
+  FetchContent_Declare(RmlUi
+    GIT_REPOSITORY https://github.com/mikke89/RmlUi.git
+    GIT_TAG 6.3
+    GIT_SHALLOW TRUE
+    EXCLUDE_FROM_ALL)
+  FetchContent_MakeAvailable(RmlUi)
+
+  # RmlUi's SDL3 platform and GL3 renderer backends are source files in its tree, built here. The renderer uses
+  # melonDS's glad (already loaded by the frontend) instead of its own GL loader.
+  set(RMLUI_BACKENDS ${rmlui_SOURCE_DIR}/Backends)
+  add_library(rmlui_backend STATIC ${RMLUI_BACKENDS}/RmlUi_Platform_SDL.cpp ${RMLUI_BACKENDS}/RmlUi_Renderer_GL3.cpp)
+  target_include_directories(rmlui_backend PUBLIC ${RMLUI_BACKENDS})
+  target_compile_definitions(rmlui_backend PUBLIC RMLUI_SDL_VERSION_MAJOR=3
+    PRIVATE RMLUI_GL3_CUSTOM_LOADER="frontend/glad/glad.h")
+  target_link_libraries(rmlui_backend PUBLIC RmlUi::RmlUi SDL3::SDL3 PRIVATE melonds_core)
+  foreach(t freetype rmlui_core rmlui_debugger rmlui_backend)  # third-party code: no warnings
+    if(TARGET ${t})
+      target_compile_options(${t} PRIVATE $<IF:$<BOOL:${MSVC}>,/w,-w>)
+    endif()
+  endforeach()
 endif()

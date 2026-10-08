@@ -55,7 +55,7 @@ struct ScreenView {
 
 class Presenter {
 public:
-    // Creates the GL context (4.3 core if available, else 3.2 core) on `window` and loads its functions.
+    // Creates the GL context (4.3 core if available, else 3.3 core) on `window` and loads its functions.
     bool init(SDL_Window* window);
     // Destroys the context (before the window goes).
     void shutdown();
@@ -73,8 +73,14 @@ public:
     // The tallest screen on the window, in pixels (what the internal resolution should cover).
     float largest_screen_height() const;
 
-    // Draws a frame (or black if `frame` is null) and swaps. With `screenshot`, also saves the window as a PNG.
-    void present(const ntr::Frame* frame, Filter filter, const char* screenshot = nullptr);
+    // Draws a frame (or black if `frame` is null) to the back buffer.
+    void draw(const ntr::Frame* frame, Filter filter);
+    // Shows the back buffer. With `screenshot`, first saves it as a PNG.
+    void swap(const char* screenshot = nullptr);
+    void present(const ntr::Frame* frame, Filter filter, const char* screenshot = nullptr) {
+        draw(frame, filter);
+        swap(screenshot);
+    }
 
 private:
     void save_png(const char* path);

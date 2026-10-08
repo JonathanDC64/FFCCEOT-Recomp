@@ -41,8 +41,14 @@ The recompiler runs at build time and writes the generated C to `build/` (never 
 the tools, recompiler and runtime are built.
 
 Controls: arrows, X = A, Z = B, S = X, A = Y, Q = L, W = R, Enter = Start, Right Shift = Select, mouse = touch screen,
-Esc = quit. Gamepads use the Nintendo button layout, and the left stick works as the D-pad. The company logos
+Esc = settings menu. Gamepads use the Nintendo button layout, and the left stick works as the D-pad. The company logos
 before the title screen are skipped; pass `--no-skip-logos` to watch them.
+
+Settings: Esc (or Guide, or Back + Start on a gamepad) pauses the game and opens the settings menu: screen layout,
+fullscreen, renderer, resolution, filter, volume and more, with a Controls page listing the keys. It works with the mouse,
+the keyboard (arrows, Enter, Q/E for tabs) or a gamepad (D-pad or stick, right face button to change, shoulders for
+tabs). Settings are saved to `settings.ini` next to the save (in `%APPDATA%\FFCCEOT-Recomp\EchoesOfTime` on Windows); the
+options below override them for one run, and the hotkeys change them too.
 
 Screens: by default the top screen fills the window and the bottom screen is a picture-in-picture in the corner
 (click it to touch). F1 cycles the layout (single, main + side, stacked, side by side), F2 swaps the screens, F3 or

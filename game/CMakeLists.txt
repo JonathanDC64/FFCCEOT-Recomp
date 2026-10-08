@@ -41,6 +41,25 @@ if(FFCC_TRACE_ENTRY)
   target_compile_definitions(ffcc_game_code PRIVATE NTR_TRACE_ENTRY)
 endif()
 
+# Settings menu documents and fonts, compiled into the executable.
+set(FFCC_UI_DIR ${CMAKE_CURRENT_SOURCE_DIR}/ui)
+set(FFCC_UI_FILES
+  ${FFCC_UI_DIR}/menu.rml
+  ${FFCC_UI_DIR}/menu.rcss
+  ${FFCC_UI_DIR}/images/chevron.tga
+  ${FFCC_UI_DIR}/fonts/Cinzel.ttf
+  ${FFCC_UI_DIR}/fonts/AlegreyaSans-Regular.ttf
+  ${FFCC_UI_DIR}/fonts/AlegreyaSans-Bold.ttf)
+set(FFCC_UI_ASSETS ${CMAKE_CURRENT_BINARY_DIR}/ui_assets.cpp)
+add_custom_command(
+  OUTPUT ${FFCC_UI_ASSETS}
+  COMMAND ${CMAKE_COMMAND} -D BASE_DIR=${FFCC_UI_DIR} -D OUTPUT=${FFCC_UI_ASSETS} "-DFILES=${FFCC_UI_FILES}"
+          -P ${CMAKE_SOURCE_DIR}/cmake/EmbedFiles.cmake
+  DEPENDS ${FFCC_UI_FILES} ${CMAKE_SOURCE_DIR}/cmake/EmbedFiles.cmake
+  COMMENT "Embedding the settings menu"
+  VERBATIM)
+
 # The game executable: takes the user's ROM on the command line.
-add_executable(ffcc src/main.cpp src/video.cpp src/cfie_hooks.cpp)
-target_link_libraries(ffcc PRIVATE ffcc_game_code ntr_runtime ntr_common SDL3::SDL3-static)
+add_executable(ffcc src/main.cpp src/video.cpp src/cfie_hooks.cpp src/settings.cpp src/ui.cpp ${FFCC_UI_ASSETS})
+target_include_directories(ffcc PRIVATE src)
+target_link_libraries(ffcc PRIVATE ffcc_game_code ntr_runtime ntr_common SDL3::SDL3-static rmlui_backend)
