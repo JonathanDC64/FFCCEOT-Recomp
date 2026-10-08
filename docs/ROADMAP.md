@@ -45,6 +45,7 @@ Milestones are ordered by dependency. Each ends with a demonstrable result. Desi
 - [ ] Long play sessions without crashes; save/load works and matches real-cart dumps
 - [x] Coverage report: every new interpreter entry is logged, with a per-address summary on exit
 - [ ] Fix interpreter entries outside known regions as they show up
+- [ ] The software renderer crashes when the window closes (after the save is written; the GL renderers don't)
 - [x] Skip the unskippable company logos before the title screen (on by default, `--no-skip-logos`; first QoL feature)
 
 ## M5: Modern renderer
@@ -66,6 +67,12 @@ Milestones are ordered by dependency. Each ends with a demonstrable result. Desi
       interpolation not planned (would need sprite matching and sub-pixel compositing for little gain)
 - [x] Display-rate interpolation beyond 60 Hz (GL/compute: re-render 3D + re-composite between emulated frames; §5.3)
 - [ ] Display rate: VRR (timer-paced presents), low-latency option
+- [ ] A host-side hitch once per run: a cluster of late refreshes (about 14, 21, 21 and 50-60 ms) at a random frame,
+      at any CPU speed, not from the game (`--perf` logs it). Suspected: Windows switching the window's presentation
+      mode (DWM composition / independent flip) partway through
+- [ ] Interpolation: sprites whose texture changes every tick (animated effects such as sparkles) don't match
+      between scenes, so they move at 30 Hz. Matching them by format and size instead of texture address would risk
+      pairing two different items
 - [x] Hitches when attacks land (the game loads and sets up data past its tick): fast loading and CPU speed settings
       (on, 4x by default), cycle accounting per straight run of instructions; presses wait for the game's next read
 - [x] Rotation blending by decomposition + slerp (object matrices; camera stays element-wise)
