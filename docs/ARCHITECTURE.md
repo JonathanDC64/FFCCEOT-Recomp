@@ -146,6 +146,23 @@ original plan to recompile the ARM7 too is dropped for now. melonDS's ARM7 inter
 ## 5. Graphics
 
 ### 5.1 GX → GPU renderer
+
+**Today:** the frontend owns an OpenGL context (4.3 core, or 3.2 without compute shaders) and melonDS renders into it.
+The runtime switches between melonDS's three renderers at a frame boundary (`Runtime::set_video`):
+
+| Renderer | Output | Notes |
+|---|---|---|
+| Software | 256×192 per screen, CPU buffers | Exact; the reference |
+| OpenGL | 256·N × 192·N, GL array texture | 2D and 3D upscaled; optional better quad splitting |
+| Compute | 256·N × 192·N, GL array texture | Compute-shader rasteriser, closer to hardware rules when upscaled; sub-pixel vertex positions |
+
+N is 1–16, by default the smallest that covers the screen's size on the window. The presenter draws the two layers of
+the array texture into the window with a nearest, linear or sharp-bilinear filter (`game/src/video.cpp`); software
+frames are uploaded into a texture of the same shape. A missing context or a renderer that fails to start falls back
+to OpenGL or Software.
+
+**Plan:** these renderers draw the DS's fixed 256×192 viewport and keep no draw list between frames, so widescreen (§5.2)
+and interpolation (§5.3) need our own rasteriser:
 - The geometry engine (matrix stacks, lighting, vertex/texcoord transforms, clipping) runs on the CPU in the runtime,
   fed from GXFIFO writes and DMA. It produces per-frame polygon lists exactly as the hardware would.
 - The rasteriser is a GPU backend on **SDL3's GPU API** (Vulkan / D3D12 / Metal). It reproduces DS rules: W-buffer/Z-buffer,

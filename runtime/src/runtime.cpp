@@ -12,6 +12,8 @@
 
 #include "Args.h"
 #include "GPU.h"
+#include "GPU_OpenGL.h"
+#include "GPU_Soft.h"
 #include "NDSCart.h"
 #include "SPU.h"
 #include "ntr/rom.hpp"
@@ -80,6 +82,7 @@ RuntimeImpl::RuntimeImpl(std::vector<uint8_t> rom, const GameCode& code, Host& h
     nds->Reset();
     nds->SetupDirectBoot("game.nds");
     nds->Start();
+    apply_video(options.video);
 
     read_pages_.assign(1u << 20, nullptr);
     write_pages_.assign(1u << 20, nullptr);
@@ -291,12 +294,23 @@ void RuntimeImpl::end_frame() {
     if (options.perf) report_perf();
     if (options.dump_at_frame && frames_ == options.dump_at_frame) dump_state();
 
+    Frame frame;
     void* top = nullptr;
     void* bottom = nullptr;
-    n.GPU.GetFramebuffers(&top, &bottom);
-    if (!host.on_frame(static_cast<const uint32_t*>(top), static_cast<const uint32_t*>(bottom))) {
+    if (n.GPU.GetFramebuffers(&top, &bottom)) {
+        frame.top = static_cast<const uint32_t*>(top);
+        frame.bottom = static_cast<const uint32_t*>(bottom);
+    } else {
+        frame.gl_texture = *static_cast<const GLuint*>(top);
+        frame.scale = video_.scale;
+    }
+    if (!host.on_frame(frame)) {
         quit_ = true;
         fiber_switch(fibers_[current_fiber_].fiber, root_fiber_);
+    }
+    if (video_dirty_) {
+        video_dirty_ = false;
+        apply_video(pending_video_);
     }
     perf_mark_ = std::chrono::steady_clock::now();  // the frontend's frame pacing is not emulation time
 }
@@ -684,6 +698,53 @@ int RuntimeImpl::run() {
 }
 
 void RuntimeImpl::set_buttons(uint32_t pressed) { buttons_ = pressed; }
+
+void RuntimeImpl::set_video(const VideoSettings& settings) {
+    pending_video_ = settings;
+    video_dirty_ = true;
+}
+
+// Switches melonDS's renderer (between frames). Falls back to OpenGL when the context lacks compute shaders, and to
+// Software when there is no usable context at all.
+void RuntimeImpl::apply_video(VideoSettings s) {
+    melonDS::NDS& n = *nds;
+    s.scale = std::clamp(s.scale, 1, 16);
+    if (s.renderer != Renderer::Software && !glEnable) {
+        log("video: no OpenGL context, using the software renderer\n");
+        s.renderer = Renderer::Software;
+    }
+    if (s.renderer == Renderer::Compute && !GLAD_GL_VERSION_4_3) {
+        log("video: OpenGL 4.3 is not available for the compute renderer, using OpenGL\n");
+        s.renderer = Renderer::OpenGL;
+    }
+    if (!video_applied_ || s.renderer != video_.renderer) {
+        if (s.renderer == Renderer::Software)
+            n.SetRenderer(std::make_unique<melonDS::SoftRenderer>(n));
+        else
+            n.SetRenderer(std::make_unique<melonDS::GLRenderer>(n, s.renderer == Renderer::Compute));
+        if (s.renderer != Renderer::Software && !dynamic_cast<melonDS::GLRenderer*>(&n.GetRenderer())) {
+            log("video: the %s renderer failed to start, using the software renderer\n", renderer_name(s.renderer));
+            s.renderer = Renderer::Software;
+        }
+    }
+    melonDS::RendererSettings rs{s.scale, s.threaded, s.hires_coordinates, s.better_polygons};
+    n.GetRenderer().SetRenderSettings(rs);
+    int current = 0, count = 0;
+    while (n.GetRenderer().NeedsShaderCompile()) n.GetRenderer().ShaderCompileStep(current, count);
+    if (s.renderer == Renderer::Software) s.scale = 1;
+    video_ = s;
+    video_applied_ = true;
+    log("video: %s renderer, %dx (%dx%d per screen)\n", renderer_name(s.renderer), s.scale, 256 * s.scale, 192 * s.scale);
+}
+
+const char* renderer_name(Renderer r) {
+    switch (r) {
+    case Renderer::Software: return "software";
+    case Renderer::OpenGL: return "OpenGL";
+    case Renderer::Compute: return "compute";
+    }
+    return "?";
+}
 void RuntimeImpl::touch(int x, int y) {
     touch_x_ = std::clamp(x, 0, 255);
     touch_y_ = std::clamp(y, 0, 191);

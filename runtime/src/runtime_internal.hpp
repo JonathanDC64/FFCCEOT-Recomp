@@ -55,6 +55,8 @@ public:
     void set_buttons(uint32_t pressed) override;
     void touch(int x, int y) override;
     void release_touch() override;
+    void set_video(const VideoSettings& settings) override;
+    VideoSettings video() const override { return video_; }
 
     // ---- services for recompiled code ----
     u32 bus_read32(u32 a);
@@ -115,6 +117,7 @@ private:
     void sync_after_io(u32 addr);
     void advance();
     void end_frame();
+    void apply_video(VideoSettings settings);
     void report_perf();
     void trace_cart_write(u32 addr, u32 value, u32 size);
     bool irq_pending() const;
@@ -140,6 +143,11 @@ private:
     Fiber* root_fiber_ = nullptr;
     bool quit_ = false;
     int exit_code_ = 0;
+
+    VideoSettings video_;            // in use
+    VideoSettings pending_video_;    // requested by set_video()
+    bool video_dirty_ = false;
+    bool video_applied_ = false;
 
     uint32_t buttons_ = 0;
     int touch_x_ = -1, touch_y_ = -1;

@@ -2,11 +2,13 @@
 //
 //   ffcc <your dump.nds>
 //
-// Shows both screens stacked, with keyboard/gamepad input, touch via the mouse and audio output.
+// Shows both screens stacked, with keyboard/gamepad input, touch via the mouse and audio output. Video goes through
+// OpenGL, which also lets melonDS render the screens at a multiple of the DS resolution.
 #include <SDL3/SDL.h>
 
 #include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
@@ -18,16 +20,27 @@
 #include "cfie_game.hpp"
 #include "ntr/rom.hpp"
 #include "ntr/runtime.hpp"
+#include "video.hpp"
 
 namespace {
 
 constexpr int kScreenW = 256, kScreenH = 192;
 constexpr double kFrameSeconds = 560190.0 / 33513982.0;  // one DS frame (59.8261 Hz)
+constexpr char kTitle[] = "Final Fantasy Crystal Chronicles: Echoes of Time";
 
 std::vector<uint8_t> read_file(const std::filesystem::path& p) {
     std::ifstream f(p, std::ios::binary);
     return std::vector<uint8_t>(std::istreambuf_iterator<char>(f), {});
 }
+
+// Video choices: the renderer and its internal resolution, and how the result is scaled to the window.
+struct VideoChoice {
+    ntr::Renderer renderer = ntr::Renderer::OpenGL;
+    int scale = 0;  // 0 = match the window
+    video::Filter filter = video::Filter::Linear;
+    bool better_polygons = false;
+    bool hires_coordinates = true;
+};
 
 class SdlHost final : public ntr::Host {
 public:
@@ -37,39 +50,54 @@ public:
             std::fprintf(stderr, "SDL_Init failed: %s\n", SDL_GetError());
             return false;
         }
-        window_ = SDL_CreateWindow("Final Fantasy Crystal Chronicles: Echoes of Time", kScreenW * 3, kScreenH * 2 * 3,
-                                   SDL_WINDOW_RESIZABLE);
-        renderer_ = window_ ? SDL_CreateRenderer(window_, nullptr) : nullptr;
-        if (!renderer_) {
-            std::fprintf(stderr, "SDL window/renderer failed: %s\n", SDL_GetError());
+        window_ = SDL_CreateWindow(kTitle, kScreenW * 3, kScreenH * 2 * 3,
+                                   SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY);
+        if (!window_ || !presenter_.init(window_)) {
+            std::fprintf(stderr, "cannot open the game window: %s\n", SDL_GetError());
             return false;
         }
-        SDL_SetRenderVSync(renderer_, 0);
-        texture_ = SDL_CreateTexture(renderer_, SDL_PIXELFORMAT_XRGB8888, SDL_TEXTUREACCESS_STREAMING, kScreenW,
-                                     kScreenH * 2);
-        SDL_SetTextureScaleMode(texture_, SDL_SCALEMODE_NEAREST);
+        update_layout();
 
         SDL_AudioSpec spec{SDL_AUDIO_S16, 2, 48000};
         audio_ = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &spec, nullptr, nullptr);
         if (audio_) SDL_ResumeAudioStreamDevice(audio_);
         next_frame_ = std::chrono::steady_clock::now();
         skipping_ = skip_logos;
-        if (skipping_) present(nullptr, nullptr);  // black until the title screen
+        if (skipping_) presenter_.present(nullptr, choice.filter);  // black until the title screen
         return true;
     }
 
     ~SdlHost() override {
         flush_save();
         if (audio_) SDL_DestroyAudioStream(audio_);
-        if (texture_) SDL_DestroyTexture(texture_);
-        if (renderer_) SDL_DestroyRenderer(renderer_);
+        presenter_.shutdown();
         if (window_) SDL_DestroyWindow(window_);
         SDL_Quit();
     }
 
-    void attach(ntr::Runtime* rt) { runtime_ = rt; }
+    // The renderer settings `choice` asks for at the current window size.
+    ntr::VideoSettings wanted_video() const {
+        ntr::VideoSettings v;
+        v.renderer = choice.renderer;
+        if (v.renderer == ntr::Renderer::Compute && !presenter_.has_compute()) v.renderer = ntr::Renderer::OpenGL;
+        // Match the window: render at least as many pixels as a screen covers (any excess is filtered down).
+        v.scale = choice.scale ? choice.scale
+                               : std::clamp(int(std::ceil(presenter_.top_rect().h / kScreenH - 0.01f)), 1, 16);
+        if (v.renderer == ntr::Renderer::Software) v.scale = 1;  // native only
+        v.better_polygons = choice.better_polygons;
+        v.hires_coordinates = choice.hires_coordinates;
+        return v;
+    }
 
-    bool on_frame(const uint32_t* top, const uint32_t* bottom) override {
+    void attach(ntr::Runtime* rt) {
+        runtime_ = rt;
+        sent_video_ = rt->video();
+        sync_video();
+        update_title();
+    }
+
+    bool on_frame(const ntr::Frame& frame) override {
+        if (title_dirty_) update_title();  // before handling input: a change made last frame is now in effect
         if (!pump_events()) return false;
         ++frames_;
         if (exit_after_frames && frames_ >= exit_after_frames) return false;
@@ -80,7 +108,8 @@ public:
             skipping_ = false;
             next_frame_ = std::chrono::steady_clock::now();
         }
-        present(top, bottom);
+        const bool shot = screenshot_frame && frames_ == screenshot_frame;
+        presenter_.present(&frame, choice.filter, shot ? screenshot_path.c_str() : nullptr);
         if (++frames_since_save_ > 120) flush_save();
         pace();
         return true;
@@ -106,6 +135,11 @@ private:
             case SDL_EVENT_QUIT: return false;
             case SDL_EVENT_KEY_DOWN:
                 if (e.key.key == SDLK_ESCAPE) return false;
+                if (!e.key.repeat) hotkey(e.key.key);
+                break;
+            case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
+                update_layout();
+                sync_video();
                 break;
             case SDL_EVENT_GAMEPAD_ADDED:
                 if (!gamepad_) gamepad_ = SDL_OpenGamepad(e.gdevice.which);
@@ -121,6 +155,55 @@ private:
         }
         update_input();
         return true;
+    }
+
+    // Video hotkeys (until there is a settings menu): F5 renderer, F6/F7 resolution down/up, F8 filter,
+    // F11 fullscreen. Stepping the resolution past 1x or 16x returns to matching the window.
+    void hotkey(SDL_Keycode key) {
+        const int scale = runtime_->video().scale;
+        if (key == SDLK_F11) {
+            SDL_SetWindowFullscreen(window_, !(SDL_GetWindowFlags(window_) & SDL_WINDOW_FULLSCREEN));
+            return;
+        }
+        switch (key) {
+        case SDLK_F5: choice.renderer = ntr::Renderer((int(choice.renderer) + 1) % 3); break;
+        case SDLK_F6: choice.scale = choice.scale == 0 ? std::max(1, scale - 1) : choice.scale - 1; break;
+        case SDLK_F7: choice.scale = choice.scale == 0 ? std::min(16, scale + 1) : (choice.scale + 1) % 17; break;
+        case SDLK_F8: choice.filter = video::Filter((int(choice.filter) + 1) % 3); break;
+        default: return;
+        }
+        sync_video();
+        title_dirty_ = true;
+    }
+
+    // Asks the runtime for new renderer settings when the choice or the window size calls for them.
+    void sync_video() {
+        const ntr::VideoSettings v = wanted_video();
+        if (v.renderer == sent_video_.renderer && v.scale == sent_video_.scale &&
+            v.better_polygons == sent_video_.better_polygons && v.hires_coordinates == sent_video_.hires_coordinates)
+            return;
+        runtime_->set_video(v);
+        sent_video_ = v;
+        title_dirty_ = true;
+    }
+
+    // The title shows the video settings in use (a change applies at the end of the frame that made it).
+    void update_title() {
+        title_dirty_ = false;
+        const ntr::VideoSettings v = runtime_->video();
+        std::string t = std::string(kTitle) + "  |  " + ntr::renderer_name(v.renderer);
+        if (v.renderer != ntr::Renderer::Software)
+            t += " " + std::to_string(v.scale) + "x" + (choice.scale ? "" : " (auto)");
+        t += std::string(", ") + video::filter_name(choice.filter) + " filter  |  F5 renderer, F6/F7 resolution, F8 filter, F11 fullscreen";
+        SDL_SetWindowTitle(window_, t.c_str());
+    }
+
+    void update_layout() {
+        int w = 0, h = 0, pw = 0, ph = 0;
+        SDL_GetWindowSize(window_, &w, &h);
+        SDL_GetWindowSizeInPixels(window_, &pw, &ph);
+        presenter_.layout(pw, ph);
+        pixel_ratio_ = w > 0 ? float(pw) / w : 1.0f;
     }
 
     void update_input() {
@@ -171,11 +254,11 @@ private:
         // Mouse on the bottom screen = stylus.
         float mx, my;
         SDL_MouseButtonFlags mb = SDL_GetMouseState(&mx, &my);
-        SDL_FRect r = screen_rect_;
+        const video::Rect& r = presenter_.bottom_rect();
         bool touching = false;
         if ((mb & SDL_BUTTON_LMASK) && r.w > 0) {
-            float sx = (mx - r.x) / r.w * kScreenW;
-            float sy = (my - r.y) / r.h * (kScreenH * 2) - kScreenH;
+            float sx = (mx * pixel_ratio_ - r.x) / r.w * kScreenW;
+            float sy = (my * pixel_ratio_ - r.y) / r.h * kScreenH;
             if (sx >= 0 && sx < kScreenW && sy >= 0 && sy < kScreenH) {
                 runtime_->touch(int(sx), int(sy));
                 touching = true;
@@ -183,32 +266,6 @@ private:
         }
         if (!touching) runtime_->release_touch();
         input_active_ = b != 0 || touching;
-    }
-
-    void present(const uint32_t* top, const uint32_t* bottom) {
-        void* pixels;
-        int pitch;
-        if (!top || !bottom) {
-            SDL_SetRenderDrawColor(renderer_, 0, 0, 0, 255);
-            SDL_RenderClear(renderer_);
-            SDL_RenderPresent(renderer_);
-            return;
-        }
-        if (SDL_LockTexture(texture_, nullptr, &pixels, &pitch)) {
-            for (int y = 0; y < kScreenH; y++) {
-                std::memcpy(static_cast<uint8_t*>(pixels) + y * pitch, top + y * kScreenW, kScreenW * 4);
-                std::memcpy(static_cast<uint8_t*>(pixels) + (y + kScreenH) * pitch, bottom + y * kScreenW, kScreenW * 4);
-            }
-            SDL_UnlockTexture(texture_);
-        }
-        int ww, wh;
-        SDL_GetRenderOutputSize(renderer_, &ww, &wh);
-        float scale = std::min(float(ww) / kScreenW, float(wh) / (kScreenH * 2));
-        screen_rect_ = {(ww - kScreenW * scale) / 2, (wh - kScreenH * 2 * scale) / 2, kScreenW * scale, kScreenH * 2 * scale};
-        SDL_SetRenderDrawColor(renderer_, 0, 0, 0, 255);
-        SDL_RenderClear(renderer_);
-        SDL_RenderTexture(renderer_, texture_, nullptr, &screen_rect_);
-        SDL_RenderPresent(renderer_);
     }
 
     void pace() {
@@ -235,11 +292,12 @@ private:
     }
 
     SDL_Window* window_ = nullptr;
-    SDL_Renderer* renderer_ = nullptr;
-    SDL_Texture* texture_ = nullptr;
+    video::Presenter presenter_;
+    float pixel_ratio_ = 1;  // window pixels per window coordinate (high-DPI displays)
+    ntr::VideoSettings sent_video_;
+    bool title_dirty_ = false;
     SDL_AudioStream* audio_ = nullptr;
     SDL_Gamepad* gamepad_ = nullptr;
-    SDL_FRect screen_rect_{};
     ntr::Runtime* runtime_ = nullptr;
     std::chrono::steady_clock::time_point next_frame_;
     std::filesystem::path save_path_;
@@ -255,37 +313,89 @@ private:
 public:
     uint64_t exit_after_frames = 0;  // 0 = run until the window closes
     bool skip_logos = true;
+    VideoChoice choice;
+    uint64_t screenshot_frame = 0;   // debugging: save the window at this frame
+    std::string screenshot_path;
 };
+
+bool parse_renderer(const std::string& s, ntr::Renderer& r) {
+    if (s == "software" || s == "soft") r = ntr::Renderer::Software;
+    else if (s == "opengl" || s == "gl") r = ntr::Renderer::OpenGL;
+    else if (s == "compute") r = ntr::Renderer::Compute;
+    else return false;
+    return true;
+}
+
+bool parse_filter(const std::string& s, video::Filter& f) {
+    if (s == "nearest") f = video::Filter::Nearest;
+    else if (s == "linear") f = video::Filter::Linear;
+    else if (s == "sharp") f = video::Filter::Sharp;
+    else return false;
+    return true;
+}
 
 }  // namespace
 
 int main(int argc, char** argv) {
     if (argc < 2) {
-        std::fprintf(stderr, "usage: %s <your Echoes of Time (USA) dump.nds> [--no-skip-logos] [--trace-calls] [--trace-threads] [--trace-files] [--perf]\n"
-                     "       [--profile-functions <file>] [--dump-at-frame <n>] [--exit-after-frames <n>]\n", argv[0]);
+        std::fprintf(stderr,
+                     "usage: %s <your Echoes of Time (USA) dump.nds> [options]\n"
+                     "video:\n"
+                     "  --renderer software|opengl|compute   (default opengl)\n"
+                     "  --scale auto|1..16                   internal resolution for opengl/compute (default auto)\n"
+                     "  --filter nearest|linear|sharp        scaling to the window (default linear)\n"
+                     "  --better-polygons                    opengl: better quad splitting\n"
+                     "  --no-hires-coordinates               compute: snap vertices to the DS pixel grid\n"
+                     "other:\n"
+                     "  --no-skip-logos --trace-calls --trace-threads --trace-files --perf\n"
+                     "  --profile-functions <file> --dump-at-frame <n> --exit-after-frames <n>\n"
+                     "  --screenshot-at-frame <n> <file.png>\n",
+                     argv[0]);
         return 2;
     }
     const std::filesystem::path rom_path = argv[1];
     ntr::RuntimeOptions options;
     uint64_t exit_after_frames = 0;
     bool skip_logos = true;
-    for (int i = 2; i < argc; i++)
-        if (std::string(argv[i]) == "--trace-calls")
+    VideoChoice choice;
+    uint64_t screenshot_frame = 0;
+    std::string screenshot_path;
+    for (int i = 2; i < argc; i++) {
+        const std::string a = argv[i];
+        const bool has_value = i + 1 < argc;
+        if (a == "--trace-calls")
             options.trace_calls = true;
-        else if (std::string(argv[i]) == "--trace-threads")
+        else if (a == "--trace-threads")
             options.trace_threads = true;
-        else if (std::string(argv[i]) == "--no-skip-logos")
+        else if (a == "--no-skip-logos")
             skip_logos = false;
-        else if (std::string(argv[i]) == "--perf")
+        else if (a == "--perf")
             options.perf = true;
-        else if (std::string(argv[i]) == "--trace-files")
+        else if (a == "--trace-files")
             options.trace_files = true;
-        else if (std::string(argv[i]) == "--profile-functions" && i + 1 < argc)
+        else if (a == "--profile-functions" && has_value)
             options.profile_path = argv[++i];
-        else if (std::string(argv[i]) == "--dump-at-frame" && i + 1 < argc)
+        else if (a == "--dump-at-frame" && has_value)
             options.dump_at_frame = std::strtoull(argv[++i], nullptr, 10);
-        else if (std::string(argv[i]) == "--exit-after-frames" && i + 1 < argc)
+        else if (a == "--exit-after-frames" && has_value)
             exit_after_frames = std::strtoull(argv[++i], nullptr, 10);
+        else if (a == "--renderer" && has_value && parse_renderer(argv[i + 1], choice.renderer))
+            ++i;
+        else if (a == "--scale" && has_value) {
+            const std::string v = argv[++i];
+            choice.scale = v == "auto" ? 0 : std::clamp(std::atoi(v.c_str()), 1, 16);
+        } else if (a == "--filter" && has_value && parse_filter(argv[i + 1], choice.filter))
+            ++i;
+        else if (a == "--screenshot-at-frame" && i + 2 < argc) {
+            screenshot_frame = std::strtoull(argv[++i], nullptr, 10);
+            screenshot_path = argv[++i];
+        } else if (a == "--better-polygons")
+            choice.better_polygons = true;
+        else if (a == "--no-hires-coordinates")
+            choice.hires_coordinates = false;
+        else
+            std::fprintf(stderr, "ignoring unknown or incomplete option %s\n", a.c_str());
+    }
 
     std::vector<uint8_t> rom = read_file(rom_path);
     if (rom.empty()) {
@@ -309,12 +419,16 @@ int main(int argc, char** argv) {
     SdlHost host;
     host.exit_after_frames = exit_after_frames;
     host.skip_logos = skip_logos;
+    host.choice = choice;
+    host.screenshot_frame = screenshot_frame;
+    host.screenshot_path = screenshot_path;
     if (!host.init(save_path)) return 1;
+    options.video = host.wanted_video();  // the GL context is current: melonDS's GL renderers can start
 
     ntr::GameCode code{ntr_recomp_functions, ntr_recomp_function_count, ntr_recomp_overlays, ntr_recomp_overlay_count};
     auto runtime = ntr::Runtime::create(std::move(rom), code, host, std::move(options));
     host.attach(runtime.get());
     const int rc = runtime->run();
-    runtime.reset();  // writes the exit reports (interpreter coverage, function profile)
+    runtime.reset();  // writes the exit reports (interpreter coverage, function profile); frees the GL renderer
     return rc;
 }

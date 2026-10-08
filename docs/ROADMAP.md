@@ -49,6 +49,8 @@ Milestones are ordered by dependency. Each ends with a demonstrable result. Desi
 
 ## M5: Modern renderer
 **Result: 4K, widescreen, 60+ FPS.**
+- [x] Upscaling now: melonDS's OpenGL and compute renderers at 1–16× (auto-matched to the window), switchable live,
+      with nearest/linear/sharp-bilinear output filters, software renderer kept as the exact reference; fullscreen
 - [ ] SDL_GPU GX rasteriser with DS rules at N× scale; texture cache
 - [ ] Upscaled 2D compositor; screen layouts (single + overlay/PiP, swap, side-by-side, stacked, separate window)
 - [ ] Widescreen: projection hook, culling hook, HUD anchoring, fades
@@ -59,6 +61,7 @@ Milestones are ordered by dependency. Each ends with a demonstrable result. Desi
 **Result: fully playable on a gamepad without touching the bottom screen. Themed launcher and in-game menu.**
 - [ ] Binding system + rebinding UI, glyph sets
 - [ ] FFCC touch-free scheme (spell ring, menus, map), mouse-as-stylus
+- [ ] Analog movement: full 360° character movement from the stick (the game reads an 8-way D-pad; hook its movement input)
 - [ ] RmlUi integration on SDL_GPU, FF crystal theme (original art)
 - [ ] Launcher/installer flow, in-game menu, settings persistence
 - [ ] ImGui dev tools (`--dev`)

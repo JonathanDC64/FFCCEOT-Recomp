@@ -6,7 +6,7 @@ Each component keeps its own licence.
 
 | Component | How | Use | Licence |
 |---|---|---|---|
-| [melonDS](https://github.com/melonDS-emu/melonDS) | submodule `third_party/melonDS`, pinned; core only (no JIT, no frontend) | Hardware model: ARM7, GPU, SPU, timers, DMA, cart, SPI, RTC, Wi-Fi; ARMv5 interpreter fallback | GPL-3.0 |
+| [melonDS](https://github.com/melonDS-emu/melonDS) | submodule `third_party/melonDS`, pinned; core and renderers only (no JIT, no frontend) | Hardware model: ARM7, GPU, SPU, timers, DMA, cart, SPI, RTC, Wi-Fi; software/OpenGL/compute renderers (with the glad GL loader from its tree); ARMv5 interpreter fallback | GPL-3.0 |
 | [SDL3](https://github.com/libsdl-org/SDL) | fetched by CMake (`release-3.4.18`), static | Window, input, audio | zlib |
 
 `compat/` holds small build shims for compiling the melonDS core with clang-cl/MSVC.

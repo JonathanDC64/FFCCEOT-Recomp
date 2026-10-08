@@ -44,6 +44,13 @@ Controls: arrows, X = A, Z = B, S = X, A = Y, Q = L, W = R, Enter = Start, Right
 Esc = quit. Gamepads use the Nintendo button layout, and the left stick works as the D-pad. The company logos
 before the title screen are skipped; pass `--no-skip-logos` to watch them.
 
+Video: the screens are rendered with OpenGL at a multiple of the DS resolution that matches the window (up to 16×,
+4K and beyond). While playing: F5 cycles the renderer (software, OpenGL, compute), F6/F7 lower/raise the internal
+resolution (past 1× or 16× returns to auto), F8 cycles the filter (nearest, linear, sharp), F11 toggles fullscreen.
+The window title shows the current settings. The same choices exist as options:
+`--renderer software|opengl|compute`, `--scale auto|1..16`, `--filter nearest|linear|sharp`, `--better-polygons`,
+`--no-hires-coordinates`.
+
 ## Documentation
 
 - [docs/RESEARCH.md](docs/RESEARCH.md): the DS recomp landscape, prior art, and our analysis of the game

@@ -42,5 +42,5 @@ if(FFCC_TRACE_ENTRY)
 endif()
 
 # The game executable: takes the user's ROM on the command line.
-add_executable(ffcc src/main.cpp src/cfie_hooks.cpp)
+add_executable(ffcc src/main.cpp src/video.cpp src/cfie_hooks.cpp)
 target_link_libraries(ffcc PRIVATE ffcc_game_code ntr_runtime ntr_common SDL3::SDL3-static)

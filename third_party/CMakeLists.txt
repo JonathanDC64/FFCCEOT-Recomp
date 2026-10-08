@@ -1,8 +1,8 @@
 # Third-party code built from pinned git submodules.
 
 # ---- melonDS core (GPL-3.0-or-later) ----
-# Built from our own source list rather than melonDS's CMake: we need the emulation core only (no frontend,
-# JIT, OpenGL renderer or GDB stub), and the recompiled ARM9 replaces melonDS's ARM9 interpreter at run time.
+# Built from our own source list rather than melonDS's CMake: we need the emulation core and its renderers only
+# (no frontend, JIT or GDB stub), and the recompiled ARM9 replaces melonDS's ARM9 interpreter at run time.
 set(MELONDS_DIR ${CMAKE_CURRENT_SOURCE_DIR}/melonDS)
 if(NOT EXISTS ${MELONDS_DIR}/src/NDS.cpp)
   message(FATAL_ERROR "third_party/melonDS is missing: run `git submodule update --init --recursive`")
@@ -29,9 +29,31 @@ add_library(melonds_core STATIC
   ${MS}/NDSCart/CartRetailIR.cpp ${MS}/NDSCart/CartRetailBT.cpp ${MS}/NDSCart/CartSD.cpp
   ${MS}/NDSCart/CartHomebrew.cpp ${MS}/NDSCart/CartR4.cpp
   ${MS}/fatfs/ff.c ${MS}/fatfs/ffsystem.c ${MS}/fatfs/ffunicode.c
-  ${MS}/sha1/sha1.c ${MS}/tiny-AES-c/aes.c ${MS}/xxhash/xxhash.c ${MS}/blip-buf/blip_buf.c)
+  ${MS}/sha1/sha1.c ${MS}/tiny-AES-c/aes.c ${MS}/xxhash/xxhash.c ${MS}/blip-buf/blip_buf.c
+  # OpenGL renderers (classic and compute-shader 3D, upscaled 2D) and the GL function loader they use.
+  ${MS}/GPU_OpenGL.cpp ${MS}/GPU2D_OpenGL.cpp ${MS}/GPU3D_OpenGL.cpp ${MS}/GPU3D_Compute.cpp
+  ${MS}/GPU3D_TexcacheOpenGL.cpp ${MS}/OpenGLSupport.cpp ${MS}/frontend/glad/glad.c)
 set_target_properties(melonds_core PROPERTIES CXX_STANDARD 17)
 target_include_directories(melonds_core SYSTEM PUBLIC ${MS} ${CMAKE_CURRENT_BINARY_DIR}/melonds_gen)
+# (PlatformOGL.h's fallback for MELONDS_GL_HEADER is double-quoted, so define it as melonDS's frontend does.)
+target_compile_definitions(melonds_core PUBLIC OGLRENDERER_ENABLED MELONDS_GL_HEADER=\"frontend/glad/glad.h\")
+
+# The GL renderers' GLSL sources, embedded as C string headers (as melonDS's own OpenGL_shaders/CMakeLists.txt does).
+set(MELONDS_SHADERS 2DLayerPreVS 2DLayerPreFS 2DSpritePreVS 2DSpritePreFS 2DSpriteVS 2DSpriteFS 2DCompositorVS
+  2DCompositorFS FinalPassVS FinalPassFS CaptureVS CaptureFS CaptureDownscaleVS CaptureDownscaleFS 3DClearVS 3DClearFS
+  3DClearBitmapVS 3DClearBitmapFS 3DRenderVS 3DRenderFS 3DFinalPassVS 3DFinalPassEdgeFS 3DFinalPassFogFS)
+set(melonds_shader_headers)
+foreach(sh ${MELONDS_SHADERS})
+  set(out ${CMAKE_CURRENT_BINARY_DIR}/melonds_gen/OpenGL_shaders/${sh}.h)
+  add_custom_command(OUTPUT ${out}
+    COMMAND ${CMAKE_COMMAND} -D INPUT_FILE=${MS}/OpenGL_shaders/${sh}.glsl -D OUTPUT_FILE=${out} -D VAR_NAME=${sh}
+            -P ${MELONDS_DIR}/cmake/MakeEmbed.cmake
+    DEPENDS ${MS}/OpenGL_shaders/${sh}.glsl ${MELONDS_DIR}/cmake/MakeEmbed.cmake
+    VERBATIM)
+  list(APPEND melonds_shader_headers ${out})
+endforeach()
+add_custom_target(melonds_shaders DEPENDS ${melonds_shader_headers})
+add_dependencies(melonds_core melonds_shaders)
 if(CMAKE_SYSTEM_PROCESSOR MATCHES "AMD64|x86_64")
   target_compile_definitions(melonds_core PUBLIC ARCHITECTURE_x86_64=1)
 elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "arm64|aarch64|ARM64")
@@ -64,7 +86,7 @@ if(WIN32)
   target_link_libraries(melonds_core PRIVATE ole32 comctl32 wsock32 ws2_32)
 else()
   find_package(Threads REQUIRED)
-  target_link_libraries(melonds_core PRIVATE Threads::Threads)
+  target_link_libraries(melonds_core PRIVATE Threads::Threads ${CMAKE_DL_LIBS})
   target_link_libraries(melonds_teakra PRIVATE Threads::Threads)
 endif()
 
