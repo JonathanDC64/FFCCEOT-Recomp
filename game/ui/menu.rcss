@@ -201,15 +201,43 @@ input.range sliderbar {
 input.range sliderbar:hover, .row.focused input.range sliderbar { background-color: #fff0c4; }
 input.range sliderarrowdec, input.range sliderarrowinc { width: 0; height: 0; }
 
-/* Controls reference. */
-.keyrow {
-    height: 34dp;
-    line-height: 34dp;
-    padding: 0 14dp;
-    border-bottom: 1dp #ffffff12;
+/* Bindings table. */
+.bindhead {
+    height: 30dp;
+    line-height: 30dp;
+    padding: 0 12dp 0 17dp;
+    font-family: "Cinzel";
+    font-size: 15dp;
+    color: #9aa6bf;
 }
-.keyrow .label { width: 220dp; color: #e6c77f; }
-.key { color: #e9e3d2; }
+.bindhead .label, .bind .label { width: 220dp; }
+.bind { display: block; height: 36dp; line-height: 36dp; }
+.bindhead, .bind { white-space: nowrap; width: 100%; box-sizing: border-box; }
+.gap { margin-top: 14dp; }
+.cell {
+    display: inline-block;
+    width: 210dp;
+    height: 28dp;
+    line-height: 28dp;
+    margin-right: 12dp;
+    padding-left: 10dp;
+    box-sizing: border-box;
+    border-radius: 4dp;
+}
+.bind .cell {
+    color: #e6c77f;
+    background-color: #0b1530a0;
+    border: 1dp #c8a76440;
+}
+.bind .cell:hover { border-color: #7fd0ff; }
+.bind .cell.unbound { color: #6c7790; }
+.row.focused .cell.current { border-color: #7fd0ff; background-color: #7fd0ff26; }
+.row.bind .cell.capturing {
+    color: #ffffff;
+    border-color: #7fd0ff;
+    background-color: #3d78b8;
+}
+.row.action .label { color: #e6c77f; }
 
 /* Resume / Quit. */
 #footer {
@@ -242,3 +270,20 @@ input.range sliderarrowdec, input.range sliderarrowinc { width: 0; height: 0; }
     font-size: 15dp;
     color: #8090ac;
 }
+
+/* Scrollbar of a page taller than the panel. */
+scrollbarvertical {
+    width: 8dp;
+    margin-left: 6dp;
+}
+scrollbarvertical slidertrack {
+    background-color: #ffffff12;
+    border-radius: 4dp;
+}
+scrollbarvertical sliderbar {
+    min-height: 30dp;
+    background-color: #c8a76490;
+    border-radius: 4dp;
+}
+scrollbarvertical sliderbar:hover { background-color: #e6c77f; }
+scrollbarvertical sliderarrowdec, scrollbarvertical sliderarrowinc { width: 0; height: 0; }

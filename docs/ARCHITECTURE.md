@@ -221,6 +221,14 @@ D3D11 flip-model swapchain through `WGL_NV_DX_interop2`, at the cost of interop 
 exactly to the display.
 
 ## 6. Input and the "no touch screen" scheme
+**Today:** `game/src/input.cpp` binds each action (the 12 DS buttons, plus show other screen, swap screens and
+fullscreen) to one key and one gamepad input (a button, a stick direction or a trigger), with the left stick as an
+optional D-pad and a deadzone setting. The menu's Controls page rebinds them: an input already used by another action
+swaps over, so nothing is bound twice. Pad inputs are saved by position (`east`, `+leftx`, `righttrigger`) and shown
+with the connected controller's names via `SDL_GetGamepadButtonLabelForType`. The menu itself stays on fixed inputs
+(Esc, Guide, Back + Start). Touch actions and glyph images come next.
+
+**Plan:**
 - A binding system maps physical inputs to **actions**: DS buttons plus virtual touch actions plus app actions (open menu, swap screens, fast-forward).
 - FFCC-specific scheme (designed once screen usage is mapped): the spell ring is selected with the right stick or shoulder + face buttons,
   aimed with the left stick, and menu items get button prompts. Implemented by **calling the game's own selection functions via hooks** where possible,

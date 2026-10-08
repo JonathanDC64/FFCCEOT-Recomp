@@ -9,6 +9,7 @@
 #include <cstdio>
 #include <cstring>
 #include <string>
+#include <vector>
 
 #include "RmlUi_Platform_SDL.h"
 #include "RmlUi_Renderer_GL3.h"
@@ -73,7 +74,14 @@ struct State {
     bool better_polygons = false, hires_coordinates = true;
     int volume = 100;
     bool skip_logos = true;
+    bool stick_moves = true;
+    int deadzone = 35;
     bool operator==(const State&) const = default;
+};
+
+// One line of the bindings table.
+struct BindRow {
+    Rml::String label, key, pad;
 };
 
 struct Menu::Impl {
@@ -91,6 +99,100 @@ struct Menu::Impl {
     int focus = 0;           // index into the focusable rows of the current page
     bool stick_held = false;  // left stick past the threshold (one step per push)
 
+    // Bindings table: the column the keyboard/gamepad focus is on, and the binding waiting for an input.
+    std::vector<BindRow> binds;
+    int bind_col = 0;      // 0 = keyboard, 1 = gamepad
+    int capture_row = -1;  // the action being rebound, or -1
+    int capture_col = 0;
+    Uint64 capture_started = 0;
+    bool* changed = nullptr;  // the menu's flag
+
+    // Fills the table from the settings, naming pad inputs for the connected gamepad's type.
+    void refresh_binds() {
+        SDL_GamepadType type = SDL_GAMEPAD_TYPE_STANDARD;
+        int count = 0;
+        if (SDL_JoystickID* ids = SDL_GetGamepads(&count)) {
+            if (count > 0) type = SDL_GetGamepadTypeForID(ids[0]);
+            SDL_free(ids);
+        }
+        const input::Bindings& b = settings->controls;
+        binds.resize(input::kActionCount);
+        for (int i = 0; i < input::kActionCount; i++) {
+            binds[i].label = input::action_label(input::Action(i));
+            binds[i].key = input::key_label(b.key[i]);
+            binds[i].pad = input::pad_label(b.pad[i], type);
+        }
+        model.DirtyVariable("binds");
+    }
+
+    void start_capture(int row, int col) {
+        if (row < 0 || row >= input::kActionCount) return;
+        capture_row = row;
+        capture_col = col;
+        bind_col = col;
+        capture_started = SDL_GetTicks();
+        model.DirtyVariable("capture_row");
+        model.DirtyVariable("capture_col");
+        model.DirtyVariable("bind_col");
+    }
+
+    void end_capture() {
+        capture_row = -1;
+        model.DirtyVariable("capture_row");
+    }
+
+    // Binds the action being captured. An input already bound to another action moves over to it, and that action
+    // takes this one's old input, so nothing is bound twice.
+    void bind_key(SDL_Scancode sc) {
+        input::Bindings& b = settings->controls;
+        for (int j = 0; j < input::kActionCount; j++)
+            if (j != capture_row && sc != SDL_SCANCODE_UNKNOWN && b.key[j] == sc) b.key[j] = b.key[capture_row];
+        b.key[capture_row] = sc;
+        bound();
+    }
+    void bind_pad(input::PadInput p) {
+        input::Bindings& b = settings->controls;
+        for (int j = 0; j < input::kActionCount; j++)
+            if (j != capture_row && p.kind != input::PadInput::Kind::None && b.pad[j] == p) b.pad[j] = b.pad[capture_row];
+        b.pad[capture_row] = p;
+        bound();
+    }
+    void bound() {
+        end_capture();
+        refresh_binds();
+        *changed = true;
+    }
+
+    // While capturing, every input goes here.
+    void capture_event(const SDL_Event& e) {
+        switch (e.type) {
+        case SDL_EVENT_KEY_DOWN:
+            if (e.key.repeat) return;
+            if (e.key.key == SDLK_ESCAPE)
+                end_capture();
+            else if (e.key.key == SDLK_DELETE || e.key.key == SDLK_BACKSPACE)
+                capture_col == 0 ? bind_key(SDL_SCANCODE_UNKNOWN) : bind_pad({});
+            else if (capture_col == 0)
+                bind_key(e.key.scancode);
+            return;
+        case SDL_EVENT_GAMEPAD_BUTTON_DOWN: {
+            const auto b = SDL_GamepadButton(e.gbutton.button);
+            // Guide opens the menu, so it cannot be bound; on the keyboard column a pad button cancels.
+            if (b == SDL_GAMEPAD_BUTTON_GUIDE || capture_col == 0)
+                end_capture();
+            else
+                bind_pad(input::PadInput::button(b));
+            return;
+        }
+        case SDL_EVENT_GAMEPAD_AXIS_MOTION:
+            if (capture_col == 1 && std::abs(int(e.gaxis.value)) > 22000)
+                bind_pad(input::PadInput::axis(SDL_GamepadAxis(e.gaxis.axis), e.gaxis.value > 0));
+            return;
+        case SDL_EVENT_MOUSE_BUTTON_DOWN: end_capture(); return;
+        default: return;
+        }
+    }
+
     void load_state() {
         const Settings& s = *settings;
         state.layout = int(s.layout.layout);
@@ -106,6 +208,8 @@ struct Menu::Impl {
         state.hires_coordinates = s.hires_coordinates;
         state.volume = s.volume;
         state.skip_logos = s.skip_logos;
+        state.stick_moves = s.controls.stick_moves;
+        state.deadzone = s.controls.deadzone;
         applied = state;
         model.DirtyAllVariables();
     }
@@ -127,6 +231,8 @@ struct Menu::Impl {
         s.hires_coordinates = state.hires_coordinates;
         s.volume = std::clamp(state.volume, 0, 100);
         s.skip_logos = state.skip_logos;
+        s.controls.stick_moves = state.stick_moves;
+        s.controls.deadzone = std::clamp(state.deadzone, 5, 90);
         applied = state;
         return true;
     }
@@ -161,6 +267,11 @@ struct Menu::Impl {
         Rml::ElementList r = rows();
         if (r.empty()) return;
         Rml::Element* row = r[std::clamp(focus, 0, int(r.size()) - 1)];
+        if (row->IsClassSet("bind")) {
+            bind_col = std::clamp(bind_col + dir, 0, 1);
+            model.DirtyVariable("bind_col");
+            return;
+        }
         Rml::ElementList controls;
         row->QuerySelectorAll(controls, "select, input");
         if (controls.empty()) return;
@@ -185,8 +296,12 @@ struct Menu::Impl {
         Rml::ElementList r = rows();
         if (r.empty()) return;
         Rml::Element* row = r[std::clamp(focus, 0, int(r.size()) - 1)];
-        if (row->IsClassSet("button")) {
+        if (row->IsClassSet("button") || row->IsClassSet("action")) {
             row->Click();
+            return;
+        }
+        if (row->IsClassSet("bind")) {
+            start_capture(row->GetAttribute<int>("bind", -1), bind_col);
             return;
         }
         Rml::ElementList controls;
@@ -207,6 +322,7 @@ bool Menu::init(SDL_Window* window, Settings* settings, bool compute_available) 
     Impl& m = *impl_;
     m.window = window;
     m.settings = settings;
+    m.changed = &changed;
     m.compute_available = compute_available;
     RmlGL3::Initialize();  // no-op: the GL functions come from melonDS's glad
     m.render = std::make_unique<RenderInterface_GL3>();
@@ -256,6 +372,27 @@ bool Menu::init(SDL_Window* window, Settings* settings, bool compute_available) 
     c.Bind("hires_coordinates", &s.hires_coordinates);
     c.Bind("volume", &s.volume);
     c.Bind("skip_logos", &s.skip_logos);
+    c.Bind("stick_moves", &s.stick_moves);
+    c.Bind("deadzone", &s.deadzone);
+    if (auto row = c.RegisterStruct<BindRow>()) {
+        row.RegisterMember("label", &BindRow::label);
+        row.RegisterMember("key", &BindRow::key);
+        row.RegisterMember("pad", &BindRow::pad);
+    }
+    c.RegisterArray<std::vector<BindRow>>();
+    c.Bind("binds", &m.binds);
+    c.Bind("bind_col", &m.bind_col);
+    c.Bind("capture_row", &m.capture_row);
+    c.Bind("capture_col", &m.capture_col);
+    c.BindEventCallback("capture", [&m](Rml::DataModelHandle, Rml::Event&, const Rml::VariantList& args) {
+        if (args.size() == 2) m.start_capture(args[0].Get<int>(), args[1].Get<int>());
+    });
+    c.BindEventCallback("reset_controls", [&m](Rml::DataModelHandle, Rml::Event&, const Rml::VariantList&) {
+        m.settings->controls = input::Bindings::defaults();
+        m.load_state();
+        m.refresh_binds();
+        *m.changed = true;
+    });
     c.BindEventCallback("resume", [this](Rml::DataModelHandle, Rml::Event&, const Rml::VariantList&) { close(); });
     c.BindEventCallback("quit", [this](Rml::DataModelHandle, Rml::Event&, const Rml::VariantList&) {
         quit_requested = true;
@@ -292,8 +429,11 @@ void Menu::open() {
     Impl& m = *impl_;
     if (!m.document || open_) return;
     m.load_state();
+    m.refresh_binds();
+    m.end_capture();
     m.focus = 0;
     m.document->Show();
+    m.context->Update();  // lay the page out now, so input that arrives before the first draw finds its rows
     open_ = true;
 }
 
@@ -305,7 +445,9 @@ void Menu::close() {
 }
 
 void Menu::reload() {
-    if (open_) impl_->load_state();
+    if (!open_) return;
+    impl_->load_state();
+    impl_->refresh_binds();
 }
 
 void Menu::set_tab(const char* name) {
@@ -319,6 +461,11 @@ void Menu::handle_event(const SDL_Event& event) {
     Impl& m = *impl_;
     if (!open_ || !m.context) return;
     SDL_Event e = event;
+    if (e.type == SDL_EVENT_GAMEPAD_ADDED || e.type == SDL_EVENT_GAMEPAD_REMOVED) m.refresh_binds();
+    if (m.capture_row >= 0) {
+        m.capture_event(e);
+        if (e.type != SDL_EVENT_MOUSE_MOTION) return;
+    }
     switch (e.type) {
     case SDL_EVENT_KEY_DOWN:
         switch (e.key.key) {
@@ -383,6 +530,7 @@ void Menu::render(int width, int height) {
     if (!open_ || !m.context) return;
     if (m.context->GetDimensions() != Rml::Vector2i{width, height}) m.context->SetDimensions({width, height});
     m.context->SetDensityIndependentPixelRatio(std::max(0.75f, height / 720.0f));
+    if (m.capture_row >= 0 && SDL_GetTicks() - m.capture_started > 8000) m.end_capture();  // gave up waiting
     m.update_focus();
     m.context->Update();
     if (m.store_state()) changed = true;

@@ -63,7 +63,8 @@ Milestones are ordered by dependency. Each ends with a demonstrable result. Desi
 
 ## M6: Controls and UI shell
 **Result: fully playable on a gamepad without touching the bottom screen. Themed launcher and in-game menu.**
-- [ ] Binding system + rebinding UI, glyph sets
+- [x] Binding system + rebinding UI (keyboard and gamepad, controller-specific button names)
+- [ ] Button glyph images, several bindings per action, more app actions (fast-forward, screenshot)
 - [ ] FFCC touch-free scheme (spell ring, menus, map), mouse-as-stylus
 - [ ] Analog movement: full 360° character movement from the stick (the game reads an 8-way D-pad; hook its movement input)
 - [x] RmlUi integration (OpenGL for now), FF crystal theme (original styling, OFL fonts)

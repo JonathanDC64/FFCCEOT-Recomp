@@ -20,6 +20,7 @@
 #include <vector>
 
 #include "cfie_game.hpp"
+#include "input.hpp"
 #include "ntr/rom.hpp"
 #include "ntr/runtime.hpp"
 #include "settings.hpp"
@@ -114,7 +115,20 @@ public:
             skipping_ = false;
             next_frame_ = std::chrono::steady_clock::now();
         }
-        if (menu_at_frame && frames_ == menu_at_frame) open_menu();
+        if (menu_at_frame && frames_ == menu_at_frame) {
+            open_menu();
+            // Debugging: key presses for the menu, comma-separated SDL key names (e.g. "Down,Down,Return").
+            for (size_t p = 0; p < menu_keys.size();) {
+                const size_t comma = std::min(menu_keys.find(',', p), menu_keys.size());
+                SDL_Event e{};
+                e.type = SDL_EVENT_KEY_DOWN;
+                e.key.key = SDL_GetKeyFromName(menu_keys.substr(p, comma - p).c_str());
+                e.key.scancode = SDL_GetScancodeFromKey(e.key.key, nullptr);
+                e.key.down = true;
+                SDL_PushEvent(&e);
+                p = comma + 1;
+            }
+        }
         if (menu_.is_open()) return run_menu(frame);
         const bool shot = screenshot_frame && frames_ == screenshot_frame;
         presenter_.present(&frame, settings.filter, shot ? screenshot_path.c_str() : nullptr);
@@ -146,13 +160,11 @@ private:
                 else if (!e.key.repeat) hotkey(e.key.key);
                 break;
             case SDL_EVENT_GAMEPAD_BUTTON_DOWN: {
-                // Right stick click shows or hides the second screen; Guide, or Back and Start together, opens
-                // the menu.
+                // Guide, or Back and Start together, opens the menu.
                 const auto b = SDL_GamepadButton(e.gbutton.button);
                 const auto held = [&](SDL_GamepadButton o) { return gamepad_ && SDL_GetGamepadButton(gamepad_, o); };
-                if (b == SDL_GAMEPAD_BUTTON_RIGHT_STICK) hotkey(SDLK_F3);
-                else if (b == SDL_GAMEPAD_BUTTON_GUIDE || (b == SDL_GAMEPAD_BUTTON_START && held(SDL_GAMEPAD_BUTTON_BACK)) ||
-                         (b == SDL_GAMEPAD_BUTTON_BACK && held(SDL_GAMEPAD_BUTTON_START)))
+                if (b == SDL_GAMEPAD_BUTTON_GUIDE || (b == SDL_GAMEPAD_BUTTON_START && held(SDL_GAMEPAD_BUTTON_BACK)) ||
+                    (b == SDL_GAMEPAD_BUTTON_BACK && held(SDL_GAMEPAD_BUTTON_START)))
                     open_menu();
                 break;
             }
@@ -199,12 +211,7 @@ private:
             SDL_Event e;
             while (SDL_PollEvent(&e)) {
                 if (!handle_common_event(e)) return false;
-                if (e.type == SDL_EVENT_KEY_DOWN && e.key.key == SDLK_F11 && !e.key.repeat) {
-                    toggle_fullscreen();
-                    menu_.reload();
-                } else {
-                    menu_.handle_event(e);
-                }
+                menu_.handle_event(e);
             }
             if (menu_.quit_requested) return false;
 
@@ -243,20 +250,31 @@ private:
         title_dirty_ = true;
     }
 
-    // Hotkeys: F1 layout, F2 swap screens, F3 second screen on/off (single screen), F4 side screen position
-    // (main + side), F5 renderer, F6/F7 resolution down/up, F8 filter, F11 fullscreen. Stepping the resolution past
-    // 1x or 16x returns to matching the window.
+    // The bindable app actions (pressed once).
+    void app_action(input::Action a) {
+        video::LayoutSettings& layout = settings.layout;
+        switch (a) {
+        case input::Action::Fullscreen: toggle_fullscreen(); return;
+        case input::Action::SwapScreens: layout.swap = !layout.swap; break;
+        case input::Action::OtherScreen:
+            if (layout.layout != video::Layout::Single) return;
+            layout.second_screen = !layout.second_screen;
+            break;
+        default: return;
+        }
+        settings_dirty_ = true;
+        update_layout();
+        sync_video();
+        title_dirty_ = true;
+    }
+
+    // Fixed hotkeys: F1 layout, F4 side screen position (main + side), F5 renderer, F6/F7 resolution down/up, F8
+    // filter. Stepping the resolution past 1x or 16x returns to matching the window.
     void hotkey(SDL_Keycode key) {
         video::LayoutSettings& layout = settings.layout;
         const int scale = runtime_->video().scale;
         switch (key) {
-        case SDLK_F11: toggle_fullscreen(); return;
         case SDLK_F1: layout.layout = video::Layout((int(layout.layout) + 1) % 4); break;
-        case SDLK_F2: layout.swap = !layout.swap; break;
-        case SDLK_F3:
-            if (layout.layout != video::Layout::Single) return;
-            layout.second_screen = !layout.second_screen;
-            break;
         case SDLK_F4:
             if (layout.layout != video::Layout::MainSide) return;
             layout.side_align = video::Align((int(layout.side_align) + 1) % 3);
@@ -360,47 +378,34 @@ private:
     }
 
     void update_input() {
+        const input::Bindings& c = settings.controls;
         const bool* k = SDL_GetKeyboardState(nullptr);
+        const float dead = c.deadzone / 100.0f;
+        bool down[input::kActionCount];
+        for (int i = 0; i < input::kActionCount; i++)
+            down[i] = (c.key[i] != SDL_SCANCODE_UNKNOWN && k[c.key[i]]) || input::pad_held(gamepad_, c.pad[i], dead);
+
+        // DS buttons, in the order of input::Action.
+        static constexpr uint32_t kDsBits[] = {ntr::KeyA,     ntr::KeyB,      ntr::KeyX,  ntr::KeyY,
+                                               ntr::KeyL,     ntr::KeyR,      ntr::KeyStart, ntr::KeySelect,
+                                               ntr::KeyUp,    ntr::KeyDown,   ntr::KeyLeft,  ntr::KeyRight};
+        static_assert(std::size(kDsBits) == input::kFirstAppAction);
         uint32_t b = 0;
-        auto key = [&](SDL_Scancode sc, uint32_t bit) {
-            if (k[sc]) b |= bit;
-        };
-        key(SDL_SCANCODE_X, ntr::KeyA);
-        key(SDL_SCANCODE_Z, ntr::KeyB);
-        key(SDL_SCANCODE_S, ntr::KeyX);
-        key(SDL_SCANCODE_A, ntr::KeyY);
-        key(SDL_SCANCODE_Q, ntr::KeyL);
-        key(SDL_SCANCODE_W, ntr::KeyR);
-        key(SDL_SCANCODE_RETURN, ntr::KeyStart);
-        key(SDL_SCANCODE_RSHIFT, ntr::KeySelect);
-        key(SDL_SCANCODE_UP, ntr::KeyUp);
-        key(SDL_SCANCODE_DOWN, ntr::KeyDown);
-        key(SDL_SCANCODE_LEFT, ntr::KeyLeft);
-        key(SDL_SCANCODE_RIGHT, ntr::KeyRight);
-        if (gamepad_) {
-            auto pad = [&](SDL_GamepadButton btn, uint32_t bit) {
-                if (SDL_GetGamepadButton(gamepad_, btn)) b |= bit;
-            };
-            // Nintendo face-button positions: DS A is the right button, B the bottom one.
-            pad(SDL_GAMEPAD_BUTTON_EAST, ntr::KeyA);
-            pad(SDL_GAMEPAD_BUTTON_SOUTH, ntr::KeyB);
-            pad(SDL_GAMEPAD_BUTTON_NORTH, ntr::KeyX);
-            pad(SDL_GAMEPAD_BUTTON_WEST, ntr::KeyY);
-            pad(SDL_GAMEPAD_BUTTON_LEFT_SHOULDER, ntr::KeyL);
-            pad(SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER, ntr::KeyR);
-            pad(SDL_GAMEPAD_BUTTON_START, ntr::KeyStart);
-            pad(SDL_GAMEPAD_BUTTON_BACK, ntr::KeySelect);
-            pad(SDL_GAMEPAD_BUTTON_DPAD_UP, ntr::KeyUp);
-            pad(SDL_GAMEPAD_BUTTON_DPAD_DOWN, ntr::KeyDown);
-            pad(SDL_GAMEPAD_BUTTON_DPAD_LEFT, ntr::KeyLeft);
-            pad(SDL_GAMEPAD_BUTTON_DPAD_RIGHT, ntr::KeyRight);
-            const int dead = 12000;
-            int lx = SDL_GetGamepadAxis(gamepad_, SDL_GAMEPAD_AXIS_LEFTX);
-            int ly = SDL_GetGamepadAxis(gamepad_, SDL_GAMEPAD_AXIS_LEFTY);
+        for (int i = 0; i < input::kFirstAppAction; i++)
+            if (down[i]) b |= kDsBits[i];
+        if (gamepad_ && c.stick_moves) {
+            const float lx = SDL_GetGamepadAxis(gamepad_, SDL_GAMEPAD_AXIS_LEFTX) / 32767.0f;
+            const float ly = SDL_GetGamepadAxis(gamepad_, SDL_GAMEPAD_AXIS_LEFTY) / 32767.0f;
             if (lx < -dead) b |= ntr::KeyLeft;
             if (lx > dead) b |= ntr::KeyRight;
             if (ly < -dead) b |= ntr::KeyUp;
             if (ly > dead) b |= ntr::KeyDown;
+        }
+
+        // App actions fire when pressed (not while held, and not while input is on hold around the menu).
+        for (int i = input::kFirstAppAction; i < input::kActionCount; i++) {
+            if (down[i] && !app_down_[i] && !input_hold_) app_action(input::Action(i));
+            app_down_[i] = down[i];
         }
 
         // Mouse on the bottom screen (wherever the layout puts it, picture-in-picture included) = stylus.
@@ -471,6 +476,7 @@ private:
     bool skipping_ = false;
     bool input_active_ = false;
     bool input_hold_ = false;
+    bool app_down_[input::kActionCount] = {};  // app action inputs held last frame
     static constexpr uint64_t kMaxLogoSkipFrames = 900;  // the logos end around frame 564
 
 public:
@@ -480,6 +486,7 @@ public:
     uint64_t screenshot_frame = 0;   // debugging: save the window at this frame
     std::string screenshot_path;
     uint64_t menu_at_frame = 0;      // debugging: open the menu at this frame
+    std::string menu_keys;           // debugging: and press these keys in it
     ui::Menu& menu() { return menu_; }
 };
 
@@ -538,7 +545,8 @@ int main(int argc, char** argv) {
                      "other:\n"
                      "  --no-skip-logos --trace-calls --trace-threads --trace-files --perf\n"
                      "  --profile-functions <file> --dump-at-frame <n> --exit-after-frames <n>\n"
-                     "  --screenshot-at-frame <n> <file.png> --menu-at-frame <n> --menu-tab <name>\n",
+                     "  --screenshot-at-frame <n> <file.png> --menu-at-frame <n> --menu-tab <name>\n"
+                     "  --menu-keys <key,key,...>\n",
                      argv[0]);
         return 2;
     }
@@ -555,7 +563,7 @@ int main(int argc, char** argv) {
 
     ntr::RuntimeOptions options;
     uint64_t exit_after_frames = 0, screenshot_frame = 0, menu_at_frame = 0;
-    std::string screenshot_path, menu_tab;
+    std::string screenshot_path, menu_tab, menu_keys;
     for (int i = 2; i < argc; i++) {
         const std::string a = argv[i];
         const bool has_value = i + 1 < argc;
@@ -589,6 +597,8 @@ int main(int argc, char** argv) {
             menu_at_frame = std::strtoull(argv[++i], nullptr, 10);
         else if (a == "--menu-tab" && has_value)
             menu_tab = argv[++i];
+        else if (a == "--menu-keys" && has_value)
+            menu_keys = argv[++i];
         else if (a == "--layout" && has_value && parse_layout(argv[i + 1], settings.layout.layout))
             ++i;
         else if (a == "--side-align" && has_value && parse_align(argv[i + 1], settings.layout.side_align))
@@ -627,6 +637,7 @@ int main(int argc, char** argv) {
     host.screenshot_frame = screenshot_frame;
     host.screenshot_path = screenshot_path;
     host.menu_at_frame = menu_at_frame;
+    host.menu_keys = menu_keys;
     const bool fullscreen = settings.fullscreen;
     host.settings.fullscreen = false;  // the window starts windowed; set_fullscreen below records the state
     if (!host.init(save_path)) return 1;

@@ -40,12 +40,14 @@ build/release/game/ffcc.exe "path/to/your/dump.nds"
 The recompiler runs at build time and writes the generated C to `build/` (never committed). Without `FFCC_ROM`, only
 the tools, recompiler and runtime are built.
 
-Controls: arrows, X = A, Z = B, S = X, A = Y, Q = L, W = R, Enter = Start, Right Shift = Select, mouse = touch screen,
-Esc = settings menu. Gamepads use the Nintendo button layout, and the left stick works as the D-pad. The company logos
-before the title screen are skipped; pass `--no-skip-logos` to watch them.
+Controls (defaults): arrows, X = A, Z = B, S = X, A = Y, Q = L, W = R, Enter = Start, Right Shift = Select, mouse = touch
+screen, Esc = settings menu. Gamepads use the Nintendo button positions (DS A is the right face button, B the bottom one),
+and the left stick works as the D-pad. Every DS button and the screen/fullscreen actions can be rebound to a key and a
+gamepad input on the menu's Controls page, which names buttons for the connected controller (Xbox, PlayStation,
+Nintendo). The company logos before the title screen are skipped; pass `--no-skip-logos` to watch them.
 
 Settings: Esc (or Guide, or Back + Start on a gamepad) pauses the game and opens the settings menu: screen layout,
-fullscreen, renderer, resolution, filter, volume and more, with a Controls page listing the keys. It works with the mouse,
+fullscreen, renderer, resolution, filter, volume, controls and more. It works with the mouse,
 the keyboard (arrows, Enter, Q/E for tabs) or a gamepad (D-pad or stick, right face button to change, shoulders for
 tabs). Settings are saved to `settings.ini` next to the save (in `%APPDATA%\FFCCEOT-Recomp\EchoesOfTime` on Windows); the
 options below override them for one run, and the hotkeys change them too.

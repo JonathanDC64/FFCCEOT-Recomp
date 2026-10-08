@@ -90,7 +90,24 @@ const Field kFields[] = {
     Field{"audio.volume", [](const Settings& s) { return std::to_string(s.volume); },
           [](Settings& s, const std::string& v) { return parse_int(v, 0, 100, s.volume); }},
     BOOL_FIELD("game.skip_logos", skip_logos),
+    BOOL_FIELD("controls.stick_moves", controls.stick_moves),
+    Field{"controls.deadzone", [](const Settings& s) { return std::to_string(s.controls.deadzone); },
+          [](Settings& s, const std::string& v) { return parse_int(v, 5, 90, s.controls.deadzone); }},
 };
+
+// Bindings: "controls.<action>.key = X" and "controls.<action>.pad = east" for every action (empty = unbound).
+bool set_binding(Settings& s, const std::string& key, const std::string& value) {
+    constexpr char kPrefix[] = "controls.";
+    if (key.rfind(kPrefix, 0) != 0) return false;
+    const size_t dot = key.rfind('.');
+    const std::string action = key.substr(sizeof(kPrefix) - 1, dot - (sizeof(kPrefix) - 1)), what = key.substr(dot + 1);
+    for (int i = 0; i < input::kActionCount; i++) {
+        if (action != input::action_id(input::Action(i))) continue;
+        if (what == "key") return input::key_from_string(value, s.controls.key[i]);
+        if (what == "pad") return input::pad_from_string(value, s.controls.pad[i]);
+    }
+    return false;
+}
 
 std::string trim(const std::string& s) {
     const size_t b = s.find_first_not_of(" \t\r"), e = s.find_last_not_of(" \t\r");
@@ -111,6 +128,7 @@ bool load_settings(const std::filesystem::path& path, Settings& s) {
         const std::string key = trim(line.substr(0, eq)), value = trim(line.substr(eq + 1));
         for (const Field& fd : kFields)
             if (key == fd.key) fd.set(s, value);
+        set_binding(s, key, value);
     }
     return true;
 }
@@ -122,5 +140,10 @@ bool save_settings(const std::filesystem::path& path, const Settings& s) {
     if (!f) return false;
     f << "# Echoes of Time recomp settings (written by the settings menu)\n";
     for (const Field& fd : kFields) f << fd.key << " = " << fd.get(s) << "\n";
+    for (int i = 0; i < input::kActionCount; i++) {
+        const char* id = input::action_id(input::Action(i));
+        f << "controls." << id << ".key = " << input::key_to_string(s.controls.key[i]) << "\n";
+        f << "controls." << id << ".pad = " << input::pad_to_string(s.controls.pad[i]) << "\n";
+    }
     return bool(f);
 }

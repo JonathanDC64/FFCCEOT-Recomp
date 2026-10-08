@@ -124,17 +124,35 @@
         </div>
 
         <div class="page" data-if="tab == 'controls'">
-            <div class="keys">
-                <div class="keyrow"><span class="label">Move</span><span class="key">Arrows / left stick / D-pad</span></div>
-                <div class="keyrow"><span class="label">A / B / X / Y</span><span class="key">X / Z / S / A, or the face buttons</span></div>
-                <div class="keyrow"><span class="label">L / R</span><span class="key">Q / W, or the shoulder buttons</span></div>
-                <div class="keyrow"><span class="label">Start / Select</span><span class="key">Enter / Right Shift</span></div>
-                <div class="keyrow"><span class="label">Touch screen</span><span class="key">Mouse on the bottom screen</span></div>
-                <div class="keyrow"><span class="label">This menu</span><span class="key">Esc, or Guide / Back + Start</span></div>
-                <div class="keyrow"><span class="label">Show other screen</span><span class="key">F3 or right stick click</span></div>
-                <div class="keyrow"><span class="label">Fullscreen</span><span class="key">F11</span></div>
+            <div class="bindhead">
+                <span class="label">Action</span><span class="cell">Keyboard</span><span class="cell">Gamepad</span>
             </div>
-            <p class="note">Rebinding comes in a later update.</p>
+            <div class="row nav bind" data-for="b, i : binds" data-attr-bind="i" data-class-gap="i == 12">
+                <span class="label">{{ b.label }}</span>
+                <span class="cell" data-class-current="bind_col == 0"
+                      data-class-capturing="capture_row == i &amp;&amp; capture_col == 0"
+                      data-class-unbound="b.key == ''"
+                      data-event-click="capture(i, 0)">{{ capture_row == i &amp;&amp; capture_col == 0 ? 'Press a key...' : (b.key == '' ? 'None' : b.key) }}</span>
+                <span class="cell" data-class-current="bind_col == 1"
+                      data-class-capturing="capture_row == i &amp;&amp; capture_col == 1"
+                      data-class-unbound="b.pad == ''"
+                      data-event-click="capture(i, 1)">{{ capture_row == i &amp;&amp; capture_col == 1 ? 'Press a button...' : (b.pad == '' ? 'None' : b.pad) }}</span>
+            </div>
+            <div class="row nav gap">
+                <span class="label">Left stick moves too</span>
+                <input type="checkbox" data-checked="stick_moves"/>
+            </div>
+            <div class="row nav" data-if="stick_moves">
+                <span class="label">Stick deadzone</span>
+                <input type="range" min="10" max="80" step="5" data-value="deadzone"/>
+                <span class="value">{{ deadzone }}%</span>
+            </div>
+            <div class="row nav action" data-event-click="reset_controls">
+                <span class="label">Reset controls to defaults</span>
+            </div>
+            <p class="note">Enter or click a binding, then press the new key or button (Delete clears it, Esc cancels).
+                Always available: Esc, Guide or Back + Start for this menu; the mouse on the bottom screen to touch it;
+                F1 layout, F4 side screen position, F5-F8 video.</p>
         </div>
     </div>
 

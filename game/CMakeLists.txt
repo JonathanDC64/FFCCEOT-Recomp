@@ -60,6 +60,6 @@ add_custom_command(
   VERBATIM)
 
 # The game executable: takes the user's ROM on the command line.
-add_executable(ffcc src/main.cpp src/video.cpp src/cfie_hooks.cpp src/settings.cpp src/ui.cpp ${FFCC_UI_ASSETS})
+add_executable(ffcc src/main.cpp src/video.cpp src/cfie_hooks.cpp src/settings.cpp src/input.cpp src/ui.cpp ${FFCC_UI_ASSETS})
 target_include_directories(ffcc PRIVATE src)
 target_link_libraries(ffcc PRIVATE ffcc_game_code ntr_runtime ntr_common SDL3::SDL3-static rmlui_backend)

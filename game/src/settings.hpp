@@ -3,6 +3,7 @@
 
 #include <filesystem>
 
+#include "input.hpp"
 #include "ntr/runtime.hpp"
 #include "video.hpp"
 
@@ -20,6 +21,8 @@ struct Settings {
     int volume = 100;  // percent
     // Game
     bool skip_logos = true;
+    // Controls
+    input::Bindings controls = input::Bindings::defaults();
 };
 
 // Reads the settings that are present in `path` into `s` (unknown keys and bad values are ignored).
