@@ -65,6 +65,12 @@ The window title shows the current settings. The same choices exist as options:
 `--renderer software|opengl|compute`, `--scale auto|1..16`, `--filter nearest|linear|sharp`, `--better-polygons`,
 `--no-hires-coordinates`.
 
+Testing: `--input-script <file>` plays scripted input, one step per line (`<frame> press A+Up [frames]`,
+`<frame> touch x,y [frames]`, `<frame> shot file.png`, `<frame> quit`; `+N` as the frame means N frames after the
+previous step). Automated runs should not touch your own files: `--save-file <copy.sav>` uses another save file,
+`--read-only-save` never writes the save, `--no-settings` neither reads nor writes `settings.ini`, and `--unpaced` runs
+as fast as possible.
+
 ## Documentation
 
 - [docs/RESEARCH.md](docs/RESEARCH.md): the DS recomp landscape, prior art, and our analysis of the game

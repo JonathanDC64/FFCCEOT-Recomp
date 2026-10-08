@@ -15,6 +15,8 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <map>
+#include <sstream>
 #include <string>
 #include <thread>
 #include <vector>
@@ -36,6 +38,77 @@ constexpr char kTitle[] = "Final Fantasy Crystal Chronicles: Echoes of Time";
 std::vector<uint8_t> read_file(const std::filesystem::path& p) {
     std::ifstream f(p, std::ios::binary);
     return std::vector<uint8_t>(std::istreambuf_iterator<char>(f), {});
+}
+
+// Testing: scripted input (--input-script). One step per line, "<frame> <command> [args]", where <frame> is a frame
+// number or +N (N frames after the previous step's frame) and the commands are
+//   press A+Up [frames]    hold these DS buttons for a number of frames (default 1)
+//   touch x,y [frames]     touch the bottom screen at a DS pixel (default 1 frame)
+//   shot file.png          save the window
+//   quit                   exit
+// Blank lines and lines starting with # are ignored. Script input adds to the real input.
+struct ScriptStep {
+    uint64_t frame = 0, frames = 1;
+    uint32_t buttons = 0;
+    int touch_x = -1, touch_y = -1;
+    std::string shot;
+    bool quit = false;
+};
+
+bool parse_buttons(const std::string& s, uint32_t& out) {
+    static const std::pair<const char*, uint32_t> kNames[] = {
+        {"A", ntr::KeyA},         {"B", ntr::KeyB},         {"X", ntr::KeyX},       {"Y", ntr::KeyY},
+        {"L", ntr::KeyL},         {"R", ntr::KeyR},         {"Start", ntr::KeyStart}, {"Select", ntr::KeySelect},
+        {"Up", ntr::KeyUp},       {"Down", ntr::KeyDown},   {"Left", ntr::KeyLeft}, {"Right", ntr::KeyRight}};
+    out = 0;
+    std::stringstream in(s);
+    for (std::string name; std::getline(in, name, '+');) {
+        bool found = false;
+        for (const auto& [n, bit] : kNames)
+            if (SDL_strcasecmp(n, name.c_str()) == 0) {
+                out |= bit;
+                found = true;
+            }
+        if (!found) return false;
+    }
+    return out != 0;
+}
+
+bool load_input_script(const std::filesystem::path& path, std::vector<ScriptStep>& steps) {
+    std::ifstream f(path);
+    if (!f) {
+        std::fprintf(stderr, "cannot read the input script %s\n", path.string().c_str());
+        return false;
+    }
+    uint64_t last = 0;
+    int line_no = 0;
+    for (std::string line; std::getline(f, line);) {
+        ++line_no;
+        std::stringstream in(line);
+        std::string when, cmd, arg;
+        if (!(in >> when) || when[0] == '#') continue;
+        in >> cmd >> arg;
+        ScriptStep s;
+        s.frame = when[0] == '+' ? last + std::strtoull(when.c_str() + 1, nullptr, 10)
+                                 : std::strtoull(when.c_str(), nullptr, 10);
+        bool ok = true;
+        if (cmd == "press") ok = parse_buttons(arg, s.buttons);
+        else if (cmd == "touch") ok = std::sscanf(arg.c_str(), "%d,%d", &s.touch_x, &s.touch_y) == 2;
+        else if (cmd == "shot") s.shot = arg, ok = !arg.empty();
+        else if (cmd == "quit") s.quit = true;
+        else ok = false;
+        if (cmd == "press" || cmd == "touch") {
+            uint64_t n = 0;
+            if (in >> n) s.frames = std::max<uint64_t>(n, 1);
+        }
+        if (!ok) {
+            std::fprintf(stderr, "%s:%d: cannot read \"%s\"\n", path.string().c_str(), line_no, line.c_str());
+            return false;
+        }
+        steps.push_back(s);
+        last = s.frame;
+    }
+    return true;
 }
 
 class SdlHost final : public ntr::Host {
@@ -74,7 +147,7 @@ public:
 
     ~SdlHost() override {
         flush_save();
-        if (settings_dirty_) save_settings(settings_path, settings);
+        if (settings_dirty_ && !settings_path.empty()) save_settings(settings_path, settings);
         menu_.shutdown();
         if (audio_) SDL_DestroyAudioStream(audio_);
         presenter_.shutdown();
@@ -130,10 +203,11 @@ public:
             }
         }
         if (menu_.is_open()) return run_menu(frame);
-        const bool shot = screenshot_frame && frames_ == screenshot_frame;
-        presenter_.present(&frame, settings.filter, shot ? screenshot_path.c_str() : nullptr);
+        const auto shot = screenshots.find(frames_);
+        presenter_.present(&frame, settings.filter, shot != screenshots.end() ? shot->second.c_str() : nullptr);
         if (++frames_since_save_ > 120) flush_save();
-        pace();
+        if (script_quit_ && frames_ >= script_quit_) return false;
+        if (!unpaced) pace();
         return true;
     }
 
@@ -224,15 +298,17 @@ private:
                 apply_settings();
             }
             // Debugging: a screenshot asked for at or before this frame is taken once the menu has settled.
-            const bool shot = screenshot_frame && frames_ >= screenshot_frame && ++menu_frames == 10;
-            presenter_.swap(shot ? screenshot_path.c_str() : nullptr);
+            const auto pending = screenshots.lower_bound(menu_shot_from_);
+            const bool shot = pending != screenshots.end() && pending->first <= frames_ && ++menu_frames == 10;
+            presenter_.swap(shot ? pending->second.c_str() : nullptr);
+            if (shot) menu_shot_from_ = frames_ + 1;
             if (shot && exit_after_frames && frames_ >= exit_after_frames) return false;
             SDL_Delay(15);
         }
         // Resumed: renderer changes take effect now, and the game picks up where it was.
         sync_video();
         if (settings_dirty_) {
-            save_settings(settings_path, settings);
+            if (!settings_path.empty()) save_settings(settings_path, settings);
             settings_dirty_ = false;
         }
         if (audio_) SDL_ResumeAudioStreamDevice(audio_);
@@ -423,12 +499,30 @@ private:
             touching = false;
         }
         b &= ~(1u << 31);
+        script_input(b, touching, sx, sy);
         runtime_->set_buttons(b);
         if (touching)
             runtime_->touch(std::clamp(int(sx), 0, kScreenW - 1), std::clamp(int(sy), 0, kScreenH - 1));
         else
             runtime_->release_touch();
         input_active_ = b != 0 || touching;
+    }
+
+    // Adds the --input-script steps active in the frame about to be shown (frames_ + 1).
+    void script_input(uint32_t& b, bool& touching, float& sx, float& sy) {
+        const uint64_t f = frames_ + 1;
+        for (const ScriptStep& s : script) {
+            if (s.frame > f) break;
+            if (s.quit && !script_quit_) script_quit_ = s.frame;
+            if (!s.shot.empty()) screenshots.emplace(s.frame, s.shot);
+            if (f >= s.frame + s.frames) continue;
+            b |= s.buttons;
+            if (s.touch_x >= 0) {
+                touching = true;
+                sx = float(s.touch_x);
+                sy = float(s.touch_y);
+            }
+        }
     }
 
     void pace() {
@@ -447,7 +541,7 @@ private:
 
     void flush_save() {
         frames_since_save_ = 0;
-        if (!save_dirty_ || save_path_.empty()) return;
+        if (!save_dirty_ || save_path_.empty() || read_only_save) return;
         std::filesystem::create_directories(save_path_.parent_path());
         std::ofstream f(save_path_, std::ios::binary);
         f.write(reinterpret_cast<const char*>(save_.data()), std::streamsize(save_.size()));
@@ -478,14 +572,18 @@ private:
     bool input_active_ = false;
     bool input_hold_ = false;
     bool app_down_[input::kActionCount] = {};  // app action inputs held last frame
+    uint64_t script_quit_ = 0;                 // the frame a script's quit step ends the run (0 = none)
+    uint64_t menu_shot_from_ = 0;              // screenshots before this frame were taken in the menu
     static constexpr uint64_t kMaxLogoSkipFrames = 900;  // the logos end around frame 564
 
 public:
     Settings settings;
     std::filesystem::path settings_path;
     uint64_t exit_after_frames = 0;  // 0 = run until the window closes
-    uint64_t screenshot_frame = 0;   // debugging: save the window at this frame
-    std::string screenshot_path;
+    std::map<uint64_t, std::string> screenshots;  // debugging: save the window at these frames
+    std::vector<ScriptStep> script;  // testing: scripted input, in frame order
+    bool read_only_save = false;     // testing: the game may save, but nothing is written to disk
+    bool unpaced = false;            // testing: run as fast as possible
     uint64_t menu_at_frame = 0;      // debugging: open the menu at this frame
     std::string menu_keys;           // debugging: and press these keys in it
     bool allow_flip_model = true;    // Windows: present through DXGI when possible
@@ -549,7 +647,13 @@ int main(int argc, char** argv) {
                      "  --profile-functions <file> --dump-at-frame <n> --exit-after-frames <n>\n"
                      "  --screenshot-at-frame <n> <file.png> --menu-at-frame <n> --menu-tab <name>\n"
                      "  --menu-keys <key,key,...>\n"
-                     "  --no-flip-model                      Windows: present with a plain OpenGL swap\n",
+                     "  --no-flip-model                      Windows: present with a plain OpenGL swap\n"
+                     "testing:\n"
+                     "  --input-script <file>                scripted input, screenshots and exit (see main.cpp)\n"
+                     "  --save-file <file>                   use this save file instead of the usual one\n"
+                     "  --read-only-save                     never write the save file\n"
+                     "  --no-settings                        ignore settings.ini (neither read nor written)\n"
+                     "  --unpaced                            run as fast as possible\n",
                      argv[0]);
         return 2;
     }
@@ -561,13 +665,24 @@ int main(int argc, char** argv) {
         settings_path = std::filesystem::path(pref) / "settings.ini";
         SDL_free(pref);
     }
+    // Testing options that decide which files are used come first: the other options override settings.ini.
+    bool read_only_save = false, unpaced = false;
+    for (int i = 2; i < argc; i++) {
+        const std::string a = argv[i];
+        if (a == "--no-settings") settings_path.clear();
+        else if (a == "--save-file" && i + 1 < argc) save_path = argv[i + 1];
+        else if (a == "--read-only-save") read_only_save = true;
+        else if (a == "--unpaced") unpaced = true;
+    }
     Settings settings;
     if (!settings_path.empty()) load_settings(settings_path, settings);
 
     ntr::RuntimeOptions options;
-    uint64_t exit_after_frames = 0, screenshot_frame = 0, menu_at_frame = 0;
+    uint64_t exit_after_frames = 0, menu_at_frame = 0;
     bool allow_flip_model = true;
-    std::string screenshot_path, menu_tab, menu_keys;
+    std::map<uint64_t, std::string> screenshots;
+    std::vector<ScriptStep> script;
+    std::string menu_tab, menu_keys;
     for (int i = 2; i < argc; i++) {
         const std::string a = argv[i];
         const bool has_value = i + 1 < argc;
@@ -599,9 +714,17 @@ int main(int argc, char** argv) {
         } else if (a == "--filter" && has_value && parse_filter(argv[i + 1], settings.filter))
             ++i;
         else if (a == "--screenshot-at-frame" && i + 2 < argc) {
-            screenshot_frame = std::strtoull(argv[++i], nullptr, 10);
-            screenshot_path = argv[++i];
-        } else if (a == "--menu-at-frame" && has_value)
+            const uint64_t f = std::strtoull(argv[++i], nullptr, 10);
+            screenshots[f] = argv[++i];
+        } else if (a == "--input-script" && has_value) {
+            if (!load_input_script(argv[++i], script)) return 2;
+            std::stable_sort(script.begin(), script.end(),
+                             [](const ScriptStep& x, const ScriptStep& y) { return x.frame < y.frame; });
+        } else if (a == "--save-file" && has_value)
+            ++i;
+        else if (a == "--no-settings" || a == "--read-only-save" || a == "--unpaced")
+            ;
+        else if (a == "--menu-at-frame" && has_value)
             menu_at_frame = std::strtoull(argv[++i], nullptr, 10);
         else if (a == "--menu-tab" && has_value)
             menu_tab = argv[++i];
@@ -642,8 +765,10 @@ int main(int argc, char** argv) {
     host.settings = settings;
     host.settings_path = settings_path;
     host.exit_after_frames = exit_after_frames;
-    host.screenshot_frame = screenshot_frame;
-    host.screenshot_path = screenshot_path;
+    host.screenshots = screenshots;
+    host.script = std::move(script);
+    host.read_only_save = read_only_save;
+    host.unpaced = unpaced;
     host.menu_at_frame = menu_at_frame;
     host.menu_keys = menu_keys;
     host.allow_flip_model = allow_flip_model;
