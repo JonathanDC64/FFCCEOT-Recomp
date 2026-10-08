@@ -180,14 +180,30 @@ and interpolation (§5.3) need our own rasteriser:
 4. Full-screen 2D effects (fades, master brightness) are stretched to the wide area.
 
 ### 5.3 60+ FPS
-- The game logic tick is left untouched. This is required for lockstep netplay and avoids physics/animation bugs.
-- **Frame interpolation (RT64-style)**: each logic frame we record the 3D draw list with stable identities (guest matrix
-  load site + object pointer + submission order). We match draws between frame N-1 and N, interpolate model/view/projection
-  transforms (and skinning matrices), and render intermediate frames at display rate. Unmatched draws (new or removed) snap.
-  2D layers snap or are tagged for interpolation (scrolling). Camera cuts are detected (large jump in view matrix) and snap.
+**Measured** (RESEARCH §2.3): the game flushes a new 3D scene every second frame (30 Hz), late updates catch up with two
+flushes in a row, the 3D is always on the top screen and display capture is never used. `--fps-probe` logs this per
+second (`#` = new 3D scene, `.` = repeated, `c`/`C` = display capture).
+
+- The game logic tick is left untouched (30 Hz). This is required for lockstep netplay and avoids physics/animation bugs;
+  speeding the logic up would mean retuning every per-tick constant in the game.
+- **Frame interpolation (RT64-style), at the level of GX commands.** Everything the game draws in 3D reaches the geometry
+  engine as a stream of GX commands (`GPU3D::CmdFIFOWrite`): matrix loads and multiplies (camera, objects, and the bone
+  matrices of skinned models), polygon attributes, texture parameters and vertices. The plan:
+  1. Record each scene's command stream with the VBlank at which it was flushed.
+  2. Match the streams of two consecutive scenes: identical command sequences pair one to one; otherwise align draw
+     chunks (runs between matrix restores/loads, keyed by opcodes, texture and polygon attributes) and leave unmatched
+     chunks as they are in the newer scene (they snap).
+  3. For a display frame between the two scenes' times, replay the newer stream through a geometry engine with every
+     matched matrix (and vertex) parameter interpolated, and render the resulting polygon list with melonDS's renderer.
+     Rotations are blended element-wise (fine at a half-step); a large change in the projection or camera matrix is a
+     cut and snaps.
+  4. The 2D layers (backgrounds, sprites, the bottom screen) show the latest real frame.
+  This costs one 30 Hz frame of latency (we show the step between the last two scenes) and runs at any display rate:
+  60 Hz, 120/144 Hz or VRR. Timestamps come from the flush VBlanks, so catch-up frames interpolate correctly.
 - Present with VRR/uncapped/vsync options. Optional low-latency mode with no interpolation.
-- *(open)* First verify the logic rate (30 or 60) and whether 3D is rendered on both screens with display capture
-  (that would mean 30 Hz per screen and needs special handling: render both screens' 3D every frame natively).
+- Steps, each checkable on its own: (a) record streams and measure how often consecutive scenes match; (b) replay an
+  unmodified stream and check that the polygon list is identical to the original; (c) interpolate and show 60 Hz;
+  (d) arbitrary display rates and presentation options.
 
 ### 5.4 Screen layouts
 **Today** (`game/src/video.cpp`): single screen (default; the top screen as large as fits, the other as a framed

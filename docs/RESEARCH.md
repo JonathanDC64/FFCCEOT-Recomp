@@ -123,10 +123,15 @@ controller-navigable player UI and ImGui for developer/debug panels. See [ARCHIT
 ### 2.3 Gameplay and hardware use
 
 - Touch is central [V/R]: magic is picked and aimed with spell rings (combinable, e.g. Fire+Fire → Fira), alongside menus and a
-  party map on the bottom screen. Reports say main 3D action is on the top screen. **The exact screen
-  assignment per mode, and whether 3D is ever shown on both screens via display capture, still needs checking** (this matters for 60 fps).
+  party map on the bottom screen. The 3D is always on the top screen and display capture is never used [V] (measured with
+  `--fps-probe` over about 3 minutes of logos, title, town, field, combat and menus: engine A on the top screen in every
+  frame, no capture in any frame). So there is no dual-screen 3D to deal with.
 - No evidence of microphone use.
-- Frame rate: the Wii version runs at about 30 fps [R], and the DS slows down with a full party [R]. **The DS logic rate is not verified.**
+- Frame rate [V]: **the 3D scene updates at 30 Hz**: a new polygon list is flushed every second VBlank (`#.#.#.`) in all
+  of the above, including the title screen. The Wii version also runs at about 30 fps [R]. When an update runs late the
+  game catches up: a gap of 3-6 frames is followed by two flushes on consecutive frames (`....##.#`), so frames do not
+  arrive on a fixed two-frame grid. Loading and fades show longer gaps. The DS slows down with a full party [R]; not yet
+  measured with four players.
 - An anti-piracy check exists (EU AR fix at `020CAE64`/`020CB1CC` [R]). The USA equivalent needs locating and neutralising with a hook.
 
 ### 2.4 Multiplayer

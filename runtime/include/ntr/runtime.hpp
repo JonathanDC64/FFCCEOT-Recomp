@@ -70,6 +70,7 @@ struct RuntimeOptions {
     bool trace_calls = false;
     bool trace_threads = false;
     bool perf = false;         // log emulation cost and interpreter use every 60 frames
+    bool fps_probe = false;    // log how often the game makes a new 3D frame, display capture and 3D screen use
     bool trace_files = false;  // log which ROM file each cartridge read hits (with the frame number)
     // Builds with FFCC_TRACE_ENTRY only: write each function's first/last frame and call count here on exit.
     std::string profile_path;

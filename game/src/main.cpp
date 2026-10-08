@@ -545,7 +545,7 @@ int main(int argc, char** argv) {
                      "  --better-polygons                    opengl: better quad splitting\n"
                      "  --no-hires-coordinates               compute: snap vertices to the DS pixel grid\n"
                      "other:\n"
-                     "  --no-skip-logos --trace-calls --trace-threads --trace-files --perf\n"
+                     "  --no-skip-logos --trace-calls --trace-threads --trace-files --perf --fps-probe\n"
                      "  --profile-functions <file> --dump-at-frame <n> --exit-after-frames <n>\n"
                      "  --screenshot-at-frame <n> <file.png> --menu-at-frame <n> --menu-tab <name>\n"
                      "  --menu-keys <key,key,...>\n"
@@ -581,6 +581,8 @@ int main(int argc, char** argv) {
             settings.skip_logos = false;
         else if (a == "--perf")
             options.perf = true;
+        else if (a == "--fps-probe")
+            options.fps_probe = true;
         else if (a == "--trace-files")
             options.trace_files = true;
         else if (a == "--profile-functions" && has_value)

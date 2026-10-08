@@ -262,6 +262,7 @@ void RuntimeImpl::advance() {
         }
         r.run_system(target);
         n.CurCPU = 0;
+        if (n.GPU.CaptureEnable) probe_capture_ = true;  // cleared by the hardware when the capture ends
 
         if (n.GPU.TotalScanlines != 0) {
             end_frame();
@@ -292,6 +293,7 @@ void RuntimeImpl::end_frame() {
     }
 
     if (options.perf) report_perf();
+    if (options.fps_probe) probe_frame();
     if (options.dump_at_frame && frames_ == options.dump_at_frame) dump_state();
 
     Frame frame;
@@ -313,6 +315,26 @@ void RuntimeImpl::end_frame() {
         apply_video(pending_video_);
     }
     perf_mark_ = std::chrono::steady_clock::now();  // the frontend's frame pacing is not emulation time
+}
+
+void RuntimeImpl::probe_frame() {
+    melonDS::NDS& n = *nds;
+    // RenderFrameIdentical is false when this frame's VBlank swapped in a new polygon list (a geometry flush).
+    const bool new3d = !n.GPU.GPU3D.RenderFrameIdentical;
+    const bool top = n.GPU.ScreenSwap;  // POWCNT1 bit 15: engine A (the 3D one) on the top screen
+    probe_pattern_ += new3d ? (probe_capture_ ? 'C' : '#') : (probe_capture_ ? 'c' : '.');
+    probe_new3d_ += new3d;
+    probe_capture_frames_ += probe_capture_;
+    probe_top_ += top;
+    probe_swaps_ += frames_ > 1 && top != probe_last_top_;
+    probe_last_top_ = top;
+    probe_capture_ = false;
+    if (frames_ % 60) return;
+    log("fps-probe: frame %llu: new 3D %d/60, capture %d/60, 3D on top %d/60, screen swaps %d  %s\n",
+        (unsigned long long)frames_, probe_new3d_, probe_capture_frames_, probe_top_, probe_swaps_,
+        probe_pattern_.c_str());
+    probe_pattern_.clear();
+    probe_new3d_ = probe_capture_frames_ = probe_top_ = probe_swaps_ = 0;
 }
 
 void RuntimeImpl::report_perf() {

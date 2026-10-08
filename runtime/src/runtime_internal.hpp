@@ -165,6 +165,14 @@ private:
     std::string last_traced_file_;  // per entry address (coverage report)
     // --perf: host time spent emulating (excluding the frontend's frame pacing) since the last report.
     std::chrono::steady_clock::time_point perf_mark_{};
+
+    // --fps-probe: per frame, whether a new 3D scene was swapped in, display capture ran, and the 3D engine (engine A)
+    // was on the top screen; summarised every 60 frames.
+    void probe_frame();
+    bool probe_capture_ = false;
+    std::string probe_pattern_;
+    int probe_new3d_ = 0, probe_capture_frames_ = 0, probe_top_ = 0, probe_swaps_ = 0;
+    bool probe_last_top_ = false;
     double perf_host_s_ = 0;
     u64 perf_steps_mark_ = 0, perf_calls_mark_ = 0;
 };
