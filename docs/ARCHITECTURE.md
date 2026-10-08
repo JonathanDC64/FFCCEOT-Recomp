@@ -273,28 +273,36 @@ parameters that changed since the previous scene.
     snapshot. It needs full machine snapshots, and the recomp's guest threads run on host fibers, so this is research,
     not a plan.
 
-**Next: display rates above 60 Hz (planned).** Today the frontend presents once per emulated frame, paced by a timer to
-59.83 Hz, with vsync off.
+**Display refresh rate (above 60 Hz).** The "3D frame rate" setting has three values: 30 (original), 60
+(interpolated), and the display's refresh rate (F9 cycles them; `--display-rate`). In the 60 mode the frontend
+presents once per emulated frame, paced by a timer to 59.83 Hz, with vsync off. In the display-rate mode, the display's
+refreshes pace the emulation instead, and every refresh gets its own frame.
 - **The renderer side.** In melonDS's OpenGL and compute renderers, the 3D is drawn into a texture at line 215 of one
   frame (`Start3DRendering`). At line 192 of the next frame, a GPU pass (`GLRenderer2D::RenderScreen`) composites
   engine A's 2D layers with that texture, and a final pass (`GLRenderer::RenderScreen`) applies master brightness.
   All of their inputs (per-scanline configs, layer textures) are still in place after an emulated frame ends.
-- **An in-between frame** therefore takes four steps:
-  1. replay the scene with its matrices blended at fraction t (as today, about 0.4 ms of CPU);
-  2. draw the result into a spare 3D texture;
-  3. re-run the two passes into a spare output;
-  4. present it.
-  No emulation is involved, and the 2D layers stay at the game's rate.
-- **What to build:**
-  - a configure-time melonDS patch with that entry point, about 100-150 lines;
-  - a runtime call that renders the in-between frame at fraction t;
-  - a frontend loop that presents at the display rate (vsync, or a timer for VRR), runs emulated frames when they
-    are due, and weighs each display frame between scenes as RT64 does;
-  - a setting: Original 30 / 60 / Display refresh / Custom.
-  Roughly 2-4 days.
+- **An in-between frame** (`runtime/src/gl_between.cpp`) therefore takes four steps:
+  1. replay the scene with its matrices blended at fraction t (the same replay as the 60 mode, about 0.4 ms of CPU);
+  2. draw it into the renderer's 3D texture, after copying the real one aside;
+  3. re-run the two passes, with the final pass pointed at a framebuffer of our own;
+  4. put the real 3D texture back (the next emulated frame composites it), and present our output.
+  No emulation is involved, and the 2D layers stay at the game's rate. melonDS's sources are not patched: the private
+  members are reached through explicit template instantiation.
+- **Timing.** An emulated frame goes on screen at time e and stays for one DS frame. Each refresh r in that window gets
+  a frame for the moment it is shown, x = (r - e) / 16.7 ms into the frame. The blend fraction is measured from the
+  latest scene's vblank (`since = vblanks since + x`, `t = since / gap`), so a scene is reached in full at the same
+  moment as in the 60 mode, and the mode adds no latency. In the 60 mode, t only takes the values 0, 1/2 and 1; here it
+  takes all values in between.
+- **Presenting.** On Windows, the DXGI flip-model swapchain uses a frame-latency waitable object (maximum latency 1):
+  the frontend waits for it, renders, and presents with vsync, so a frame is drawn as late as possible before its
+  refresh. The plain GL swap falls back to `SDL_GL_SetSwapInterval(1)`. With `--unpaced`, a virtual display
+  (`--display-hz`, 144 by default) stands in for the real one, so test runs are repeatable, and a screenshot saves every
+  frame shown for its emulated frame (`name`, `name-1`, ...).
+- **Measured** at 144 Hz (unpaced, open field, walking and turning): 144/60 gives 2 or 3 frames per emulated frame in
+  the expected 3-2-2-3-2 pattern, and the image change between consecutive frames stays within 4.3-5.6 (mean absolute
+  difference, top screen), with no repeated frames or double steps.
 - **The software renderer** composites on the CPU line by line, so it stays at 60.
-- **Latency** is as described above: spreading each step evenly over the tick, as RT64 and Ship of Harkinian do, adds
-  up to one tick.
+- **Not yet:** VRR (presenting on a timer instead of vsync), and a low-latency option.
 
 **Object tagging (deferred).** RT64 tags matrices with IDs so it can pair objects exactly between frames.
 - **What it would fix here: little.** Measured: 95% of scenes have exactly the same command sequence as the previous

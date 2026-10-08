@@ -326,11 +326,28 @@ void Presenter::swap(const char* screenshot) {
     if (screenshot) save_png(screenshot);
 #ifdef _WIN32
     if (flip_) {
-        flip_->present();
+        flip_->present(vsync_);
         return;
     }
 #endif
     SDL_GL_SwapWindow(window_);
+}
+
+void Presenter::set_vsync(bool on) {
+    if (on == vsync_) return;
+    vsync_ = on;
+    if (!flip_) SDL_GL_SetSwapInterval(on ? 1 : 0);  // (a GL swap with vsync waits for the refresh itself)
+}
+
+void Presenter::wait_for_refresh() {
+#ifdef _WIN32
+    if (flip_ && vsync_) flip_->wait();
+#endif
+}
+
+float Presenter::refresh_rate() const {
+    const SDL_DisplayMode* mode = SDL_GetCurrentDisplayMode(SDL_GetDisplayForWindow(window_));
+    return mode ? mode->refresh_rate : 0.0f;
 }
 
 }  // namespace video

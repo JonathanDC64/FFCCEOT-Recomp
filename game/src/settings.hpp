@@ -17,7 +17,8 @@ struct Settings {
     video::Filter filter = video::Filter::Linear;
     bool better_polygons = false;
     bool hires_coordinates = true;
-    bool interpolate = true;  // 3D at 60 fps (frame interpolation)
+    bool interpolate = true;    // 3D at 60 fps (frame interpolation)
+    bool display_rate = false;  // with interpolate: 3D at the display's refresh rate (OpenGL/compute renderers)
     // Audio
     int volume = 100;  // percent
     // Game

@@ -107,7 +107,7 @@ void Streams::command_hook(void* self, uint8_t op, uint32_t param) { static_cast
 void Streams::vblank_hook(void* self, bool flushed) { static_cast<Streams*>(self)->on_vblank(flushed); }
 
 void Streams::on_command(uint8_t op, uint32_t param) {
-    if (current_.entries.empty() && (check || interpolate)) save_state(g_, current_.start);
+    if (current_.entries.empty() && (check || interpolate || display_rate)) save_state(g_, current_.start);
     current_.entries.push_back({op, param});
     if (op != 0x50) return;
     // (The flush itself has not run yet; everything before it has.)
@@ -138,8 +138,13 @@ void Streams::on_vblank(bool flushed) {
         if (flushed && check && !scene.start.empty()) check_replay(scene);
         else if (flushed && interpolate && !scene.start.empty()) interpolate_scene(prev_, scene);
     }
+    if (display_rate) {
+        older_ = std::move(prev_);
+        have_older_ = have_prev_ && prev_flushed_;
+    }
     prev_ = std::move(scene);
     have_prev_ = true;
+    prev_flushed_ = flushed;
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -228,6 +233,36 @@ void Streams::interpolate_scene(const Scene& prev, const Scene& scene) {
     }
     replay(scene, entries);
     ++interpolated_;
+}
+
+uint32_t Streams::render_between(double x, const std::function<uint32_t()>& render) {
+    // The render list is the latest scene until the next flush (the game builds the next one in the other bank).
+    if (!have_prev_ || !prev_flushed_ || restore_pending_) return 0;
+    const bool identical = g_.RenderFrameIdentical;
+    const double since = double(vblanks_ - prev_.vblank) + std::clamp(x, 0.0, 1.0);
+    const int gap = have_older_ ? int(prev_.vblank - older_.vblank) : 0;
+    uint32_t out = 0;
+    if (gap >= 2 && gap <= 4 && since < gap && !prev_.start.empty()) {
+        constexpr int kDen = 1 << 12;
+        std::vector<Entry> entries = prev_.entries;
+        const Blend b = blend(older_.entries, prev_.entries, entries, int(since / gap * kDen), kDen);
+        if (!b.cut && b.blended) {
+            replay(prev_, entries);
+            out = render();
+            restore_real();
+            restore_pending_ = false;
+            ++interpolated_;
+            g_.RenderFrameIdentical = identical;
+            return out;
+        }
+    }
+    // Nothing to blend (a cut, a long gap, or the scene fully shown): the latest scene as it is. From the frame after
+    // it arrived, that is what the emulated frame shows (the DS composites the 3D rendered during the frame before).
+    if (vblanks_ > prev_.vblank) return 0;
+    g_.RenderFrameIdentical = false;
+    out = render();
+    g_.RenderFrameIdentical = identical;
+    return out;
 }
 
 // ---------------------------------------------------------------------------------------------------------------

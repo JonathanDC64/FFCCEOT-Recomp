@@ -85,6 +85,14 @@ public:
     void draw(const ntr::Frame* frame, Filter filter);
     // Shows the back buffer. With `screenshot`, first saves it as a PNG.
     void swap(const char* screenshot = nullptr);
+    // Display-rate presentation (vsync): swap() shows frames in step with the display's refresh, and
+    // wait_for_refresh() returns when the display can take the next frame, so that the frame drawn after it is shown
+    // at the following refresh. Off: frames show at once and the frontend paces them.
+    void set_vsync(bool on);
+    bool vsync() const { return vsync_; }
+    void wait_for_refresh();
+    // The refresh rate of the display the window is on (Hz), or 0 if unknown.
+    float refresh_rate() const;
     void present(const ntr::Frame* frame, Filter filter, const char* screenshot = nullptr) {
         draw(frame, filter);
         swap(screenshot);
@@ -98,6 +106,7 @@ private:
     std::unique_ptr<FlipPresenter> flip_;
     unsigned target_ = 0;      // the framebuffer this frame is drawn into (0 = the window's own)
     bool gl43_ = false;
+    bool vsync_ = false;
     unsigned program_ = 0, vbo_ = 0, vao_ = 0, soft_tex_ = 0;
     int u_dest_ = -1, u_layer_ = -1, u_sharp_ = -1, u_out_size_ = -1, u_tex_ = -1, u_opacity_ = -1;
     int width_ = 0, height_ = 0;

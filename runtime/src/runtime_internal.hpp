@@ -10,6 +10,7 @@
 
 #include "NDS.h"
 #include "fiber.hpp"
+#include "gl_between.hpp"
 #include "gx_stream.hpp"
 #include "ntr/recomp.h"
 #include "ntr/runtime.hpp"
@@ -58,6 +59,7 @@ public:
     void release_touch() override;
     void set_video(const VideoSettings& settings) override;
     VideoSettings video() const override { return video_; }
+    unsigned render_between(double x) override;
 
     // ---- services for recompiled code ----
     u32 bus_read32(u32 a);
@@ -177,6 +179,7 @@ private:
 
     // GX command streams: frame interpolation, --gx-probe, --gx-check.
     std::unique_ptr<gx::Streams> gx_;
+    std::unique_ptr<GlBetween> between_;  // frames between emulated frames (display_rate)
     double perf_host_s_ = 0;
     u64 perf_steps_mark_ = 0, perf_calls_mark_ = 0;
 };

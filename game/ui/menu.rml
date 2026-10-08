@@ -88,8 +88,12 @@
                 </select>
             </div>
             <div class="row nav">
-                <span class="label">60 fps 3D (frame interpolation)</span>
-                <input type="checkbox" data-checked="interpolate"/>
+                <span class="label">3D frame rate</span>
+                <select data-value="frame_rate">
+                    <option value="0">30 fps (original)</option>
+                    <option value="1">60 fps (interpolated)</option>
+                    <option value="2">Display refresh rate (interpolated)</option>
+                </select>
             </div>
             <div class="row nav">
                 <span class="label">Scaling filter</span>
@@ -108,7 +112,7 @@
                 <input type="checkbox" data-checked="hires_coordinates"/>
             </div>
             <p class="note" data-if="renderer == 2 &amp;&amp; !compute_available">Compute needs OpenGL 4.3: OpenGL is used instead.</p>
-            <p class="note">The game draws its 3D at 30 fps: interpolation shows a blended image in between, for one frame (16 ms) of extra latency. F9 toggles it.</p>
+            <p class="note">The game draws its 3D at 30 fps: interpolation shows blended images in between, for one frame (16 ms) of extra latency. The display refresh rate (120, 144 Hz and up) needs the OpenGL or compute renderer and syncs frames to the display. F9 switches between the three.</p>
             <p class="note">Renderer, resolution and interpolation changes take effect when you resume.</p>
         </div>
 

@@ -88,7 +88,8 @@ RuntimeImpl::RuntimeImpl(std::vector<uint8_t> rom, const GameCode& code, Host& h
         gx_->probe = options.gx_probe;
         gx_->check = options.gx_check;
         gx_->dump_at_vblank = options.gx_dump_at_frame;
-        gx_->interpolate = video_.interpolate && !options.gx_check;
+        gx_->interpolate = video_.interpolate && !video_.display_rate && !options.gx_check;
+        gx_->display_rate = video_.display_rate && !options.gx_check;
     }
 
     read_pages_.assign(1u << 20, nullptr);
@@ -738,8 +739,6 @@ void RuntimeImpl::set_video(const VideoSettings& settings) {
 // Software when there is no usable context at all.
 void RuntimeImpl::apply_video(VideoSettings s) {
     melonDS::NDS& n = *nds;
-    if (s.interpolate && !gx_) gx_ = std::make_unique<gx::Streams>(n.GPU.GPU3D);
-    if (gx_) gx_->interpolate = s.interpolate && !options.gx_check;
     s.scale = std::clamp(s.scale, 1, 16);
     if (s.renderer != Renderer::Software && !glEnable) {
         log("video: no OpenGL context, using the software renderer\n");
@@ -764,10 +763,27 @@ void RuntimeImpl::apply_video(VideoSettings s) {
     int current = 0, count = 0;
     while (n.GetRenderer().NeedsShaderCompile()) n.GetRenderer().ShaderCompileStep(current, count);
     if (s.renderer == Renderer::Software) s.scale = 1;
+    s.display_rate = s.display_rate && s.interpolate && s.renderer != Renderer::Software;
+    if (s.interpolate && !gx_) gx_ = std::make_unique<gx::Streams>(n.GPU.GPU3D);
+    if (gx_) {
+        gx_->interpolate = s.interpolate && !s.display_rate && !options.gx_check;
+        gx_->display_rate = s.display_rate && !options.gx_check;
+    }
     video_ = s;
     video_applied_ = true;
     log("video: %s renderer, %dx (%dx%d per screen)%s\n", renderer_name(s.renderer), s.scale, 256 * s.scale,
-        192 * s.scale, s.interpolate ? ", 3D interpolated to 60 fps" : "");
+        192 * s.scale,
+        s.display_rate  ? ", 3D interpolated to the display's refresh rate"
+        : s.interpolate ? ", 3D interpolated to 60 fps"
+                        : "");
+}
+
+unsigned RuntimeImpl::render_between(double x) {
+    if (!gx_ || !gx_->display_rate) return 0;
+    auto* gl = dynamic_cast<melonDS::GLRenderer*>(&nds->GetRenderer());
+    if (!gl) return 0;
+    if (!between_) between_ = std::make_unique<GlBetween>();
+    return gx_->render_between(x, [&] { return between_->render(*gl); });
 }
 
 const char* renderer_name(Renderer r) {

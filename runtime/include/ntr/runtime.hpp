@@ -43,6 +43,8 @@ struct VideoSettings {
     bool hires_coordinates = true;   // Compute: keep sub-pixel vertex positions when upscaling
     bool threaded = true;            // Software: render 3D on a worker thread
     bool interpolate = false;        // 3D at 60 fps: blend the game's 30 Hz scenes (one frame of latency)
+    bool display_rate = false;       // with interpolate and a GL renderer: blend for each displayed frame instead,
+                                     // through render_between() (3D at the display's refresh rate)
 };
 
 // One finished frame of both screens.
@@ -102,6 +104,11 @@ public:
     // renderer that failed to start falls back to Software).
     virtual void set_video(const VideoSettings& settings) = 0;
     virtual VideoSettings video() const = 0;
+
+    // With VideoSettings::display_rate, from Host::on_frame: a frame shown `x` (0 to 1) of an emulated frame after
+    // the current one, its 3D blended between the game's last two scenes. Returns a GL texture laid out like
+    // Frame::gl_texture (valid until the next call), or 0 when the current frame is the one to show.
+    virtual unsigned render_between(double x) = 0;
 };
 
 }  // namespace ntr

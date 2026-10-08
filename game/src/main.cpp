@@ -167,6 +167,8 @@ public:
         v.better_polygons = settings.better_polygons;
         v.hires_coordinates = settings.hires_coordinates;
         v.interpolate = settings.interpolate;
+        // (the software renderer can't draw extra frames: it stays at 60)
+        v.display_rate = settings.interpolate && settings.display_rate && v.renderer != ntr::Renderer::Software;
         return v;
     }
 
@@ -205,10 +207,16 @@ public:
         }
         if (menu_.is_open()) return run_menu(frame);
         const auto shot = screenshots.find(frames_);
-        presenter_.present(&frame, settings.filter, shot != screenshots.end() ? shot->second.c_str() : nullptr);
+        const char* shot_path = shot != screenshots.end() ? shot->second.c_str() : nullptr;
+        if (runtime_->video().display_rate) {
+            present_display_rate(frame, shot_path);
+        } else {
+            presenter_.set_vsync(false);
+            presenter_.present(&frame, settings.filter, shot_path);
+        }
         if (++frames_since_save_ > 120) flush_save();
         if (script_quit_ && frames_ >= script_quit_) return false;
-        if (!unpaced) pace();
+        if (!unpaced && !runtime_->video().display_rate) pace();
         return true;
     }
 
@@ -360,7 +368,10 @@ private:
         case SDLK_F6: settings.scale = settings.scale == 0 ? std::max(1, scale - 1) : settings.scale - 1; break;
         case SDLK_F7: settings.scale = settings.scale == 0 ? std::min(16, scale + 1) : (settings.scale + 1) % 17; break;
         case SDLK_F8: settings.filter = video::Filter((int(settings.filter) + 1) % 3); break;
-        case SDLK_F9: settings.interpolate = !settings.interpolate; break;
+        case SDLK_F9:  // 3D at 30 fps, 60 fps, the display's refresh rate
+            settings.display_rate = settings.interpolate && !settings.display_rate;
+            settings.interpolate = !settings.interpolate || settings.display_rate;
+            break;
         default: return;
         }
         settings_dirty_ = true;
@@ -374,7 +385,7 @@ private:
         const ntr::VideoSettings v = wanted_video();
         if (v.renderer == sent_video_.renderer && v.scale == sent_video_.scale &&
             v.better_polygons == sent_video_.better_polygons && v.hires_coordinates == sent_video_.hires_coordinates &&
-            v.interpolate == sent_video_.interpolate)
+            v.interpolate == sent_video_.interpolate && v.display_rate == sent_video_.display_rate)
             return;
         runtime_->set_video(v);
         sent_video_ = v;
@@ -398,7 +409,10 @@ private:
         if (v.renderer != ntr::Renderer::Software)
             t += " " + std::to_string(v.scale) + "x" + (settings.scale ? "" : " (auto)");
         t += std::string(", ") + video::filter_name(settings.filter) + " filter";
-        t += v.interpolate ? ", 60 fps 3D" : ", 30 fps 3D";
+        if (v.display_rate)
+            t += ", 3D at " + std::to_string(int(std::lround(display_hz()))) + " Hz";
+        else
+            t += v.interpolate ? ", 60 fps 3D" : ", 30 fps 3D";
         t += "  |  Esc settings";
         SDL_SetWindowTitle(window_, t.c_str());
     }
@@ -530,6 +544,57 @@ private:
         }
     }
 
+    // The display's refresh rate (with --unpaced, the virtual display's).
+    double display_hz() const {
+        if (unpaced) return virtual_display_hz;
+        const float hz = presenter_.refresh_rate();
+        return hz > 1 ? hz : 60.0;
+    }
+
+    static double seconds() {
+        return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
+    }
+
+    // 3D at the display's refresh rate. This emulated frame is on screen for one DS frame from emu_time_, and each
+    // display refresh in that time gets a frame with the 3D blended for the moment it is shown. Waiting for the
+    // refreshes paces the emulation. With --unpaced, a virtual display (virtual_display_hz) stands in for the real
+    // one, so runs are repeatable; a screenshot then saves every frame shown for that emulated frame (name, name-1,
+    // name-2, ...).
+    void present_display_rate(const ntr::Frame& frame, const char* shot_path) {
+        const double period = 1.0 / display_hz();
+        presenter_.set_vsync(!unpaced);
+        if (!unpaced && seconds() > emu_time_ + 0.1) emu_time_ = seconds();  // started, paused or fell behind
+        const double frame_end = emu_time_ + kFrameSeconds;
+        for (int k = 0;; k++) {
+            if (!unpaced && !refresh_waited_) {
+                presenter_.wait_for_refresh();  // (a plain GL swap waits for the refresh itself)
+                refresh_waited_ = true;
+                last_refresh_ = seconds();
+            }
+            const double shown = (unpaced ? virtual_clock_ : last_refresh_) + period;  // when a frame drawn now shows
+            if (shown >= frame_end) break;  // that refresh belongs to the next emulated frame
+            const unsigned between = runtime_->render_between((shown - emu_time_) / kFrameSeconds);
+            ntr::Frame f = frame;
+            if (between) f.gl_texture = between;
+            std::string path;
+            if (shot_path) {
+                path = shot_path;
+                if (k > 0) {
+                    const size_t dot = path.rfind('.');
+                    path.insert(dot == std::string::npos ? path.size() : dot, "-" + std::to_string(k));
+                }
+            }
+            presenter_.present(&f, settings.filter, shot_path ? path.c_str() : nullptr);
+            if (unpaced)
+                virtual_clock_ += period;
+            else if (presenter_.flip_model())
+                refresh_waited_ = false;
+            else
+                last_refresh_ = seconds();  // the swap returned at the refresh
+        }
+        emu_time_ = frame_end;
+    }
+
     void pace() {
         using clock = std::chrono::steady_clock;
         next_frame_ += std::chrono::duration_cast<clock::duration>(std::chrono::duration<double>(kFrameSeconds));
@@ -567,6 +632,10 @@ private:
     SDL_Gamepad* gamepad_ = nullptr;
     ntr::Runtime* runtime_ = nullptr;
     std::chrono::steady_clock::time_point next_frame_;
+    double emu_time_ = 0;          // display-rate 3D: when the current emulated frame went on screen (seconds)
+    double virtual_clock_ = 0;     // display-rate 3D with --unpaced: the virtual display's time
+    bool refresh_waited_ = false;  // display-rate 3D: waited for a refresh not yet drawn for
+    double last_refresh_ = 0;      // display-rate 3D: when that refresh was (seconds)
     std::filesystem::path save_path_;
     std::vector<uint8_t> save_;
     bool save_dirty_ = false;
@@ -592,6 +661,7 @@ public:
     uint64_t menu_at_frame = 0;      // debugging: open the menu at this frame
     std::string menu_keys;           // debugging: and press these keys in it
     bool allow_flip_model = true;    // Windows: present through DXGI when possible
+    double virtual_display_hz = 144; // testing: with --unpaced, the refresh rate display-rate 3D assumes
     ui::Menu& menu() { return menu_; }
 };
 
@@ -648,6 +718,8 @@ int main(int argc, char** argv) {
                      "  --better-polygons                    opengl: better quad splitting\n"
                      "  --no-hires-coordinates               compute: snap vertices to the DS pixel grid\n"
                      "  --no-interpolate                     3D at the game's 30 fps (default: interpolated to 60)\n"
+                     "  --display-rate                       3D interpolated to the display's refresh rate (vsync)\n"
+                     "  --no-display-rate                    3D interpolated to 60 fps\n"
                      "other:\n"
                      "  --no-skip-logos --trace-calls --trace-threads --trace-files --perf --fps-probe --gx-probe --gx-check\n"
                      "  --profile-functions <file> --dump-at-frame <n> --gx-dump-at-frame <n> --exit-after-frames <n>\n"
@@ -659,7 +731,8 @@ int main(int argc, char** argv) {
                      "  --save-file <file>                   use this save file instead of the usual one\n"
                      "  --read-only-save                     never write the save file\n"
                      "  --no-settings                        ignore settings.ini (neither read nor written)\n"
-                     "  --unpaced                            run as fast as possible\n",
+                     "  --unpaced                            run as fast as possible\n"
+                     "  --display-hz <n>                     unpaced display-rate 3D: assume an n Hz display (144)\n",
                      argv[0]);
         return 2;
     }
@@ -686,6 +759,7 @@ int main(int argc, char** argv) {
     ntr::RuntimeOptions options;
     uint64_t exit_after_frames = 0, menu_at_frame = 0;
     bool allow_flip_model = true;
+    double virtual_display_hz = 144;
     std::map<uint64_t, std::string> screenshots;
     std::vector<ScriptStep> script;
     std::string menu_tab, menu_keys;
@@ -718,6 +792,8 @@ int main(int argc, char** argv) {
             options.dump_at_frame = std::strtoull(argv[++i], nullptr, 10);
         else if (a == "--exit-after-frames" && has_value)
             exit_after_frames = std::strtoull(argv[++i], nullptr, 10);
+        else if (a == "--display-hz" && has_value)
+            virtual_display_hz = std::clamp(std::atof(argv[++i]), 30.0, 1000.0);
         else if (a == "--renderer" && has_value && parse_renderer(argv[i + 1], settings.renderer))
             ++i;
         else if (a == "--scale" && has_value) {
@@ -760,6 +836,10 @@ int main(int argc, char** argv) {
             settings.interpolate = true;
         else if (a == "--no-interpolate")
             settings.interpolate = false;
+        else if (a == "--display-rate")
+            settings.interpolate = settings.display_rate = true;
+        else if (a == "--no-display-rate")
+            settings.display_rate = false;
         else
             std::fprintf(stderr, "ignoring unknown or incomplete option %s\n", a.c_str());
     }
@@ -785,6 +865,7 @@ int main(int argc, char** argv) {
     host.script = std::move(script);
     host.read_only_save = read_only_save;
     host.unpaced = unpaced;
+    host.virtual_display_hz = virtual_display_hz;
     host.menu_at_frame = menu_at_frame;
     host.menu_keys = menu_keys;
     host.allow_flip_model = allow_flip_model;

@@ -6,6 +6,7 @@
 
 #include <array>
 #include <cstdint>
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -31,7 +32,15 @@ public:
     bool probe = false;        // --gx-probe: log how well consecutive scenes match
     bool check = false;        // --gx-check: replay every scene unchanged and compare the polygon lists
     bool interpolate = false;  // show a blended scene on frames where a new one arrives
+    bool display_rate = false; // keep the last two scenes for render_between()
     uint64_t dump_at_vblank = 0;  // debugging: write the first scene swapped in at or after this VBlank to a file
+
+    // 3D at the display's refresh rate, between emulated frames. A displayed frame `x` (0 to 1) of an emulated frame
+    // after the end of the current one shows the latest two scenes blended: from the one before at the frame the
+    // latest arrived, to the latest one frame-gap later (so each scene is fully on screen when the DS would show the
+    // next one, as with 60 Hz interpolation). Makes that the render list, calls `render`, and puts the real render
+    // list back. Returns what `render` returned, or 0 when there is nothing to blend (the emulated frame is current).
+    uint32_t render_between(double x, const std::function<uint32_t()>& render);
 
     // Logs the statistics every 60 frames.
     void report(uint64_t frame);
@@ -52,9 +61,9 @@ private:
     void restore_real();
 
     melonDS::GPU3D& g_;
-    Scene current_, prev_;
+    Scene current_, prev_, older_;  // older_: the scene before prev_ (display_rate)
     std::vector<Scene> done_;
-    bool have_prev_ = false;
+    bool have_prev_ = false, prev_flushed_ = false, have_older_ = false;
     uint64_t vblanks_ = 0;
 
     // Saved around a replay: the engine state, and the real scene's part of vertex and polygon RAM.

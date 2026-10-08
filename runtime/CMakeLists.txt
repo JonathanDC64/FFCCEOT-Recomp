@@ -4,6 +4,7 @@ add_library(ntr_runtime STATIC
   src/swi.cpp
   src/nitro.cpp
   src/fiber.cpp
+  src/gl_between.cpp
   src/gx_match.cpp
   src/gx_stream.cpp
   src/melon_platform.cpp)

@@ -10,7 +10,7 @@
 #endif
 #include <windows.h>
 #include <d3d11.h>
-#include <dxgi1_2.h>
+#include <dxgi1_3.h>
 #include <wrl/client.h>
 
 #include <algorithm>
@@ -42,7 +42,9 @@ struct FlipPresenter::Impl {
     ComPtr<ID3D11Device> device;
     ComPtr<ID3D11DeviceContext> context;
     ComPtr<IDXGISwapChain1> swapchain;
-    HANDLE interop = nullptr;  // the D3D device opened for GL
+    UINT swapchain_flags = 0;
+    HANDLE waitable = nullptr;  // signalled when the swapchain can take another frame (frame latency 1)
+    HANDLE interop = nullptr;   // the D3D device opened for GL
 
     // Per size: the GL framebuffer the frame is drawn into, and a D3D texture GL copies it to (rows flipped, since GL
     // rows run bottom-up and D3D rows top-down), which D3D then copies to the back buffer.
@@ -66,7 +68,7 @@ struct FlipPresenter::Impl {
 
     bool create_size(int w, int h) {
         release_size();
-        if (FAILED(swapchain->ResizeBuffers(0, UINT(w), UINT(h), DXGI_FORMAT_UNKNOWN, 0))) return false;
+        if (FAILED(swapchain->ResizeBuffers(0, UINT(w), UINT(h), DXGI_FORMAT_UNKNOWN, swapchain_flags))) return false;
 
         D3D11_TEXTURE2D_DESC td{};
         td.Width = UINT(w);
@@ -146,16 +148,25 @@ bool FlipPresenter::init(void* hwnd, std::string& error) {
     sd.Scaling = DXGI_SCALING_NONE;
     sd.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;  // Windows 10+
     sd.AlphaMode = DXGI_ALPHA_MODE_IGNORE;
+    // The waitable object paces frames to the display's refresh when vsync is wanted (Windows 8.1+).
+    sd.Flags = DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT;
     HRESULT hr = factory->CreateSwapChainForHwnd(m.device.Get(), static_cast<HWND>(hwnd), &sd, nullptr, nullptr,
                                                  &m.swapchain);
     if (FAILED(hr)) {
         sd.SwapEffect = DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL;  // Windows 8
+        sd.Flags = 0;
         hr = factory->CreateSwapChainForHwnd(m.device.Get(), static_cast<HWND>(hwnd), &sd, nullptr, nullptr,
                                              &m.swapchain);
     }
     if (FAILED(hr)) {
         error = "cannot create a flip-model swapchain";
         return false;
+    }
+    m.swapchain_flags = sd.Flags;
+    ComPtr<IDXGISwapChain2> swapchain2;
+    if (sd.Flags && SUCCEEDED(m.swapchain.As(&swapchain2))) {
+        swapchain2->SetMaximumFrameLatency(1);
+        m.waitable = swapchain2->GetFrameLatencyWaitableObject();
     }
     factory->MakeWindowAssociation(static_cast<HWND>(hwnd), DXGI_MWA_NO_ALT_ENTER | DXGI_MWA_NO_WINDOW_CHANGES);
 
@@ -179,6 +190,8 @@ void FlipPresenter::shutdown() {
     m.release_size();
     m.close_device(m.interop);
     m.interop = nullptr;
+    if (m.waitable) CloseHandle(m.waitable);
+    m.waitable = nullptr;
     m.swapchain.Reset();
     m.context.Reset();
     m.device.Reset();
@@ -193,7 +206,12 @@ unsigned FlipPresenter::begin(int width, int height) {
     return m.draw_fbo;
 }
 
-void FlipPresenter::present() {
+void FlipPresenter::wait() {
+    Impl& m = *impl_;
+    if (m.waitable) WaitForSingleObjectEx(m.waitable, 100, TRUE);
+}
+
+void FlipPresenter::present(bool vsync) {
     Impl& m = *impl_;
     if (!m.shared_object) return;
     // GL -> shared texture, flipping the rows.
@@ -204,10 +222,10 @@ void FlipPresenter::present() {
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     m.unlock_objects(m.interop, 1, &m.shared_object);
     // Shared texture -> back buffer, and show it. Sync interval 0: the frontend paces frames itself; the flip model
-    // shows the latest frame at the next refresh without tearing.
+    // shows the latest frame at the next refresh without tearing. Sync interval 1: in step with the refresh.
     ComPtr<ID3D11Texture2D> back;
     if (SUCCEEDED(m.swapchain->GetBuffer(0, IID_PPV_ARGS(&back)))) m.context->CopyResource(back.Get(), m.shared_tex.Get());
-    m.swapchain->Present(0, 0);
+    m.swapchain->Present(vsync ? 1 : 0, 0);
 }
 
 }  // namespace video
