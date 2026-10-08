@@ -771,33 +771,62 @@ EmitStats emit_c(const Program& program, const Analysis& analysis, const std::fi
               << f->c_name() << "},\n";
         t << "};\nconst size_t ntr_recomp_function_count = " << order.size() << ";\n\n";
 
-        // Overlays share run addresses, so the runtime identifies the resident one by a few probe words that
-        // differ from every other overlay covering the same address.
+        // Overlays share run addresses, so the runtime identifies the resident one by up to four probe words: it
+        // is resident when they all match. Every other module covering the same addresses must fail at least one,
+        // except byte-identical copies (several of the small scene overlays are), which run the same code, so
+        // either may be taken for the other. Without that exception such copies got no probes at all and counted
+        // as resident whatever was loaded, and a call into a different overlay at the same address ran their
+        // code instead.
         std::vector<const Module*> ovs;
         for (const Module& m : program.modules)
             if (is_overlay(m.id)) ovs.push_back(&m);
         t << "const NtrOverlayInfo ntr_recomp_overlays[] = {\n";
         for (const Module* o : ovs) {
-            std::vector<std::pair<uint32_t, uint32_t>> probes;
+            std::vector<const Module*> others;  // overlapping, not identical
+            for (const Module& pm : program.modules) {
+                const Module* p = &pm;
+                if (p == o || p->end() <= o->base || o->end() <= p->base) continue;
+                if (p->base == o->base && p->data == o->data) continue;
+                others.push_back(p);
+            }
             const uint32_t words = uint32_t(o->data.size() / 4);
-            for (int k = 0; k < 4 && words; k++) {
-                // Search forward from evenly spread starting points for a distinguishing word.
-                for (uint32_t w = words * uint32_t(k) / 4; w < words; w++) {
-                    uint32_t addr = o->base + w * 4, val = o->read32(addr);
-                    if (val == 0) continue;
-                    bool unique = true, overlapped = false;
-                    for (const Module& pm : program.modules) {
-                        const Module* p = &pm;
-                        if (p == o || !p->contains(addr, 4)) continue;
-                        overlapped = true;
-                        if (p->read32(addr) == val) { unique = false; break; }
-                    }
-                    if (!overlapped) continue;
-                    if (unique) {
-                        probes.emplace_back(addr, val);
-                        break;
+            const auto differs = [&](const Module* p, uint32_t addr, uint32_t val) {
+                return p->contains(addr, 4) && p->read32(addr) != val;
+            };
+            // Greedy: the word that tells the most remaining modules apart, until every one is told apart. Then
+            // again from the start with the words left, so that up to four probes give a second, independent check.
+            std::vector<std::pair<uint32_t, uint32_t>> probes;
+            std::vector<const Module*> left = others;
+            while (probes.size() < 4 && !others.empty()) {
+                if (left.empty()) left = others;
+                uint32_t best_addr = 0, best_val = 0;
+                size_t best = 0;
+                for (uint32_t w = 0; w < words; w++) {
+                    const uint32_t addr = o->base + w * 4, val = o->read32(addr);
+                    if (val == 0) continue;  // could be cleared memory
+                    bool taken = false;
+                    for (auto& pr : probes) taken |= pr.first == addr;
+                    if (taken) continue;
+                    size_t n = 0;
+                    for (const Module* p : left) n += differs(p, addr, val);
+                    if (n > best) {
+                        best = n;
+                        best_addr = addr;
+                        best_val = val;
                     }
                 }
+                if (!best) break;
+                probes.emplace_back(best_addr, best_val);
+                std::erase_if(left, [&](const Module* p) { return differs(p, best_addr, best_val); });
+            }
+            // (Empty overlays, all zeros, have no code to call and need no probes.)
+            const bool empty = std::all_of(o->data.begin(), o->data.end(), [](uint8_t b) { return b == 0; });
+            for (const Module* p : empty ? std::vector<const Module*>{} : others) {
+                bool told = false;
+                for (auto& pr : probes) told |= differs(p, pr.first, pr.second);
+                if (!told)
+                    std::fprintf(stderr, "warning: overlay %s cannot be told apart from %s by its probe words\n",
+                                 o->name.c_str(), p->name.c_str());
             }
             std::sort(probes.begin(), probes.end());
             probes.erase(std::unique(probes.begin(), probes.end()), probes.end());
