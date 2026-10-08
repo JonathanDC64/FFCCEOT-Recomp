@@ -1,4 +1,5 @@
-// Declarations for our patch to melonDS's GPU3D.cpp (applied at configure time, see third_party/CMakeLists.txt).
+// Declarations for our patches to melonDS's GPU3D.cpp and NDSCart.cpp (applied at configure time, see
+// third_party/CMakeLists.txt).
 #pragma once
 
 #include "types.h"
@@ -11,4 +12,6 @@ extern void (*FfccGxVBlankHook)(void* context, bool flushed);
 extern void* FfccGxCommandHookContext;  // passed to both hooks
 // While set, the geometry engine raises no GX FIFO interrupts or DMA requests (commands fed to it by the runtime).
 extern bool FfccGxReplaying;
+// NDSCart.cpp: cartridge transfers without gaps, at 4 cycles a word.
+extern bool FfccFastCart;
 }  // namespace melonDS

@@ -75,6 +75,8 @@ struct State {
     int frame_rate = 1;  // 3D: 0 = the game's 30 fps, 1 = 60 fps, 2 = the display's refresh rate
     int volume = 100;
     bool skip_logos = true;
+    bool fast_loading = true;
+    int cpu_speed = 2;  // 0 = the DS's clock, 1 = twice, 2 = four times
     bool stick_moves = true;
     int deadzone = 35;
     bool operator==(const State&) const = default;
@@ -210,6 +212,8 @@ struct Menu::Impl {
         state.frame_rate = !s.interpolate ? 0 : s.display_rate ? 2 : 1;
         state.volume = s.volume;
         state.skip_logos = s.skip_logos;
+        state.fast_loading = s.fast_loading;
+        state.cpu_speed = s.cpu_speed >= 4 ? 2 : s.cpu_speed >= 2 ? 1 : 0;
         state.stick_moves = s.controls.stick_moves;
         state.deadzone = s.controls.deadzone;
         applied = state;
@@ -235,6 +239,8 @@ struct Menu::Impl {
         s.display_rate = state.frame_rate == 2;
         s.volume = std::clamp(state.volume, 0, 100);
         s.skip_logos = state.skip_logos;
+        s.fast_loading = state.fast_loading;
+        s.cpu_speed = 1 << std::clamp(state.cpu_speed, 0, 2);
         s.controls.stick_moves = state.stick_moves;
         s.controls.deadzone = std::clamp(state.deadzone, 5, 90);
         applied = state;
@@ -377,6 +383,8 @@ bool Menu::init(SDL_Window* window, Settings* settings, bool compute_available) 
     c.Bind("frame_rate", &s.frame_rate);
     c.Bind("volume", &s.volume);
     c.Bind("skip_logos", &s.skip_logos);
+    c.Bind("fast_loading", &s.fast_loading);
+    c.Bind("cpu_speed", &s.cpu_speed);
     c.Bind("stick_moves", &s.stick_moves);
     c.Bind("deadzone", &s.deadzone);
     if (auto row = c.RegisterStruct<BindRow>()) {

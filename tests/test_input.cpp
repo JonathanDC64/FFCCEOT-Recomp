@@ -22,15 +22,18 @@ struct Sample {
     bool held, pressed;
 };
 
-// Presses the game sees: button up in one read and down in the next, reading on frames with f % 2 == phase.
-int presses_seen(const std::vector<Sample>& host, int phase, std::vector<bool>* shown = nullptr) {
+// Presses the game sees: button up in one read and down in the next, reading on frames with f % 2 == phase, except
+// for frames in [stall_from, stall_to) (the game busy loading).
+int presses_seen(const std::vector<Sample>& host, int phase, std::vector<bool>* shown = nullptr, size_t stall_from = 0,
+                 size_t stall_to = 0) {
     ntr::InputLatch latch;
-    bool last_read = false;
+    bool last_read = false, read = false;
     int presses = 0;
     for (size_t f = 0; f < host.size(); f++) {
-        const bool down = latch.step(host[f].held ? kA : 0, host[f].pressed ? kA : 0) & kA;
+        const bool down = latch.step(host[f].held ? kA : 0, host[f].pressed ? kA : 0, read) & kA;
         if (shown) shown->push_back(down);
-        if (int(f % 2) == phase) {
+        read = int(f % 2) == phase && (f < stall_from || f >= stall_to);
+        if (read) {
             if (down && !last_read) presses++;
             last_read = down;
         }
@@ -74,6 +77,19 @@ void test_mashing_is_seen() {
         }
 }
 
+void test_stall_keeps_presses() {
+    // The game skips its reads for 9 frames (loading after an attack lands): taps and presses made meanwhile, and
+    // the releases between them, wait for its next reads.
+    for (int phase = 0; phase < 2; phase++)
+        for (int down = 1; down <= 3; down++)
+            for (int up = 1; up <= 3; up++) {
+                const std::vector<Sample> s = mash(2, down, up);
+                const int seen = presses_seen(s, phase, nullptr, 3, 12);
+                if (seen != 2) std::fprintf(stderr, "  stall: down %d up %d phase %d: %d of 2\n", down, up, phase, seen);
+                CHECK(seen == 2);
+            }
+}
+
 void test_hold_is_one_press() {
     std::vector<Sample> s(4, Sample{false, false});
     s.push_back({true, true});
@@ -109,6 +125,7 @@ void test_fast_mashing_lag_is_bounded() {
 int main() {
     test_tap_is_seen();
     test_mashing_is_seen();
+    test_stall_keeps_presses();
     test_hold_is_one_press();
     test_no_added_delay();
     test_fast_mashing_lag_is_bounded();

@@ -16,6 +16,7 @@
 #include "GPU_Soft.h"
 #include "NDSCart.h"
 #include "SPU.h"
+#include "gx_hook.hpp"
 #include "ntr/rom.hpp"
 #include "runtime_internal.hpp"
 
@@ -65,6 +66,7 @@ RuntimeImpl::RuntimeImpl(std::vector<uint8_t> rom, const GameCode& code, Host& h
         }
     }
 
+    set_fast_cart(options.fast_cart);
     melonDS::NDSArgs args;
     args.JIT = std::nullopt;
     args.OutputSampleRate = 48000.0;
@@ -80,6 +82,7 @@ RuntimeImpl::RuntimeImpl(std::vector<uint8_t> rom, const GameCode& code, Host& h
     if (!cart) fatal("melonDS could not parse the ROM");
     nds->SetNDSCart(std::move(cart));
     nds->Reset();
+    apply_cpu_speed(options.cpu_speed);
     nds->SetupDirectBoot("game.nds");
     nds->Start();
     apply_video(options.video);
@@ -120,12 +123,12 @@ RuntimeImpl::RuntimeImpl(std::vector<uint8_t> rom, const GameCode& code, Host& h
 RuntimeImpl::~RuntimeImpl() {
     if (!options.profile_path.empty()) {
         if (FILE* f = std::fopen(options.profile_path.c_str(), "w")) {
-            std::fprintf(f, "# address first_frame last_frame calls (%llu frames)\n", (unsigned long long)frames_);
+            std::fprintf(f, "# address first_frame last_frame calls cycles (%llu frames)\n", (unsigned long long)frames_);
             std::vector<std::pair<u32, FuncProfile>> v(profile_.begin(), profile_.end());
             std::sort(v.begin(), v.end(), [](auto& a, auto& b) { return a.first < b.first; });
             for (auto& [a, p] : v)
-                std::fprintf(f, "%08x %llu %llu %llu\n", a, (unsigned long long)p.first, (unsigned long long)p.last,
-                             (unsigned long long)p.count);
+                std::fprintf(f, "%08x %llu %llu %llu %llu\n", a, (unsigned long long)p.first, (unsigned long long)p.last,
+                             (unsigned long long)p.count, (unsigned long long)p.cycles);
             std::fclose(f);
         }
     }
@@ -174,14 +177,17 @@ void RuntimeImpl::map_pages() {
 // Memory slow paths (I/O, VRAM, WRAM, BIOS, ...)
 
 u32 RuntimeImpl::bus_read32(u32 a) {
+    if ((a & ~3u) == 0x04000130u) keys_read_ = true;
     nds->ARM9Timestamp = u64(cpu.cycles);
     return nds->ARM9Read32(a);
 }
 u32 RuntimeImpl::bus_read16(u32 a) {
+    if ((a & ~3u) == 0x04000130u) keys_read_ = true;
     nds->ARM9Timestamp = u64(cpu.cycles);
     return nds->ARM9Read16(a);
 }
 u32 RuntimeImpl::bus_read8(u32 a) {
+    if ((a & ~3u) == 0x04000130u) keys_read_ = true;
     nds->ARM9Timestamp = u64(cpu.cycles);
     return nds->ARM9Read8(a);
 }
@@ -316,7 +322,11 @@ void RuntimeImpl::end_frame() {
     }
     // The input the host set during on_frame, which ends when the next frame is due: the freshest sample for the
     // frame about to run.
-    const uint32_t keys = latch_.step(buttons_ & 0xFFF, presses_ & 0xFFF);
+    // (Half a second without the game reading the keys counts as a read, so that no button can stay stuck.)
+    const bool read = keys_read_ || ++frames_unread_ >= 30;
+    if (read) frames_unread_ = 0;
+    keys_read_ = false;
+    const uint32_t keys = latch_.step(buttons_ & 0xFFF, presses_ & 0xFFF, read);
     presses_ = 0;
     n.SetKeyMask(~keys & 0xFFF);
     if (touch_x_ >= 0)
@@ -327,6 +337,10 @@ void RuntimeImpl::end_frame() {
         video_dirty_ = false;
         apply_video(pending_video_);
     }
+    if (pending_cpu_speed_) {
+        apply_cpu_speed(pending_cpu_speed_);
+        pending_cpu_speed_ = 0;
+    }
     perf_mark_ = std::chrono::steady_clock::now();  // the frontend's frame pacing is not emulation time
 }
 
@@ -336,6 +350,15 @@ void RuntimeImpl::probe_frame() {
     const bool new3d = !n.GPU.GPU3D.RenderFrameIdentical;
     const bool top = n.GPU.ScreenSwap;  // POWCNT1 bit 15: engine A (the 3D one) on the top screen
     probe_pattern_ += new3d ? (probe_capture_ ? 'C' : '#') : (probe_capture_ ? 'c' : '.');
+    // How busy the ARM9 was this frame (0-9, tenths of the frame not spent halted): a frame without a new scene and
+    // a low digit is the game waiting on purpose, a high one is the game running out of time.
+    const u64 now_cycles = u64(cpu.cycles);
+    if (probe_cycles_mark_ && now_cycles > probe_cycles_mark_) {
+        const double busy = 1.0 - double(halted_cycles_ - probe_halted_mark_) / double(now_cycles - probe_cycles_mark_);
+        probe_busy_ += char('0' + std::clamp(int(busy * 10), 0, 9));
+    }
+    probe_cycles_mark_ = now_cycles;
+    probe_halted_mark_ = halted_cycles_;
     probe_new3d_ += new3d;
     probe_capture_frames_ += probe_capture_;
     probe_top_ += top;
@@ -346,21 +369,30 @@ void RuntimeImpl::probe_frame() {
     log("fps-probe: frame %llu: new 3D %d/60, capture %d/60, 3D on top %d/60, screen swaps %d  %s\n",
         (unsigned long long)frames_, probe_new3d_, probe_capture_frames_, probe_top_, probe_swaps_,
         probe_pattern_.c_str());
+    log("fps-probe: frame %llu: ARM9 busy (tenths) %s\n", (unsigned long long)frames_, probe_busy_.c_str());
     probe_pattern_.clear();
+    probe_busy_.clear();
     probe_new3d_ = probe_capture_frames_ = probe_top_ = probe_swaps_ = 0;
 }
 
 void RuntimeImpl::report_perf() {
     const auto now = std::chrono::steady_clock::now();
-    if (perf_mark_ != std::chrono::steady_clock::time_point{})
-        perf_host_s_ += std::chrono::duration<double>(now - perf_mark_).count();
+    if (perf_mark_ != std::chrono::steady_clock::time_point{}) {
+        const double s = std::chrono::duration<double>(now - perf_mark_).count();
+        perf_host_s_ += s;
+        perf_max_s_ = std::max(perf_max_s_, s);
+        // A frame that took most of a DS frame to emulate shows as a hitch: name it.
+        if (s > 0.010) log("perf: frame %llu: slow, %.2f ms emulating\n", (unsigned long long)frames_, s * 1000.0);
+    }
     constexpr u64 kFrames = 60;
     if (frames_ % kFrames) return;
     const double ms = perf_host_s_ * 1000.0 / kFrames;
-    log("perf: frame %llu: %.2f ms/frame emulating (%.0f%% of a DS frame), interpreter %llu calls, %llu instructions/frame\n",
-        (unsigned long long)frames_, ms, ms / (1000.0 / 59.8261) * 100.0,
+    log("perf: frame %llu: %.2f ms/frame emulating (%.0f%% of a DS frame, slowest %.2f ms), interpreter %llu calls, "
+        "%llu instructions/frame\n",
+        (unsigned long long)frames_, ms, ms / (1000.0 / 59.8261) * 100.0, perf_max_s_ * 1000.0,
         (unsigned long long)(interp_calls_ - perf_calls_mark_), (unsigned long long)((interp_steps_ - perf_steps_mark_) / kFrames));
     perf_host_s_ = 0;
+    perf_max_s_ = 0;
     perf_calls_mark_ = interp_calls_;
     perf_steps_mark_ = interp_steps_;
 }
@@ -374,7 +406,9 @@ void RuntimeImpl::halt() {
     // CP15 wait-for-interrupt: sleep until an enabled IRQ is raised (IME is not required to wake up).
     melonDS::NDS& n = *nds;
     while (!(n.IE[0] & n.IF[0])) {
+        const int64_t before = cpu.cycles;
         cpu.cycles = std::max<int64_t>(cpu.cycles, int64_t(n.ARM9Target));
+        halted_cycles_ += u64(cpu.cycles - before);
         advance();
     }
     cpu.next_event = 0;
@@ -740,6 +774,25 @@ void RuntimeImpl::set_buttons(uint32_t held, uint32_t pressed) {
 void RuntimeImpl::set_video(const VideoSettings& settings) {
     pending_video_ = settings;
     video_dirty_ = true;
+}
+
+void RuntimeImpl::set_fast_cart(bool on) {
+    melonDS::FfccFastCart = on;  // (read when a transfer starts)
+}
+
+// The ARM9 clock as melonDS's shift from the system clock (33 MHz): 1 is the DS's 67 MHz. Timestamps are converted as
+// melonDS does when the DSi changes its clock.
+void RuntimeImpl::apply_cpu_speed(int multiplier) {
+    melonDS::NDS& n = *nds;
+    const u32 shift = multiplier >= 4 ? 3 : multiplier >= 2 ? 2 : 1;
+    if (shift == n.ARM9ClockShift) return;
+    n.ARM9Timestamp = (n.ARM9Timestamp >> n.ARM9ClockShift) << shift;
+    n.ARM9Target = (n.ARM9Target >> n.ARM9ClockShift) << shift;
+    n.ARM9ClockShift = shift;
+    n.ARM9.UpdateRegionTimings(0x00000, 0x100000);  // (the interpreter's memory timings, in ARM9 cycles)
+    log("cpu: ARM9 at %d times the DS's clock\n", 1 << (shift - 1));
+    cpu.cycles = int64_t(n.ARM9Timestamp);
+    cpu.next_event = int64_t(n.ARM9Target);
 }
 
 // Switches melonDS's renderer (between frames). Falls back to OpenGL when the context lacks compute shaders, and to

@@ -80,13 +80,22 @@ public:
 
         std::vector<const Instr*> list;
         for (auto& [a, in] : fn_.instrs) list.push_back(&in);
+        // An instruction after which execution may continue elsewhere.
+        auto leaves = [](const Instr& x) {
+            return x.flow == Flow::Jump || x.flow == Flow::IndirectJump || x.flow == Flow::JumpTable;
+        };
         for (size_t i = 0; i < list.size(); i++) {
             const Instr& in = *list[i];
-            if (fn_.labels.count(in.addr) || i == 0) {
-                if (fn_.labels.count(in.addr)) line(fmt("L_%08x:;", in.addr), 0);
-                // Approximate cycle cost: one per instruction up to the next label.
+            if (fn_.labels.count(in.addr)) line(fmt("L_%08x:;", in.addr), 0);
+            if (fn_.labels.count(in.addr) || i == 0 || leaves(*list[i - 1])) {
+                // Approximate cycle cost: one per instruction run, charged for each straight run of instructions up to
+                // the next label or the first branch out. (Charging up to the next label only made a polling loop
+                // that leaves a long block early pay for the whole block: several times its cost.)
                 size_t n = 0;
-                for (size_t j = i; j < list.size() && (j == i || !fn_.labels.count(list[j]->addr)); j++) n++;
+                for (size_t j = i; j < list.size() && (j == i || !fn_.labels.count(list[j]->addr)); j++) {
+                    n++;
+                    if (leaves(*list[j])) break;
+                }
                 line(fmt("c->cycles += %zu;", n));
             }
             if (fn_.labels.count(in.addr)) known_.clear();

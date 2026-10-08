@@ -23,6 +23,8 @@ struct Settings {
     int volume = 100;  // percent
     // Game
     bool skip_logos = true;
+    bool fast_loading = true;  // cartridge reads without the card's delays
+    int cpu_speed = 4;         // ARM9 clock: 1, 2 or 4 times the DS's
     // Controls
     input::Bindings controls = input::Bindings::defaults();
 };

@@ -130,6 +130,19 @@
                 <input type="checkbox" data-checked="skip_logos"/>
             </div>
             <p class="note">Takes effect the next time the game starts.</p>
+            <div class="row nav">
+                <span class="label">Fast loading</span>
+                <input type="checkbox" data-checked="fast_loading"/>
+            </div>
+            <div class="row nav">
+                <span class="label">CPU speed</span>
+                <select data-value="cpu_speed">
+                    <option value="0">DS (67 MHz)</option>
+                    <option value="1">2x</option>
+                    <option value="2">4x</option>
+                </select>
+            </div>
+            <p class="note">When an attack lands, the game loads and sets up data for longer than a frame, and the picture hitches (on the DS too). Fast loading and a faster CPU remove the hitch. The short freeze on a combo's last hit is the game's own.</p>
         </div>
 
         <div class="page" data-if="tab == 'controls'">

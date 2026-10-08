@@ -203,17 +203,7 @@ public:
         }
         if (menu_at_frame && frames_ == menu_at_frame) {
             open_menu();
-            // Debugging: key presses for the menu, comma-separated SDL key names (e.g. "Down,Down,Return").
-            for (size_t p = 0; p < menu_keys.size();) {
-                const size_t comma = std::min(menu_keys.find(',', p), menu_keys.size());
-                SDL_Event e{};
-                e.type = SDL_EVENT_KEY_DOWN;
-                e.key.key = SDL_GetKeyFromName(menu_keys.substr(p, comma - p).c_str());
-                e.key.scancode = SDL_GetScancodeFromKey(e.key.key, nullptr);
-                e.key.down = true;
-                SDL_PushEvent(&e);
-                p = comma + 1;
-            }
+            menu_key_pos_ = 0;
         }
         if (menu_.is_open()) return run_menu(frame);
         const auto shot = screenshots.find(frames_);
@@ -305,6 +295,18 @@ private:
     bool run_menu(const ntr::Frame& frame) {
         int menu_frames = 0;
         while (menu_.is_open()) {
+            // Debugging: key presses for the menu (--menu-keys, comma-separated SDL key names such as
+            // "Down,Down,Return"), one per menu frame so that each takes effect before the next.
+            if (menu_key_pos_ < menu_keys.size()) {
+                const size_t comma = std::min(menu_keys.find(',', menu_key_pos_), menu_keys.size());
+                SDL_Event k{};
+                k.type = SDL_EVENT_KEY_DOWN;
+                k.key.key = SDL_GetKeyFromName(menu_keys.substr(menu_key_pos_, comma - menu_key_pos_).c_str());
+                k.key.scancode = SDL_GetScancodeFromKey(k.key.key, nullptr);
+                k.key.down = true;
+                SDL_PushEvent(&k);
+                menu_key_pos_ = comma + 1;
+            }
             SDL_Event e;
             while (SDL_PollEvent(&e)) {
                 if (!handle_common_event(e)) return false;
@@ -330,6 +332,8 @@ private:
         }
         // Resumed: renderer changes take effect now, and the game picks up where it was.
         sync_video();
+        runtime_->set_fast_cart(settings.fast_loading);
+        runtime_->set_cpu_speed(settings.cpu_speed);
         if (settings_dirty_) {
             if (!settings_path.empty()) save_settings(settings_path, settings);
             settings_dirty_ = false;
@@ -574,13 +578,18 @@ private:
     void present_display_rate(const ntr::Frame& frame, const char* shot_path) {
         const double period = 1.0 / display_hz();
         presenter_.set_vsync(!unpaced);
-        if (!unpaced && seconds() > emu_time_ + 0.1) emu_time_ = seconds();  // started, paused or fell behind
+        if (!unpaced && seconds() > emu_time_ + 0.1) {  // started, paused or fell behind
+            if (perf && emu_time_ > 0)
+                std::fprintf(stderr, "perf: frame %llu: %.1f ms behind, resynced\n", (unsigned long long)frames_,
+                             (seconds() - emu_time_) * 1000.0);
+            emu_time_ = seconds();
+        }
         const double frame_end = emu_time_ + kFrameSeconds;
         for (int k = 0;; k++) {
             if (!unpaced && !refresh_waited_) {
                 presenter_.wait_for_refresh();  // (a plain GL swap waits for the refresh itself)
                 refresh_waited_ = true;
-                last_refresh_ = seconds();
+                note_refresh(seconds(), period);
             }
             const double shown = (unpaced ? virtual_clock_ : last_refresh_) + period;  // when a frame drawn now shows
             if (shown >= frame_end) break;  // that refresh belongs to the next emulated frame
@@ -601,15 +610,27 @@ private:
             else if (presenter_.flip_model())
                 refresh_waited_ = false;
             else
-                last_refresh_ = seconds();  // the swap returned at the refresh
+                note_refresh(seconds(), period);  // the swap returned at the refresh
         }
         emu_time_ = frame_end;
+    }
+
+    // A display refresh at `t`. With --perf, a refresh that came more than a refresh late (a frame shown twice, or
+    // a hitch) is logged.
+    void note_refresh(double t, double period) {
+        if (perf && last_refresh_ > 0 && t - last_refresh_ > 1.5 * period)
+            std::fprintf(stderr, "perf: frame %llu: %.1f ms between refreshes (%.1f ms expected)\n",
+                         (unsigned long long)frames_, (t - last_refresh_) * 1000.0, period * 1000.0);
+        last_refresh_ = t;
     }
 
     void pace() {
         using clock = std::chrono::steady_clock;
         next_frame_ += std::chrono::duration_cast<clock::duration>(std::chrono::duration<double>(kFrameSeconds));
         auto now = clock::now();
+        if (perf && now > next_frame_ + std::chrono::duration<double>(kFrameSeconds / 2))
+            std::fprintf(stderr, "perf: frame %llu: %.1f ms late\n", (unsigned long long)frames_,
+                         std::chrono::duration<double>(now - next_frame_).count() * 1000.0);
         if (next_frame_ < now - std::chrono::milliseconds(100)) next_frame_ = now;  // fell behind: resync
         while (clock::now() < next_frame_) {
             auto left = next_frame_ - clock::now();
@@ -665,6 +686,7 @@ private:
                                            ntr::KeyRight};
     static_assert(std::size(kDsBits) == input::kFirstAppAction);
     uint64_t script_quit_ = 0;                 // the frame a script's quit step ends the run (0 = none)
+    size_t menu_key_pos_ = std::string::npos;  // --menu-keys: the next key to press
     uint64_t menu_shot_from_ = 0;              // screenshots before this frame were taken in the menu
     static constexpr uint64_t kMaxLogoSkipFrames = 900;  // the logos end around frame 564
 
@@ -680,6 +702,7 @@ public:
     std::string menu_keys;           // debugging: and press these keys in it
     bool allow_flip_model = true;    // Windows: present through DXGI when possible
     double virtual_display_hz = 144; // testing: with --unpaced, the refresh rate display-rate 3D assumes
+    bool perf = false;               // --perf: log hitches in frame pacing
     ui::Menu& menu() { return menu_; }
 };
 
@@ -745,6 +768,9 @@ int main(int argc, char** argv) {
                      "  --screenshot-at-frame <n> <file.png> --menu-at-frame <n> --menu-tab <name>\n"
                      "  --menu-keys <key,key,...>\n"
                      "  --no-flip-model                      Windows: present with a plain OpenGL swap\n"
+                     "game:\n"
+                     "  --no-fast-loading                    cartridge reads at the card's speed\n"
+                     "  --cpu-speed 1|2|4                    the ARM9 at this many times the DS's clock (default 4)\n"
                      "testing:\n"
                      "  --input-script <file>                scripted input, screenshots and exit (see main.cpp)\n"
                      "  --save-file <file>                   use this save file instead of the usual one\n"
@@ -805,6 +831,12 @@ int main(int argc, char** argv) {
             options.gx_dump_at_frame = std::strtoull(argv[++i], nullptr, 10);
         else if (a == "--trace-files")
             options.trace_files = true;
+        else if (a == "--no-fast-loading")
+            settings.fast_loading = false;
+        else if (a == "--cpu-speed" && has_value) {
+            const int n = std::atoi(argv[++i]);
+            settings.cpu_speed = n >= 4 ? 4 : n >= 2 ? 2 : 1;
+        }
         else if (a == "--profile-functions" && has_value)
             options.profile_path = argv[++i];
         else if (a == "--dump-at-frame" && has_value)
@@ -885,6 +917,7 @@ int main(int argc, char** argv) {
     host.read_only_save = read_only_save;
     host.unpaced = unpaced;
     host.virtual_display_hz = virtual_display_hz;
+    host.perf = options.perf;
     host.menu_at_frame = menu_at_frame;
     host.menu_keys = menu_keys;
     host.allow_flip_model = allow_flip_model;
@@ -894,6 +927,8 @@ int main(int argc, char** argv) {
     if (!menu_tab.empty()) host.menu().set_tab(menu_tab.c_str());
     if (fullscreen) host.set_fullscreen(true);
     options.video = host.wanted_video();  // the GL context is current: melonDS's GL renderers can start
+    options.fast_cart = host.settings.fast_loading;
+    options.cpu_speed = host.settings.cpu_speed;
 
     ntr::GameCode code{ntr_recomp_functions, ntr_recomp_function_count, ntr_recomp_overlays, ntr_recomp_overlay_count};
     auto runtime = ntr::Runtime::create(std::move(rom), code, host, std::move(options));

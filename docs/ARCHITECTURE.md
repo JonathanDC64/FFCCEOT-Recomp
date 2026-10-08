@@ -122,7 +122,7 @@ emulated hardware state as the source of truth.
 
 | Area | Design |
 |---|---|
-| Time | `NtrCpu::cycles` *is* melonDS's `ARM9Timestamp`. Generated code adds approximate cycle costs per block and calls `ntr_poll` at function entry and on backward branches once `cycles >= next_event`. `poll` replicates the inner loop of melonDS `RunFrame`: DMA9/GX stalls, timers, GPU3D, ARM7 catch-up, `RunSystem`, frame end. |
+| Time | `NtrCpu::cycles` *is* melonDS's `ARM9Timestamp`. Generated code adds one cycle per instruction for each straight run (up to the next label or the first branch out; charging whole blocks made a polling loop that leaves a long block early pay several times its cost) and calls `ntr_poll` at function entry and on backward branches once `cycles >= next_event`. `poll` replicates the inner loop of melonDS `RunFrame`: DMA9/GX stalls, timers, GPU3D, ARM7 catch-up, `RunSystem`, frame end. |
 | Memory | Page tables (4 KiB) point straight into melonDS's main RAM, ITCM and DTCM, which gives the inline fast path. Everything else goes through melonDS's ARM9 bus (`ARM9Read*/Write*`). IO writes that can start DMA or GX stalls, or change IME/IE/IF, force a poll. CP15 writes go to melonDS's CP15 model, and TCM remaps rebuild the page table. |
 | IRQs | HLE BIOS IRQ entry: switch to IRQ mode, push the BIOS frame, call the handler at `[DTCM+0x3FFC]` with LR = `0xFFFF0290`, then pop the frame and resume. NitroSDK's `OS_IrqHandler` is replaced by a C++ port that calls the game's own handlers and thread switch. |
 | Threads | **NitroSDK threads run on host fibers.** `OS_SaveContext` stores a *fiber token* (`0xEE000000 + 4·fiber`) as the saved PC. `OS_LoadContext` (and the IRQ return path) resumes the fiber that owns the token, or starts a new fiber when the PC is real code (a fresh thread). Each guest thread keeps its own recompiled host call stack. |
@@ -131,12 +131,16 @@ emulated hardware state as the source of truth.
 | Interpreter fallback | A call or computed jump to an address that has no recompiled function runs on melonDS's ARMv5 interpreter, one instruction at a time, until it returns to the caller's LR with the stack unwound. Registers sync both ways around every poll, and IRQs are delivered only through the HLE path. |
 | Code regions | `regions.txt` declares code that an overlay carries and copies elsewhere at run time. In CFIE, overlay 24 copies a hand-written ITCM block to `0x01FF9000`: the movie/image block decoder, which uses continuation-style returns. Regions marked `interpret` are not recompiled. While resident they run on the interpreter fallback. |
 | Copy protection | The three DS Protect checks are replaced by functions that report "genuine". |
+| Speed-ups | When an attack lands, the game reads data from the cartridge with the CPU waiting on every word (at the card's speed, about 26 KB a frame) and then sets it up: one or two frames of ARM9 time on top of the tick's work. Ticks then run late and the picture hitches, 3-5 frames at a time (on the DS as well). Two settings (Game page, both on by default) remove this: **fast loading** (a configure-time patch to melonDS's `NDSCart.cpp` drops the card's gaps and takes 4 cycles a word) and **CPU speed** (the ARM9 at 1, 2 or 4 times its clock through melonDS's `ARM9ClockShift`, as the DSi changes it; the game is paced by VBlank, so a faster CPU only idles longer). Measured over a combat run: 11-20 late ticks at the DS's speed, none at 4x (5 remain at 2x). The short freeze on a combo's last hit is the game's own hit-stop (idle, not loading) and stays. |
 | Frontend | `game/src/main.cpp` (SDL3): stacked screens, keyboard/gamepad/mouse-touch, 48 kHz audio stream, save file in the SDL pref path, frame pacing at 59.83 Hz. |
 
 **Debugging.** `ffcc.exe <rom> --trace-calls --trace-threads` logs indirect calls, interpreter entries and thread
 switches. `--trace-files` logs which ROM file (or overlay) each cartridge read hits, by frame. `--perf` reports emulation
-cost per frame. `--exit-after-frames N` quits cleanly for scripted runs, and `--dump-at-frame N` prints the CPU state.
-In `FFCC_TRACE_ENTRY` builds, `--profile-functions <file>` writes each function's first and last frame and call count.
+cost per frame and logs hitches: frames that took over 10 ms to emulate, late frames, and missed display refreshes.
+`--fps-probe` shows, per frame, whether a new 3D scene came and how busy the ARM9 was (tenths of the frame not halted):
+a run of frames without a new scene and with a busy ARM9 is the game running late. `--exit-after-frames N` quits cleanly for scripted runs, and `--dump-at-frame N` prints the CPU state.
+In `FFCC_TRACE_ENTRY` builds, `--profile-functions <file>` writes each function's first and last frame, call count
+and cycles (counted to the last function entered, so a caller's work after a call goes to its callee).
 Diffing two frame ranges of that profile is how the logo and title scenes were found. Configure with `-DFFCC_TRACE_ENTRY=ON` to record every function entry (thread, address, LR, SP). The last 64
 entries are printed with the register and stack dump on a fatal error.
 
@@ -267,9 +271,11 @@ parameters that changed since the previous scene.
   the runtime hands them to the DS right after it, for the frame that runs next. (Sampling before presenting, as at
   first, made every sample about two frames, ~33 ms, old; measured: reactions now show 2 frames sooner.) The game sees a
   press as the button up in one read and down in the next, so every press *and* every release reaches the DS for at
-  least two emulated frames, one tick (`runtime/src/input_latch.hpp`): a quick tap is not lost between two reads, and
-  when buttons are mashed a short release does not merge two presses into one (holding presses alone still lost 6 of
-  the 32 mashing rhythms the game can follow, all with one-frame releases). Presses are also counted from input events,
+  least two emulated frames, one tick, and until the game has read it (`runtime/src/input_latch.hpp`; the runtime notes
+  ARM9 reads of KEYINPUT, which the game makes once per tick from one place): a quick tap is not lost between two
+  reads, when buttons are mashed a short release does not merge two presses into one (holding presses alone still lost
+  6 of the 32 mashing rhythms the game can follow, all with one-frame releases), and a tap made while the game skips
+  its reads (stalled, or in hit-stop) waits for its next one. Presses are also counted from input events,
   which see taps shorter than a frame. A press that can't be shown yet waits, one at most, so mashing faster than the
   game reads adds no lag that builds up. Ship of Harkinian does none of this: it reads a snapshot once per game tick.
 - **Today at 60 Hz:** interpolation adds one frame (16.7 ms) before the full pose, and motion starts on the same frame.

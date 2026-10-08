@@ -47,6 +47,19 @@ ffcc_patch(gpu3d_src GPU3D.cpp "            FlushRequest = 0;\n        }\n    }\
   "            FlushRequest = 0;\n        }\n    }\n    if (FfccGxVBlankHook && !FfccGxReplaying) FfccGxVBlankHook(FfccGxCommandHookContext, ffcc_flushed); // ffcc patch\n}\n")
 ffcc_write_patched(gpu3d_src ${CMAKE_CURRENT_BINARY_DIR}/melonds_patched/GPU3D.cpp)
 
+# NDSCart.cpp: fast cartridge transfers. The game reads the card with the CPU waiting on every word, at the card's
+# speed (about 26 KB a frame with its gap settings), so loading an effect in combat stalls the game for frames. With
+# FfccFastCart set, a transfer has no gaps and a word takes 4 cycles. Declared in runtime/src/gx_hook.hpp.
+file(READ ${MS}/NDSCart.cpp ndscart_src)
+string(REPLACE "\r\n" "\n" ndscart_src "${ndscart_src}")
+ffcc_patch(ndscart_src NDSCart.cpp "using Platform::LogLevel;\n"
+  "using Platform::LogLevel;\n\n// ffcc patch\nbool FfccFastCart = false;\n")
+ffcc_patch(ndscart_src NDSCart.cpp "    if (datasize) cmddelay += ((ROMCnt >> 16) & 0x3F);\n"
+  "    if (datasize) cmddelay += ((ROMCnt >> 16) & 0x3F);\n    if (FfccFastCart) { xfercycle = 1; cmddelay = 8; } // ffcc patch\n")
+ffcc_patch(ndscart_src NDSCart.cpp "        delay += ((ROMCnt >> 16) & 0x3F);\n\n    Parent.NDS.ScheduleEvent(ROMTransferEvent, false, xfercycle * delay, ROMTransfer_ReceiveData, 0);\n"
+  "        delay += ((ROMCnt >> 16) & 0x3F);\n    if (FfccFastCart) { xfercycle = 1; delay = 4; } // ffcc patch\n\n    Parent.NDS.ScheduleEvent(ROMTransferEvent, false, xfercycle * delay, ROMTransfer_ReceiveData, 0);\n")
+ffcc_write_patched(ndscart_src ${CMAKE_CURRENT_BINARY_DIR}/melonds_patched/NDSCart.cpp)
+
 set(melonDS_HOMEPAGE_URL "https://melonds.kuribo64.net")
 set(melonDS_VERSION "1.1")
 set(MELONDS_VERSION_SUFFIX "-ffcc")
@@ -59,7 +72,7 @@ add_library(melonds_core STATIC
   ${MS}/DSi_DSP.cpp ${MS}/DSi_I2C.cpp ${MS}/DSi_I2S.cpp ${MS}/DSi_NAND.cpp ${MS}/DSi_NDMA.cpp ${MS}/DSi_NWifi.cpp
   ${MS}/DSi_SD.cpp ${MS}/DSi_SPI_TSC.cpp ${MS}/FATIO.cpp ${MS}/FATStorage.cpp ${MS}/GBACart.cpp
   ${MS}/GBACartMotionPak.cpp ${MS}/GPU.cpp ${MS}/GPU_Soft.cpp ${MS}/GPU2D.cpp ${MS}/GPU2D_Soft.cpp ${CMAKE_CURRENT_BINARY_DIR}/melonds_patched/GPU3D.cpp
-  ${MS}/GPU3D_Soft.cpp ${MS}/GPU3D_Texcache.cpp ${MS}/Mic.cpp ${MS}/NDS.cpp ${MS}/NDSCart.cpp ${MS}/ROMList.cpp
+  ${MS}/GPU3D_Soft.cpp ${MS}/GPU3D_Texcache.cpp ${MS}/Mic.cpp ${MS}/NDS.cpp ${CMAKE_CURRENT_BINARY_DIR}/melonds_patched/NDSCart.cpp ${MS}/ROMList.cpp
   ${MS}/FreeBIOS.cpp ${MS}/RTC.cpp ${MS}/Savestate.cpp ${MS}/SPI.cpp ${MS}/SPI_Firmware.cpp ${MS}/SPU.cpp
   ${MS}/Utils.cpp ${MS}/Wifi.cpp ${MS}/WifiAP.cpp
   ${MS}/DSP_HLE/UcodeBase.cpp ${MS}/DSP_HLE/AACUcode.cpp ${MS}/DSP_HLE/G711Ucode.cpp ${MS}/DSP_HLE/GraphicsUcode.cpp

@@ -78,6 +78,9 @@ struct RuntimeOptions {
     bool gx_check = false;     // replay each 3D scene's GX commands and check the polygon list comes out the same
     uint64_t gx_dump_at_frame = 0;  // write the first 3D scene swapped in at or after this frame to gx_scene.txt
     bool trace_files = false;  // log which ROM file each cartridge read hits (with the frame number)
+    // Speed-ups (set_fast_cart, set_cpu_speed) at start.
+    bool fast_cart = true;
+    int cpu_speed = 4;
     // Builds with FFCC_TRACE_ENTRY only: write each function's first/last frame and call count here on exit.
     std::string profile_path;
     uint64_t dump_at_frame = 0;  // print the CPU state and recent function entries at this frame (debugging)
@@ -106,6 +109,14 @@ public:
     // renderer that failed to start falls back to Software).
     virtual void set_video(const VideoSettings& settings) = 0;
     virtual VideoSettings video() const = 0;
+
+    // Speed-ups against the game's stalls. When an attack lands, the game loads and sets up data for a frame or two
+    // of ARM9 time, more than its 30 Hz tick leaves: the tick runs late and the picture hitches (on the DS as well).
+    // Cartridge reads without the card's delays (most of that load time; the game waits on every word):
+    virtual void set_fast_cart(bool on) = 0;
+    // The ARM9 at 1, 2 or 4 times the DS's 67 MHz (from the next frame). The game is paced by VBlank, so a faster
+    // CPU only waits longer in between.
+    virtual void set_cpu_speed(int multiplier) = 0;
 
     // With VideoSettings::display_rate, from Host::on_frame: a frame shown `x` (0 to 1) of an emulated frame after
     // the current one, its 3D blended between the game's last two scenes. Returns a GL texture laid out like

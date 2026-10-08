@@ -60,6 +60,8 @@ public:
     void release_touch() override;
     void set_video(const VideoSettings& settings) override;
     VideoSettings video() const override { return video_; }
+    void set_fast_cart(bool on) override;
+    void set_cpu_speed(int multiplier) override { pending_cpu_speed_ = multiplier; }
     unsigned render_between(double x) override;
 
     // ---- services for recompiled code ----
@@ -81,6 +83,11 @@ public:
         FuncProfile& p = profile_[addr];
         if (!p.count++) p.first = frames_;
         p.last = frames_;
+        // Cycles since the last function entry go to the function entered then (returns are not seen, so a caller's
+        // work after a call is counted to its callee: a rough guide to where the time goes).
+        if (profile_last_) profile_last_->cycles += u64(cpu.cycles - profile_last_cycles_);
+        profile_last_ = &p;
+        profile_last_cycles_ = cpu.cycles;
     }
     void poll();
     void halt();
@@ -152,17 +159,23 @@ private:
     VideoSettings pending_video_;    // requested by set_video()
     bool video_dirty_ = false;
     bool video_applied_ = false;
+    int pending_cpu_speed_ = 0;  // requested by set_cpu_speed() (0 = no change)
+    void apply_cpu_speed(int multiplier);
 
     uint32_t buttons_ = 0, presses_ = 0;  // held, and gone down since the last frame (from set_buttons)
     InputLatch latch_;                     // so that the game's 30 Hz reads see every press and release
+    bool keys_read_ = false;               // the game read KEYINPUT since the last frame
+    int frames_unread_ = 0;
     int touch_x_ = -1, touch_y_ = -1;
     std::vector<int16_t> audio_buf_;
     uint64_t frames_ = 0;
     uint64_t interp_calls_ = 0, interp_steps_ = 0;
     struct InterpStat { u64 calls = 0, steps = 0; };
     std::unordered_map<u32, InterpStat> interp_stats_;
-    struct FuncProfile { u64 first = 0, last = 0, count = 0; };
-    std::unordered_map<u32, FuncProfile> profile_;
+    struct FuncProfile { u64 first = 0, last = 0, count = 0, cycles = 0; };
+    std::unordered_map<u32, FuncProfile> profile_;  // (node-based: profile_last_ stays valid)
+    FuncProfile* profile_last_ = nullptr;
+    int64_t profile_last_cycles_ = 0;
     // --trace-files: ROM layout (offset, end, name) and the cartridge command being written.
     struct RomSpan { u32 begin, end; std::string name; };
     std::vector<RomSpan> rom_spans_;
@@ -175,14 +188,15 @@ private:
     // was on the top screen; summarised every 60 frames.
     void probe_frame();
     bool probe_capture_ = false;
-    std::string probe_pattern_;
+    std::string probe_pattern_, probe_busy_;
+    u64 halted_cycles_ = 0, probe_cycles_mark_ = 0, probe_halted_mark_ = 0;  // ARM9 cycles spent halted (all time)
     int probe_new3d_ = 0, probe_capture_frames_ = 0, probe_top_ = 0, probe_swaps_ = 0;
     bool probe_last_top_ = false;
 
     // GX command streams: frame interpolation, --gx-probe, --gx-check.
     std::unique_ptr<gx::Streams> gx_;
     std::unique_ptr<GlBetween> between_;  // frames between emulated frames (display_rate)
-    double perf_host_s_ = 0;
+    double perf_host_s_ = 0, perf_max_s_ = 0;
     u64 perf_steps_mark_ = 0, perf_calls_mark_ = 0;
 };
 

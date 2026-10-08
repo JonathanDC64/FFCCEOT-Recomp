@@ -92,6 +92,14 @@ const Field kFields[] = {
     Field{"audio.volume", [](const Settings& s) { return std::to_string(s.volume); },
           [](Settings& s, const std::string& v) { return parse_int(v, 0, 100, s.volume); }},
     BOOL_FIELD("game.skip_logos", skip_logos),
+    BOOL_FIELD("game.fast_loading", fast_loading),
+    Field{"game.cpu_speed", [](const Settings& s) { return std::to_string(s.cpu_speed); },
+          [](Settings& s, const std::string& v) {
+              int n;
+              if (!parse_int(v, 1, 4, n) || n == 3) return false;
+              s.cpu_speed = n;
+              return true;
+          }},
     BOOL_FIELD("controls.stick_moves", controls.stick_moves),
     Field{"controls.deadzone", [](const Settings& s) { return std::to_string(s.controls.deadzone); },
           [](Settings& s, const std::string& v) { return parse_int(v, 5, 90, s.controls.deadzone); }},

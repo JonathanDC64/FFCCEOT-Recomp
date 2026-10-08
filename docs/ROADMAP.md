@@ -66,6 +66,8 @@ Milestones are ordered by dependency. Each ends with a demonstrable result. Desi
       interpolation not planned (would need sprite matching and sub-pixel compositing for little gain)
 - [x] Display-rate interpolation beyond 60 Hz (GL/compute: re-render 3D + re-composite between emulated frames; §5.3)
 - [ ] Display rate: VRR (timer-paced presents), low-latency option
+- [x] Hitches when attacks land (the game loads and sets up data past its tick): fast loading and CPU speed settings
+      (on, 4x by default), cycle accounting per straight run of instructions; presses wait for the game's next read
 - [x] Rotation blending by decomposition + slerp (object matrices; camera stays element-wise)
 - [x] Feasibility of a variable-rate (delta time) logic tick: fixed 30 Hz step, not planned (§5.3)
 - [ ] Golden-image comparison vs reference rasteriser (local)
