@@ -169,7 +169,7 @@ The runtime switches between melonDS's three renderers at a frame boundary (`Run
 |---|---|---|
 | Software | 256×192 per screen, CPU buffers | Exact; the reference |
 | OpenGL | 256·N × 192·N, GL array texture | 2D and 3D upscaled; optional better quad splitting |
-| Compute | 256·N × 192·N, GL array texture | Compute-shader rasteriser, closer to hardware rules when upscaled; sub-pixel vertex positions |
+| Compute | 256·N × 192·N, GL array texture | Compute-shader rasteriser, closer to hardware rules when upscaled; sub-pixel vertex positions. **Switched off for now** (`kComputeRenderer` in `game/src/settings.hpp`; a stored or requested "compute" becomes OpenGL): widescreen, interpolation, Stable textures and texture smoothing are built on the OpenGL renderer |
 
 N is 1–16, by default the smallest that covers the screen's size on the window. The presenter draws the two layers of
 the array texture into the window with a nearest, linear or sharp-bilinear filter (`game/src/video.cpp`); software

@@ -73,6 +73,8 @@ void test_defaults_survive() {
 
 void test_set_setting() {
     Settings s;
+    CHECK(set_setting(s, "graphics.renderer", "compute"));  // (the compute renderer is switched off: OpenGL instead)
+    CHECK(s.renderer == (kComputeRenderer ? ntr::Renderer::Compute : ntr::Renderer::OpenGL));
     CHECK(set_setting(s, "interface.ui_scale", "150"));
     CHECK(s.ui_scale == 150);
     CHECK(!set_setting(s, "interface.ui_scale", "20"));  // (0 or 50-200)

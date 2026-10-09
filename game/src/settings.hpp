@@ -8,6 +8,11 @@
 #include "ntr/runtime.hpp"
 #include "video.hpp"
 
+// melonDS's compute-shader renderer is switched off for now: widescreen, interpolation, Stable textures and texture
+// smoothing are built on the OpenGL renderer, and none of them is done for compute. The code stays; set this to true to
+// bring it back (a stored or requested "compute" becomes OpenGL while it is false).
+inline constexpr bool kComputeRenderer = false;
+
 // The top screen's aspect ratio (OpenGL renderer). The DS's 256 x 192 picture grows by "extra" 3D pixels on each side.
 enum class Aspect { Original, W16x9, W16x10, W21x9, W32x9 };
 inline int aspect_extra(Aspect a) {

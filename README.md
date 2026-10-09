@@ -73,11 +73,11 @@ screen at the left edge, the other filling the rest of the width) between bottom
 `--layout single|main-side|stacked|side|windows`, `--side-align top|middle|bottom`, `--swap-screens`, `--no-second-screen`.
 
 Video: the screens are rendered with OpenGL at a multiple of the DS resolution that matches the window (up to 16×,
-4K and beyond). While playing: F5 cycles the renderer (software, OpenGL, compute), F6/F7 lower/raise the internal
+4K and beyond). While playing: F5 switches the renderer (software, OpenGL), F6/F7 lower/raise the internal
 resolution (past 1× or 16× returns to auto), F8 cycles the filter (nearest, linear, sharp), F9 cycles the 3D frame rate (the game draws its 3D at 30 fps; frame interpolation
-shows blended images in between, at 60 fps or at the display's refresh rate, e.g. 144 Hz, with the OpenGL and compute renderers; `--display-rate` starts in that mode; Graphics → Frame pacing can present on a timer for G-Sync and FreeSync displays, `--pacing variable` with `--rate-cap <fps>`, `--no-interpolate` turns interpolation off), F11 toggles borderless fullscreen (`--fullscreen` starts in it; on Windows frames go through a DXGI flip-model swapchain, so alt-tab is seamless, and `--no-flip-model` falls back to a plain GL swap).
+shows blended images in between, at 60 fps or at the display's refresh rate, e.g. 144 Hz, with the OpenGL renderer; `--display-rate` starts in that mode; Graphics → Frame pacing can present on a timer for G-Sync and FreeSync displays, `--pacing variable` with `--rate-cap <fps>`, `--no-interpolate` turns interpolation off), F11 toggles borderless fullscreen (`--fullscreen` starts in it; on Windows frames go through a DXGI flip-model swapchain, so alt-tab is seamless, and `--no-flip-model` falls back to a plain GL swap).
 The window title shows the current settings. The same choices exist as options:
-`--renderer software|opengl|compute`, `--scale auto|1..16`, `--filter nearest|linear|sharp`, `--texture-smoothing off|smooth|sharp`, `--better-polygons`,
+`--renderer software|opengl`, `--scale auto|1..16`, `--filter nearest|linear|sharp`, `--texture-smoothing off|smooth|sharp`, `--better-polygons`,
 `--no-hires-coordinates`.
 
 Widescreen (OpenGL renderer; Display → Aspect ratio, or `--aspect 16:9`): a wider top screen (16:9, 16:10, 21:9 or

@@ -353,11 +353,13 @@ SettingsWindow::SettingsWindow(bool prelaunch) : mPrelaunch(prelaunch) {
 
         leftPane.add_section("Graphics");
         enum_row(
-            leftPane, rightPane, "Renderer", SETTING(renderer), {0, 1, 2},
-            {"Software (exact, native)", "OpenGL (upscaled)", "Compute (upscaled, accurate)"},
-            std::string("Software is the exact, native renderer. OpenGL draws upscaled and supports widescreen. "
-                        "Compute is upscaled and the most accurate (needs OpenGL 4.3).") +
-                (app().compute_available ? "" : "<br/><br/>Compute is not available here: OpenGL is used instead."));
+            leftPane, rightPane, "Renderer", SETTING(renderer),
+            kComputeRenderer ? std::vector<int>{0, 1, 2} : std::vector<int>{0, 1},
+            kComputeRenderer ? std::vector<std::string>{"Software (exact, native)", "OpenGL (upscaled)", "Compute (upscaled, accurate)"}
+                             : std::vector<std::string>{"Software (exact, native)", "OpenGL (upscaled)"},
+            std::string("Software is the exact, native renderer. OpenGL draws upscaled and supports widescreen.") +
+                (kComputeRenderer ? " Compute is upscaled and the most accurate (needs OpenGL 4.3)." : "") +
+                (kComputeRenderer && !app().compute_available ? "<br/><br/>Compute is not available here: OpenGL is used instead." : ""));
         {
             std::vector<int> values(std::begin(kScales), std::end(kScales));
             std::vector<Rml::String> labels;
@@ -424,10 +426,11 @@ SettingsWindow::SettingsWindow(bool prelaunch) : mPrelaunch(prelaunch) {
             "Some ground tiles in the game have textures that cannot be mapped flat, so they seem to swim as you "
             "move (the DS does this too). This cuts them into small pieces so the texture stays on the ground. "
             "Differs from the original console.");
-        bool_row(leftPane, rightPane, "High-precision vertices", SETTING(hires_coordinates),
-            "Keeps vertex positions at full precision instead of snapping them to the DS's pixel grid. Compute "
-            "renderer only.",
-            [] { return !renderer_is(ntr::Renderer::Compute); });
+        if (kComputeRenderer)
+            bool_row(leftPane, rightPane, "High-precision vertices", SETTING(hires_coordinates),
+                "Keeps vertex positions at full precision instead of snapping them to the DS's pixel grid. Compute "
+                "renderer only.",
+                [] { return !renderer_is(ntr::Renderer::Compute); });
     });
 
     add_tab("Input", [this](Rml::Element* content) {

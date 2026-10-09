@@ -94,7 +94,12 @@ const Field kFields[] = {
     BOOL_FIELD("display.hud_edges", hud_edges),
     Field{"display.hud_size", [](const Settings& s) { return std::to_string(s.hud_scale); },
           [](Settings& s, const std::string& v) { return parse_int(v, 50, 200, s.hud_scale); }},
-    ENUM_FIELD("graphics.renderer", renderer, kRenderers),
+    Field{"graphics.renderer", [](const Settings& s) { return std::string(kRenderers[int(s.renderer)]); },
+          [](Settings& s, const std::string& v) {
+              if (!parse_enum(v, kRenderers, s.renderer)) return false;
+              if (!kComputeRenderer && s.renderer == ntr::Renderer::Compute) s.renderer = ntr::Renderer::OpenGL;
+              return true;
+          }},
     Field{"graphics.scale", [](const Settings& s) { return s.scale ? std::to_string(s.scale) : std::string("auto"); },
           [](Settings& s, const std::string& v) {
               if (v == "auto") {

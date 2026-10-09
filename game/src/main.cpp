@@ -677,7 +677,10 @@ private:
             if (layout.layout != video::Layout::MainSide) return;
             layout.side_align = video::Align((int(layout.side_align) + 1) % 3);
             break;
-        case SDLK_F5: settings.renderer = ntr::Renderer((int(settings.renderer) + 1) % 3); break;
+        case SDLK_F5:
+            settings.renderer = kComputeRenderer ? ntr::Renderer((int(settings.renderer) + 1) % 3)
+                                : settings.renderer == ntr::Renderer::Software ? ntr::Renderer::OpenGL : ntr::Renderer::Software;
+            break;
         case SDLK_F6: settings.scale = settings.scale == 0 ? std::max(1, scale - 1) : settings.scale - 1; break;
         case SDLK_F7: settings.scale = settings.scale == 0 ? std::min(16, scale + 1) : (settings.scale + 1) % 17; break;
         case SDLK_F8: settings.filter = video::Filter((int(settings.filter) + 1) % 3); break;
@@ -1314,7 +1317,7 @@ bool load_game(const std::filesystem::path& rom_path, const std::filesystem::pat
 bool parse_renderer(const std::string& s, ntr::Renderer& r) {
     if (s == "software" || s == "soft") r = ntr::Renderer::Software;
     else if (s == "opengl" || s == "gl") r = ntr::Renderer::OpenGL;
-    else if (s == "compute") r = ntr::Renderer::Compute;
+    else if (s == "compute") r = kComputeRenderer ? ntr::Renderer::Compute : ntr::Renderer::OpenGL;  // (switched off)
     else return false;
     return true;
 }
@@ -1421,13 +1424,12 @@ int main(int argc, char** argv) {
                      "  --swap-screens                       bottom screen as the main/first one\n"
                      "  --no-second-screen                   single layout: hide the picture-in-picture\n"
                      "video:\n"
-                     "  --renderer software|opengl|compute   (default opengl)\n"
+                     "  --renderer software|opengl           (default opengl; compute is off)\n"
                      "  --scale auto|1..16                   internal resolution for opengl/compute (default auto)\n"
                      "  --filter nearest|linear|sharp        scaling to the window (default linear)\n"
                      "  --better-polygons                    opengl: better quad splitting\n"
                      "  --stable-textures                    keep warping ground textures on the surface (differs from the DS)\n"
                      "  --texture-smoothing off|smooth|sharp filter the game's textures (OpenGL renderer; differs from the DS)\n"
-                     "  --no-hires-coordinates               compute: snap vertices to the DS pixel grid\n"
                      "  --no-interpolate                     3D at the game's 30 fps (default: interpolated to 60)\n"
                      "  --display-rate                       3D interpolated to the display's refresh rate (vsync)\n"
                      "  --no-display-rate                    3D interpolated to 60 fps\n"

@@ -62,7 +62,8 @@ Milestones are ordered by dependency. Each ends with a demonstrable result. Desi
       so the texture stops swimming with the camera (every renderer; §5.3a)
 - [x] Texture smoothing (optional, off by default): Off / Smooth (bilinear) / Sharp (crisp texels, pixel-wide blend band)
       for the game's textures in the OpenGL renderer (§5.3b)
-- [ ] Texture smoothing in the compute renderer (its shader has its own texture reads and needs a patch hook)
+- [ ] Compute renderer (switched off for now, `kComputeRenderer`): needs widescreen, interpolation, Stable textures and texture
+      smoothing ported (its shader has its own texture reads and needs a patch hook) before it is worth switching back on
 - [x] Widescreen aspect ratios: 16:9, 16:10, 21:9, 32:9 (Display → Aspect ratio, `--aspect`)
 - [ ] Widescreen: the compute renderer, a culling hook for pop-in at the sides, dialog/menu scaling
 - [x] Measure the frame rate (`--fps-probe`): 3D at 30 Hz, top screen only, no display capture
