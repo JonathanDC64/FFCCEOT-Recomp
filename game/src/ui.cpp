@@ -89,6 +89,8 @@ struct State {
     int cpu_speed = 2;  // 0 = the DS's clock, 1 = twice, 2 = four times
     int online_server = 0;   // 0 = Kaeru WFC, 1 = WiiLink WFC, 2 = custom
     Rml::String custom_dns;  // the custom server's DNS address
+    Rml::String console_name;  // the console's name (empty: this PC's)
+    Rml::String auto_name;     // this PC's name as a console name
     int online_buffer = 0;   // 0 = low, 1 = medium, 2 = the game's own
     bool stick_moves = true;
     int deadzone = 35;
@@ -123,6 +125,7 @@ struct Menu::Impl {
     int capture_col = 0;
     Uint64 capture_started = 0;
     bool editing_dns = false;  // typing the custom DNS address
+    bool editing_name = false;  // typing the console name
     bool* changed = nullptr;   // the menu's flag
 
     // Fills the table from the settings, naming pad inputs for the connected gamepad's type.
@@ -224,6 +227,44 @@ struct Menu::Impl {
         main_thread::run([w = window] { SDL_StopTextInput(w); }, false);
     }
 
+    void start_name_edit() {
+        editing_name = true;
+        model.DirtyVariable("editing_name");
+        main_thread::run([w = window] { SDL_StartTextInput(w); }, false);
+    }
+
+    void end_name_edit() {
+        editing_name = false;
+        state.console_name = sanitize_console_name(state.console_name);
+        model.DirtyVariable("editing_name");
+        model.DirtyVariable("console_name");
+        main_thread::run([w = window] { SDL_StopTextInput(w); }, false);
+    }
+
+    // While typing the console name: what the DS can show goes in (up to 10 characters), Backspace deletes a character.
+    void name_event(const SDL_Event& e) {
+        switch (e.type) {
+        case SDL_EVENT_TEXT_INPUT:
+            state.console_name = sanitize_console_name(state.console_name + e.text.text);
+            // (a space may lead into more text: sanitize drops a name of only spaces, so only trim at the end)
+            model.DirtyVariable("console_name");
+            return;
+        case SDL_EVENT_KEY_DOWN:
+            if (e.key.key == SDLK_BACKSPACE && !state.console_name.empty()) {
+                size_t n = state.console_name.size() - 1;
+                while (n > 0 && (state.console_name[n] & 0xC0) == 0x80) n--;  // (back to the start of the character)
+                state.console_name.erase(n);
+                model.DirtyVariable("console_name");
+            } else if (e.key.key == SDLK_RETURN || e.key.key == SDLK_KP_ENTER || e.key.key == SDLK_ESCAPE) {
+                end_name_edit();
+            }
+            return;
+        case SDL_EVENT_GAMEPAD_BUTTON_DOWN:
+        case SDL_EVENT_MOUSE_BUTTON_DOWN: end_name_edit(); return;
+        default: return;
+        }
+    }
+
     // While typing the address: digits and dots go in, Backspace deletes, Enter, Esc or a gamepad button ends it.
     void dns_event(const SDL_Event& e) {
         switch (e.type) {
@@ -275,6 +316,8 @@ struct Menu::Impl {
         state.online_server = s.online_server == "kaeru" ? 0 : s.online_server == "wiilink" ? 1 : 2;
         if (state.online_server == 2) state.custom_dns = s.online_server;
         state.online_buffer = int(s.online_buffer);
+        state.console_name = s.console_name;
+        state.auto_name = system_console_name();
         state.stick_moves = s.controls.stick_moves;
         state.deadzone = s.controls.deadzone;
         state.analog_movement = int(s.controls.analog_movement);
@@ -315,6 +358,7 @@ struct Menu::Impl {
         else if (online_dns(state.custom_dns, dns))  // (a partly typed address leaves the server as it was)
             s.online_server = state.custom_dns;
         s.online_buffer = cfie::OnlineBuffer(std::clamp(state.online_buffer, 0, 2));
+        s.console_name = sanitize_console_name(state.console_name);
         s.controls.stick_moves = state.stick_moves;
         s.controls.deadzone = std::clamp(state.deadzone, 5, 90);
         s.controls.analog_movement = cfie::AnalogMovement(std::clamp(state.analog_movement, 0, 2));
@@ -390,7 +434,8 @@ struct Menu::Impl {
             return;
         }
         if (row->IsClassSet("textfield")) {
-            start_dns_edit();
+            if (row->GetAttribute<Rml::String>("edit", "") == "name") start_name_edit();
+            else start_dns_edit();
             return;
         }
         Rml::ElementList controls;
@@ -473,6 +518,12 @@ bool Menu::init(SDL_Window* window, Settings* settings, bool compute_available) 
     c.Bind("online_server", &s.online_server);
     c.Bind("custom_dns", &s.custom_dns);
     c.Bind("editing_dns", &m.editing_dns);
+    c.Bind("console_name", &s.console_name);
+    c.Bind("auto_name", &s.auto_name);
+    c.Bind("editing_name", &m.editing_name);
+    c.BindEventCallback("edit_name", [&m](Rml::DataModelHandle, Rml::Event&, const Rml::VariantList&) {
+        if (!m.editing_name) m.start_name_edit();
+    });
     c.Bind("online_buffer", &s.online_buffer);
     c.BindEventCallback("edit_dns", [&m](Rml::DataModelHandle, Rml::Event&, const Rml::VariantList&) {
         if (!m.editing_dns) m.start_dns_edit();
@@ -538,6 +589,7 @@ void Menu::open() {
     m.refresh_binds();
     m.end_capture();
     if (m.editing_dns) m.end_dns_edit();
+    if (m.editing_name) m.end_name_edit();
     m.focus = 0;
     m.document->Show();
     m.context->Update();  // lay the page out now, so input that arrives before the first draw finds its rows
@@ -548,6 +600,7 @@ void Menu::close() {
     Impl& m = *impl_;
     if (!open_) return;
     if (m.editing_dns) m.end_dns_edit();
+    if (m.editing_name) m.end_name_edit();
     if (m.store_state()) changed = true;  // (a change made since the last frame is kept)
     m.document->Hide();
     open_ = false;
@@ -577,6 +630,10 @@ void Menu::handle_event(const SDL_Event& event) {
     }
     if (m.editing_dns) {
         m.dns_event(e);
+        if (e.type != SDL_EVENT_MOUSE_MOTION) return;
+    }
+    if (m.editing_name) {
+        m.name_event(e);
         if (e.type != SDL_EVENT_MOUSE_MOTION) return;
     }
     switch (e.type) {

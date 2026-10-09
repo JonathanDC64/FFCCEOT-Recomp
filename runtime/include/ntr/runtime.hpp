@@ -97,6 +97,7 @@ struct RuntimeOptions {
     // Online play: the DNS server the console's Wi-Fi settings use, which sends the game's Nintendo Wi-Fi Connection
     // lookups to a revival server (0.0.0.0: the host's own DNS).
     std::array<uint8_t, 4> online_dns{};
+    std::string console_name;  // the console's name (its firmware nickname, up to 10 characters, UTF-8; empty: melonDS's)
     std::vector<uint8_t> wifi_settings;  // from Host::on_wifi_settings in an earlier run (may be empty)
     // Builds with FFCC_TRACE_ENTRY only: write each function's first/last frame and call count here on exit.
     std::string profile_path;

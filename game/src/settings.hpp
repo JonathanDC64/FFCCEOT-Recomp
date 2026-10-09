@@ -44,6 +44,7 @@ struct Settings {
     bool fast_saving = true;   // save reads and writes at once instead of at the DS's pace
     int cpu_speed = 4;         // ARM9 clock: 1, 2 or 4 times the DS's
     // Online
+    std::string console_name;  // the console's name other players see (a DS nickname, 10 characters); empty: this PC's
     std::string online_server = "kaeru";  // a Wi-Fi Connection revival server (see online_dns), or a DNS address
     cfie::OnlineBuffer online_buffer = cfie::OnlineBuffer::Low;
     // Controls
@@ -56,6 +57,13 @@ bool load_settings(const std::filesystem::path& path, Settings& s);
 bool save_settings(const std::filesystem::path& path, const Settings& s);
 // Sets one setting by its settings.ini key and value ("display.aspect", "21:9"). False if either is not valid.
 bool set_setting(Settings& s, const std::string& key, const std::string& value);
+
+// The name this PC goes by, as a console name: its computer name, cut to the DS's 10 characters ("FFCC" if it has none).
+std::string system_console_name();
+// A console name as the DS can show it: Latin characters only, at most 10 of them (UTF-8). Empty if nothing is left.
+std::string sanitize_console_name(const std::string& name);
+// The console name the game gets: the setting, or the PC's name if it is empty.
+std::string resolved_console_name(const Settings& s);
 
 // The DNS server for an online server setting: "wiilink" (WiiLink WFC), "kaeru" (Kaeru WFC, on Wiimmfi), "host" (the
 // host's own DNS, 0.0.0.0) or a DNS address such as "5.161.56.11". False if it is none of these.

@@ -1108,6 +1108,7 @@ int main(int argc, char** argv) {
                      "  --cpu-speed 1|2|4                    the ARM9 at this many times the DS's clock (default 4)\n"
                      "  --analog-movement off|single-player|multiplayer   the stick's direction and speed (default single-player)\n"
                      "online:\n"
+                     "  --console-name <name>                the console's name other players see (default: this PC's)\n"
                      "  --online-server wiilink|kaeru|host|<DNS address>   Wi-Fi Connection server (default kaeru)\n"
                      "testing:\n"
                      "  --input-script <file>                scripted input, screenshots and exit (see main.cpp)\n"
@@ -1191,6 +1192,8 @@ int main(int argc, char** argv) {
                 return 2;
             }
         }
+        else if (a == "--console-name" && has_value)
+            settings.console_name = sanitize_console_name(argv[++i]);
         else if (a == "--online-server" && has_value) {
             std::array<uint8_t, 4> dns;
             if (!online_dns(argv[++i], dns)) {
@@ -1343,6 +1346,7 @@ int main(int argc, char** argv) {
             g.options.fast_cart = host.settings.fast_loading;
             g.options.cpu_speed = host.settings.cpu_speed;
             online_dns(host.settings.online_server, g.options.online_dns);
+            g.options.console_name = resolved_console_name(host.settings);
             cfie::online_buffer = host.settings.online_buffer;
             cfie::fast_saving = host.settings.fast_saving;
 

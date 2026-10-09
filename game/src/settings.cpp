@@ -6,6 +6,14 @@
 #include <map>
 #include <string>
 
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#include <windows.h>
+#else
+#include <unistd.h>
+#endif
+
 namespace {
 
 // Each setting is a key with a getter and a setter, so loading and saving share one list.
@@ -117,6 +125,11 @@ const Field kFields[] = {
               s.cpu_speed = n;
               return true;
           }},
+    Field{"online.console_name", [](const Settings& s) { return s.console_name; },
+          [](Settings& s, const std::string& v) {
+              s.console_name = sanitize_console_name(v);
+              return true;
+          }},
     Field{"online.server", [](const Settings& s) { return s.online_server; },
           [](Settings& s, const std::string& v) {
               std::array<uint8_t, 4> dns;
@@ -151,6 +164,52 @@ std::string trim(const std::string& s) {
 }
 
 }  // namespace
+
+std::string sanitize_console_name(const std::string& name) {
+    std::string out;
+    int count = 0;
+    for (size_t i = 0; i < name.size() && count < 10;) {
+        const unsigned char c = (unsigned char)name[i];
+        const int len = c < 0x80 ? 1 : (c >> 5) == 6 ? 2 : (c >> 4) == 14 ? 3 : (c >> 3) == 30 ? 4 : 1;
+        if (i + len > name.size()) break;
+        unsigned cp = len == 1 ? c : c & (0xFF >> (len + 1));
+        for (int k = 1; k < len; k++) cp = (cp << 6) | ((unsigned char)name[i + k] & 0x3F);
+        if ((cp >= 0x20 && cp <= 0x7E) || (cp >= 0xA1 && cp <= 0xFF)) {  // (the DS's font: ASCII and Latin-1)
+            out.append(name, i, len);
+            count++;
+        }
+        i += len;
+    }
+    // (a name of only spaces is nothing)
+    return out.find_first_not_of(' ') == std::string::npos ? std::string() : out;
+}
+
+std::string system_console_name() {
+    std::string name;
+#ifdef _WIN32
+    wchar_t w[MAX_COMPUTERNAME_LENGTH + 1];
+    DWORD n = MAX_COMPUTERNAME_LENGTH + 1;
+    if (GetComputerNameW(w, &n))
+        for (DWORD i = 0; i < n; i++) {  // (code points up to 0x7FF; the rest are dropped below)
+            const unsigned cp = w[i];
+            if (cp < 0x80) name += char(cp);
+            else if (cp < 0x800) { name += char(0xC0 | (cp >> 6)); name += char(0x80 | (cp & 0x3F)); }
+        }
+#else
+    char host[256];
+    if (gethostname(host, sizeof host) == 0) {
+        host[sizeof host - 1] = 0;
+        name = host;
+    }
+#endif
+    name = sanitize_console_name(name);
+    return name.empty() ? "FFCC" : name;
+}
+
+std::string resolved_console_name(const Settings& s) {
+    const std::string n = sanitize_console_name(s.console_name);
+    return n.empty() ? system_console_name() : n;
+}
 
 bool online_dns(const std::string& server, std::array<uint8_t, 4>& dns) {
     if (server == "wiilink") return dns = {5, 161, 56, 11}, true;

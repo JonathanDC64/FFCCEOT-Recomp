@@ -83,6 +83,26 @@ RuntimeImpl::RuntimeImpl(std::vector<uint8_t> rom, const GameCode& code, Host& h
         header.UpdateChecksum();
         args.Firmware.UpdateChecksums();
     }
+    if (!options.console_name.empty()) {
+        // The nickname other players see (online and local wireless lobbies): both copies of the firmware's user data.
+        char16_t nick[10] = {};
+        unsigned n = 0;
+        for (size_t i = 0; i < options.console_name.size() && n < 10;) {
+            const unsigned char c = (unsigned char)options.console_name[i];
+            const int len = c < 0x80 ? 1 : (c >> 5) == 6 ? 2 : (c >> 4) == 14 ? 3 : (c >> 3) == 30 ? 4 : 1;
+            unsigned cp = len == 1 ? c : c & (0xFF >> (len + 1));
+            for (int k = 1; k < len && i + k < options.console_name.size(); k++)
+                cp = (cp << 6) | ((unsigned char)options.console_name[i + k] & 0x3F);
+            nick[n++] = cp < 0x10000 ? char16_t(cp) : u'?';
+            i += len;
+        }
+        for (auto& user : args.Firmware.GetUserData()) {
+            std::memcpy(user.Nickname, nick, sizeof nick);
+            user.NameLength = u16(n);
+            user.UpdateChecksum();
+        }
+        args.Firmware.UpdateChecksums();
+    }
     if (options.wifi_settings.size() == 0x300) {
         // The Wi-Fi Connection user ID and password of each connection, at 0xF0 (the rest is melonDS's access point,
         // set up below).
