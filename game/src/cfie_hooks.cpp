@@ -1,6 +1,7 @@
 // Game-specific glue for hooks listed in game/config/cfie/hooks.txt.
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 
 #include "cfie_game.hpp"
 #include "ntr/nitro.h"
@@ -230,3 +231,28 @@ extern "C" void cfie_set_online_timing(NtrCpu* c) {
     ntr_wr32(c, kOnlineTiming + 116, preset);
 }
 
+void* cfie::find_hook(const char* name) {
+    static const struct {
+        const char* name;
+        void* fn;
+    } kHooks[] = {
+        {"cfie_os_irq_handler", reinterpret_cast<void*>(&cfie_os_irq_handler)},
+        {"cfie_on_bgm_play", reinterpret_cast<void*>(&cfie_on_bgm_play)},
+        {"cfie_pack_input", reinterpret_cast<void*>(&cfie_pack_input)},
+        {"cfie_apply_input", reinterpret_cast<void*>(&cfie_apply_input)},
+        {"cfie_analog_move", reinterpret_cast<void*>(&cfie_analog_move)},
+        {"cfie_perspective_aspect", reinterpret_cast<void*>(&cfie_perspective_aspect)},
+        {"cfie_player_animation_step", reinterpret_cast<void*>(&cfie_player_animation_step)},
+        {"cfie_card_backup_request", reinterpret_cast<void*>(&cfie_card_backup_request)},
+        {"cfie_on_netcheck", reinterpret_cast<void*>(&cfie_on_netcheck)},
+        {"cfie_guest_inputs_to_send", reinterpret_cast<void*>(&cfie_guest_inputs_to_send)},
+        {"cfie_set_online_timing", reinterpret_cast<void*>(&cfie_set_online_timing)},
+        {"ntr_nitro_save_context", reinterpret_cast<void*>(&ntr_nitro_save_context)},
+        {"ntr_nitro_load_context", reinterpret_cast<void*>(&ntr_nitro_load_context)},
+        {"ntr_nitro_init_context", reinterpret_cast<void*>(&ntr_nitro_init_context)},
+        {"ntr_dsprot_not_detected", reinterpret_cast<void*>(&ntr_dsprot_not_detected)},
+    };
+    for (const auto& h : kHooks)
+        if (std::strcmp(h.name, name) == 0) return h.fn;
+    return nullptr;
+}

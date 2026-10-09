@@ -33,4 +33,7 @@ struct Stick {
 };
 extern Stick stick;
 
+// The hooks of game/config/cfie/hooks.txt by name, for the game module (null for a name that is not one).
+void* find_hook(const char* name);
+
 }  // namespace cfie

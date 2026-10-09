@@ -25,6 +25,7 @@
 
 #include "cfie_game.hpp"
 #include "crash_report.hpp"
+#include "game_module.hpp"
 #include "report.hpp"
 #include "input.hpp"
 #include "main_thread.hpp"
@@ -1198,7 +1199,8 @@ int main(int argc, char** argv) {
                      "testing:\n"
                      "  --input-script <file>                scripted input, screenshots and exit (see main.cpp)\n"
                      "  --record-input <file>                write the input of every frame as an input script\n"
-                     "  --crash-at-frame <n>                 crash (access violation) at frame n, to see the crash dialog\n"
+                     "  --game-module <file>                 the recompiled game (default: cfie_game next to the program)\n"
+                     "  --crash-at-frame <n>               crash (access violation) at frame n, to see the crash dialog\n"
                      "  --abort-at-frame <n>                 abort at frame n, likewise\n"
                      "  --report-at-frame <n>                make a problem report at frame n, as the menu's Report an issue does\n"
                      "  --save-file <file>                   use this save file instead of the usual one\n"
@@ -1228,6 +1230,7 @@ int main(int argc, char** argv) {
     std::multimap<uint64_t, std::string> set_at;
     std::multimap<uint64_t, std::pair<int, int>> resize_at;
     bool allow_flip_model = true;
+    std::filesystem::path game_module_path = GameModule::default_path();
     double virtual_display_hz = 144;
     std::map<uint64_t, std::string> screenshots;
     std::vector<ScriptStep> script;
@@ -1314,6 +1317,8 @@ int main(int argc, char** argv) {
                              [](const ScriptStep& x, const ScriptStep& y) { return x.frame < y.frame; });
         } else if (a == "--record-input" && has_value) {
             record_path = argv[++i];
+        } else if (a == "--game-module" && has_value) {
+            game_module_path = argv[++i];
         } else if (a == "--save-file" && has_value)
             ++i;
         else if (a == "--no-settings" || a == "--read-only-save" || a == "--unpaced")
@@ -1390,6 +1395,12 @@ int main(int argc, char** argv) {
     const auto wifi_path = std::filesystem::path(save_path).replace_extension(".wfc");
     if (!save_path.empty() && std::filesystem::exists(wifi_path)) options.wifi_settings = read_file(wifi_path);
 
+    GameModule game_module;
+    if (std::string error; !game_module.load(game_module_path, error)) {
+        std::fprintf(stderr, "%s\n", error.c_str());
+        return 1;
+    }
+
     SdlHost host;
     host.settings = settings;
     host.settings_path = settings_path;
@@ -1425,8 +1436,9 @@ int main(int argc, char** argv) {
         bool fullscreen;
         ntr::RuntimeOptions& options;
         std::vector<uint8_t>& rom;
+        const ntr::GameCode& code;
         int rc = 1;
-    } game{host, save_path, menu_tab, fullscreen, options, rom};
+    } game{host, save_path, menu_tab, fullscreen, options, rom, game_module.code()};
     const auto run_game = [](void* p) -> int {
         Game& g = *static_cast<Game*>(p);
         SdlHost& host = g.host;
@@ -1441,9 +1453,7 @@ int main(int argc, char** argv) {
             cfie::online_buffer = host.settings.online_buffer;
             cfie::fast_saving = host.settings.fast_saving;
 
-            ntr::GameCode code{ntr_recomp_functions, ntr_recomp_function_count, ntr_recomp_overlays,
-                               ntr_recomp_overlay_count};
-            auto runtime = ntr::Runtime::create(std::move(g.rom), code, host, std::move(g.options));
+            auto runtime = ntr::Runtime::create(std::move(g.rom), g.code, host, std::move(g.options));
             host.attach(runtime.get());
             g.rc = runtime->run();
             runtime.reset();  // writes the exit reports (interpreter coverage, function profile); frees the GL renderer

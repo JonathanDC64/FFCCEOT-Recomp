@@ -25,7 +25,7 @@
                 │        │                                   │                                 │
                 │        ▼                                   ▼                                 │
                 │  ntr-recomp (library)  ── C source ──► compiler (dev: clang/MSVC at build;   │
-                │  decode → CFG → C emit                  release: bundled libtcc at install) │
+                │  decode → CFG → C emit                  release: bundled clang at install) │
                 │        │                                   │                                 │
                 │        ▼                                   ▼                                 │
                 │  game module (guest code as native fns) ◄── function table / dispatcher     │
@@ -107,12 +107,21 @@ boundaries, names, ARM/Thumb mode, jump tables and hook points. These are addres
 **Two build modes, same generator**
 
 - **Dev mode**: `cmake -DFFCC_ROM=path/to/rom.nds` runs the recompiler at configure/build time. The generated C goes to
-  `build/recomp_generated/` (gitignored) and is compiled with clang -O2 into the executable. You get full debugging and fast iteration.
-- **Release mode**: the distributed executable contains **no game code**. On first launch the installer verifies the ROM,
-  runs the recompiler as a library, compiles the generated C with the bundled **libtcc** into a game module (DLL/.so)
-  in the user data directory, and caches it keyed by `(ROM SHA-1, recompiler version, hooks version)`.
-  TinyCC's code is slower than clang's, but a 67 MHz ARM9's workload is tiny for a modern CPU. *(open)* Benchmark this.
-  If it's too slow, use an optional "optimize" step with a system clang if found, or an LLVM-ORC backend.
+  `build/recomp_generated/` (gitignored) and is compiled with clang into `cfie_game.dll` (`libcfie_game.so`) next to the
+  executable. You get full debugging and fast iteration. `FFCC_GAME_OPT` picks the optimisation level (default `/O1`).
+- **Release mode**: the distributed executable contains **no game code**. Setup copies and verifies the ROM, runs the
+  recompiler and compiles the generated C with a bundled clang and lld into the same kind of module, in the user data
+  directory, and caches it keyed by the ABI version and the ROM hash. See [PACKAGING.md](PACKAGING.md) for the plan and
+  the benchmark that picked clang `/O1` over libtcc.
+
+**The game module.** The recompiled game is a shared library of its own and links against nothing (freestanding: no C
+library, no import library). `ntr_game_load`, its one exported function, is given a `NtrHostApi` (the runtime's
+services, `ntr/recomp.h`) and a lookup for the game's hooks by name (`hooks.txt`), and returns the tables of recompiled
+functions and overlays. Inside the module the services are macros over a table (`ntr_call` is `ntr_host.call`), which
+costs the same as a call through an import table. The host loads it in `game/src/game_module.cpp`
+(`--game-module <file>`, default next to the executable). `NTR_ABI_VERSION` is bumped when that interface or the code's
+meaning changes, and a module built for another version is refused. Because the module needs nothing but its own
+sources and `ntr/recomp.h`, compiling it on the player's PC needs only a compiler and a linker, no SDK.
 
 ## 4. Runtime (`ntr-runtime`)
 
@@ -564,5 +573,5 @@ accessibility (button holds → toggles, colour filters) · Steam Deck profile.
 | Widescreen culling and HUD issues | Game-specific hooks; per-scene audit like ndsrecomp's per-title audits |
 | Interpolation artifacts | Snap on mismatch, per-draw opt-out list, toggle in UI |
 | Netplay desync with real hardware | Exact math, untouched logic tick, determinism CI on local data |
-| libtcc performance or availability | Benchmark early; fall back to system clang or LLVM-ORC |
+| Size of the bundled compiler | Measured in [PACKAGING.md](PACKAGING.md); trim clang/lld to what the module needs |
 | Legal | Strict no-ROM-data policy, automated guard, user-supplied ROM only ([LEGAL.md](LEGAL.md)) |

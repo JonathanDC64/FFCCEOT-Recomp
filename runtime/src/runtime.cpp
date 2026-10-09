@@ -983,4 +983,13 @@ void ntr_unimplemented(NtrCpu* c, uint32_t addr) {
     fatal("function %08x is not recompiled (DS Protect or a missing hook), lr %08x", addr, c->r[14]);
 }
 
+void ntr_fill_host_api(NtrHostApi* api) {
+    *api = NtrHostApi{};
+    api->abi = NTR_ABI_VERSION;
+    api->size = sizeof(NtrHostApi);
+#define NTR_FILL_SERVICE(ret, name, args) api->name = ntr_##name;
+    NTR_RUNTIME_SERVICES(NTR_FILL_SERVICE)
+#undef NTR_FILL_SERVICE
+}
+
 }  // extern "C"

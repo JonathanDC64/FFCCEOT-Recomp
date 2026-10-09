@@ -96,6 +96,15 @@ What this says, and what it does not:
 - libtcc was not measured; `/Od` was only a proxy for it. Slower hardware (Steam Deck) is where unoptimised code
   would hurt, which is why we are not taking the risk.
 
+**Toolchain check (module split).** The module builds from the generated sources with nothing but `clang` and
+`lld-link`: `clang -c -O1 -ffreestanding -nostdlibinc -DNTR_GAME_MODULE=1 -I<generated> -I<runtime/include>` per file
+(no Windows SDK, no CRT headers; only clang's own freestanding `stddef.h`/`stdint.h`), then
+`lld-link /dll /noentry /nodefaultlib /out:cfie_game.dll *.o`. 65 files compile in 11 s on 16 threads and link in
+under 0.1 s, and a game run with that module was pixel-identical to the CMake-built one over 8000 frames. The pieces to
+ship are therefore `clang.exe` (about 105 MB as installed), `lld-link.exe` (about 70 MB) and a few header files; both
+executables are generic LLVM builds that are likely to compress well and could be replaced by slimmer custom builds
+later.
+
 Decision: game performance first, since setup is a one-time cost. We ship clang and lld and build the game module at
 `/O1`. The compile step stays behind a small interface so a faster-to-ship compiler could be added later, but libtcc
 is not planned. The bundle (a trimmed clang plus lld, headers and the host import library) is roughly 150 MB per

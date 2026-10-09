@@ -28,23 +28,33 @@ add_custom_command(
   COMMENT "Recompiling game code from your ROM"
   VERBATIM)
 
-add_library(ffcc_game_code STATIC ${FFCC_GEN_SOURCES})
-target_include_directories(ffcc_game_code PUBLIC ${FFCC_GEN_DIR} ${CMAKE_SOURCE_DIR}/runtime/include)
-set(FFCC_GAME_OPT "" CACHE STRING "Optimization flag for the recompiled game code (default /O2 or -O2; /Od /O1 or -O0 -O1 -Os for benchmarks)")
+# The recompiled game is a shared library of its own, loaded by the executable (src/game_module.cpp). It is built
+# freestanding: the runtime's services come in through a table when it is loaded (ntr/recomp.h), so it links
+# against nothing. That is also how setup will build it on the player's PC, from the generated sources alone.
+add_library(cfie_game MODULE ${FFCC_GEN_SOURCES})
+target_include_directories(cfie_game PRIVATE ${FFCC_GEN_DIR} ${CMAKE_SOURCE_DIR}/runtime/include)
+target_compile_definitions(cfie_game PRIVATE NTR_GAME_MODULE=1)
+set_target_properties(cfie_game PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+  LIBRARY_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+  C_VISIBILITY_PRESET hidden)
+set(FFCC_GAME_OPT "" CACHE STRING "Optimization flag for the recompiled game code (default /O1 or -O1; /Od /O2 or -O0 -O2 for benchmarks)")
 if(MSVC)
   if(NOT FFCC_GAME_OPT)
-    set(FFCC_GAME_OPT /O2)
+    set(FFCC_GAME_OPT /O1)
   endif()
-  target_compile_options(ffcc_game_code PRIVATE /w ${FFCC_GAME_OPT})
+  target_compile_options(cfie_game PRIVATE /w /GS- /Zl ${FFCC_GAME_OPT})
+  target_link_options(cfie_game PRIVATE /NODEFAULTLIB /NOENTRY)
 else()
   if(NOT FFCC_GAME_OPT)
-    set(FFCC_GAME_OPT -O2)
+    set(FFCC_GAME_OPT -O1)
   endif()
-  target_compile_options(ffcc_game_code PRIVATE -w ${FFCC_GAME_OPT})
+  target_compile_options(cfie_game PRIVATE -w -ffreestanding -fno-stack-protector ${FFCC_GAME_OPT})
+  target_link_options(cfie_game PRIVATE -nostdlib)
 endif()
 option(FFCC_TRACE_ENTRY "Record every recompiled function entry (slow; for debugging crashes)" OFF)
 if(FFCC_TRACE_ENTRY)
-  target_compile_definitions(ffcc_game_code PRIVATE NTR_TRACE_ENTRY)
+  target_compile_definitions(cfie_game PRIVATE NTR_TRACE_ENTRY)
 endif()
 
 # Settings menu documents and fonts, compiled into the executable.
@@ -68,9 +78,10 @@ add_custom_command(
   VERBATIM)
 
 # The game executable: takes the user's ROM on the command line.
-add_executable(ffcc src/main.cpp src/crash_report.cpp src/crash_dialog.cpp src/report.cpp src/video.cpp src/cfie_hooks.cpp src/settings.cpp src/input.cpp src/ui.cpp ${FFCC_UI_ASSETS})
+add_executable(ffcc src/main.cpp src/game_module.cpp src/crash_report.cpp src/crash_dialog.cpp src/report.cpp src/video.cpp src/cfie_hooks.cpp src/settings.cpp src/input.cpp src/ui.cpp ${FFCC_UI_ASSETS})
 target_include_directories(ffcc PRIVATE src)
-target_link_libraries(ffcc PRIVATE ffcc_game_code ntr_runtime ntr_common SDL3::SDL3-static rmlui_backend)
+add_dependencies(ffcc cfie_game)  # (built together, next to the executable)
+target_link_libraries(ffcc PRIVATE ntr_runtime ntr_common SDL3::SDL3-static rmlui_backend)
 if(WIN32)
   # Flip-model presentation: OpenGL drawn into a Direct3D 11 swapchain.
   target_sources(ffcc PRIVATE src/flip_present.cpp)

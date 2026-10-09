@@ -746,9 +746,12 @@ EmitStats emit_c(const Program& program, const Analysis& analysis, const std::fi
         return x->module != y->module ? x->module < y->module : x->entry < y->entry;
     });
 
+    std::set<std::string> hook_names, instead_hook_names;  // the hooks the generated code calls (void and int)
     {
         std::ofstream h(out_dir / "funcs.h", std::ios::binary);
-        h << banner << "#ifndef NTR_RECOMP_FUNCS_H\n#define NTR_RECOMP_FUNCS_H\n#include \"ntr/recomp.h\"\n\n";
+        h << banner << "#ifndef NTR_RECOMP_FUNCS_H\n#define NTR_RECOMP_FUNCS_H\n#ifndef NTR_GAME_MODULE\n"
+          << "#define NTR_GAME_MODULE 1  /* the generated code is a module of its own (see ntr/recomp.h) */\n#endif\n"
+          << "#include \"ntr/recomp.h\"\n\n";
         std::set<std::string> hooks, instead_hooks;
         for (const Function* f : order) {
             h << "void " << f->c_name() << "(NtrCpu* c);\n";
@@ -756,9 +759,14 @@ EmitStats emit_c(const Program& program, const Analysis& analysis, const std::fi
             if (!f->hook_before.empty()) hooks.insert(f->hook_before);
             if (!f->hook_instead.empty()) instead_hooks.insert(f->hook_instead);
         }
-        for (const std::string& hk : hooks) h << "void " << hk << "(NtrCpu* c);\n";
-        for (const std::string& hk : instead_hooks) h << "int " << hk << "(NtrCpu* c);\n";
+        // The hooks live in the host: the module calls them through pointers that ntr_game_load fills in by name.
+        for (const std::string& hk : hooks)
+            h << "extern void (*ntr_hook_" << hk << ")(NtrCpu* c);\n#define " << hk << " (ntr_hook_" << hk << ")\n";
+        for (const std::string& hk : instead_hooks)
+            h << "extern int (*ntr_hook_" << hk << ")(NtrCpu* c);\n#define " << hk << " (ntr_hook_" << hk << ")\n";
         h << "\n#endif\n";
+        hook_names = hooks;
+        instead_hook_names = instead_hooks;
     }
 
     const size_t per_shard = (order.size() + options.shards - 1) / options.shards;
@@ -853,6 +861,25 @@ EmitStats emit_c(const Program& program, const Analysis& analysis, const std::fi
         }
         if (ovs.empty()) t << "    {0, 0, 0, 0, 0, {0}, {0}},\n";
         t << "};\nconst size_t ntr_recomp_overlay_count = " << ovs.size() << ";\n";
+
+        // The module's interface to the host (ntr/recomp.h): the runtime's services and the hooks, by name.
+        t << "\n/* ---- the interface to the host ---- */\nNtrHostApi ntr_host;\n";
+        for (const std::string& hk : hook_names) t << "void (*ntr_hook_" << hk << ")(NtrCpu* c);\n";
+        for (const std::string& hk : instead_hook_names) t << "int (*ntr_hook_" << hk << ")(NtrCpu* c);\n";
+        t << "\n#ifdef _WIN32\n#define NTR_GAME_EXPORT __declspec(dllexport)\n#else\n"
+             "#define NTR_GAME_EXPORT __attribute__((visibility(\"default\")))\n#endif\n\n"
+             "static const NtrGameInfo ntr_game_info = {NTR_ABI_VERSION, ntr_recomp_functions, "
+          << order.size() << ", ntr_recomp_overlays, " << ovs.size() << "};\n\n"
+          << "#define NTR_COPY_SERVICE(ret, name, args) ntr_host.name = api->name;\n\n"
+          << "NTR_GAME_EXPORT const NtrGameInfo* ntr_game_load(const NtrHostApi* api) {\n"
+             "    if (!api || api->abi != NTR_ABI_VERSION || api->size != sizeof(NtrHostApi) || !api->find_hook) return 0;\n"
+             "    ntr_host.abi = api->abi;\n    ntr_host.size = api->size;\n    ntr_host.find_hook = api->find_hook;\n"
+             "    NTR_RUNTIME_SERVICES(NTR_COPY_SERVICE)\n";
+        for (const std::string& hk : hook_names)
+            t << "    if (!(ntr_hook_" << hk << " = (void (*)(NtrCpu*))api->find_hook(\"" << hk << "\"))) return 0;\n";
+        for (const std::string& hk : instead_hook_names)
+            t << "    if (!(ntr_hook_" << hk << " = (int (*)(NtrCpu*))api->find_hook(\"" << hk << "\"))) return 0;\n";
+        t << "    return &ntr_game_info;\n}\n";
         stats.files++;
     }
     return stats;

@@ -140,8 +140,10 @@ Milestones are ordered by dependency. Each ends with a demonstrable result. Desi
       first benchmark are in [PACKAGING.md](PACKAGING.md)
 - [x] Crash dialog (restart, report, details) and a *Report an issue* button in the menu: a zip with the stack, system
       information, settings, log and a screenshot, and a filled-in GitHub issue form
+- [x] The recompiled game is a loadable module (`cfie_game.dll`), freestanding, built at `/O1`; the host loads it by
+      path (output identical to the statically linked build over 8000 frames of play)
 - [ ] Packaging (Windows and Linux/Steam Deck first, then macOS), update check on by default
-- [ ] Release workflow: pushing a `v*` tag builds the game-code-free packages (runtime, recompiler, libtcc; the
+- [ ] Release workflow: pushing a `v*` tag builds the game-code-free packages (runtime, recompiler, clang; the
       game is recompiled from the user's ROM on first run) and publishes a GitHub Release. Until then CI only builds,
       because a built `ffcc.exe` contains recompiled game code and must never be published
 - [ ] Mod / texture-pack loader

@@ -8,8 +8,15 @@
 #ifndef NTR_RECOMP_H
 #define NTR_RECOMP_H
 
+#include <stddef.h>
 #include <stdint.h>
+#ifdef NTR_GAME_MODULE
+/* The generated game module is built freestanding (no C library, nothing to link against but itself). */
+#define NTR_MEMCPY __builtin_memcpy
+#else
 #include <string.h>
+#define NTR_MEMCPY memcpy
+#endif
 
 #ifdef __cplusplus
 extern "C" {
@@ -48,48 +55,109 @@ typedef struct NtrOverlayInfo {
 /* Not recompiled: while resident, the runtime runs code at these addresses on its interpreter. */
 #define NTR_OVERLAY_INTERPRET 1u
 
-/* Tables emitted by the recompiler (func_table.c). */
-extern const NtrFuncEntry ntr_recomp_functions[];
-extern const size_t ntr_recomp_function_count;
-extern const NtrOverlayInfo ntr_recomp_overlays[];
-extern const size_t ntr_recomp_overlay_count;
-
 #define NTR_MODULE_MAIN 0
 #define NTR_MODULE_ITCM 1
 #define NTR_MODULE_DTCM 2
 #define NTR_MODULE_ARM7 3
 #define NTR_MODULE_OVERLAY(n) (100 + (n))
 
-/* ---- runtime services (implemented by the runtime) ---- */
-uint32_t ntr_read32_slow(NtrCpu* c, uint32_t addr);
-uint32_t ntr_read16_slow(NtrCpu* c, uint32_t addr);
-uint32_t ntr_read8_slow(NtrCpu* c, uint32_t addr);
-void ntr_write32_slow(NtrCpu* c, uint32_t addr, uint32_t v);
-void ntr_write16_slow(NtrCpu* c, uint32_t addr, uint32_t v);
-void ntr_write8_slow(NtrCpu* c, uint32_t addr, uint32_t v);
+/* ---- the game module ----
+ * The recompiled game is a shared library of its own (never shipped: setup builds it from the player's ROM). It
+ * links against nothing. Its one exported function, ntr_game_load, is given the runtime's services and the game's
+ * hooks by the host, and returns the tables of recompiled functions. Bump NTR_ABI_VERSION whenever this interface or
+ * the generated code's meaning changes: a module built for another version is refused (and rebuilt by setup). */
+#define NTR_ABI_VERSION 1u
 
-void ntr_call(NtrCpu* c, uint32_t target);           /* call/jump to guest code; bit 0 = Thumb */
-/* Computed jump that is not a return (a tail call): the target returns to `entry_lr`, the jumping function's own LR. */
-void ntr_jump(NtrCpu* c, uint32_t target, uint32_t from, uint32_t entry_lr);
-void ntr_swi(NtrCpu* c, uint32_t number, uint32_t pc);
-void ntr_poll(NtrCpu* c);                            /* scheduler events, IRQ delivery */
-uint32_t ntr_get_spsr(NtrCpu* c);
-void ntr_set_cpsr(NtrCpu* c, uint32_t value, uint32_t mask);
-void ntr_set_spsr(NtrCpu* c, uint32_t value, uint32_t mask);
-void ntr_exception_return(NtrCpu* c, uint32_t target); /* MOVS pc / LDM {..pc}^ */
-uint32_t ntr_get_user_reg(NtrCpu* c, uint32_t r);
-void ntr_set_user_reg(NtrCpu* c, uint32_t r, uint32_t v);
-uint32_t ntr_mrc(NtrCpu* c, uint32_t cp, uint32_t op1, uint32_t crn, uint32_t crm, uint32_t op2);
-void ntr_mcr(NtrCpu* c, uint32_t cp, uint32_t op1, uint32_t crn, uint32_t crm, uint32_t op2, uint32_t v);
-void ntr_undefined(NtrCpu* c, uint32_t pc, uint32_t opcode);
-void ntr_bad_jump(NtrCpu* c, uint32_t pc, uint32_t target);
-void ntr_unimplemented(NtrCpu* c, uint32_t addr);
+#define NTR_RUNTIME_SERVICES(X) \
+    X(uint32_t, read32_slow, (NtrCpu* c, uint32_t addr)) \
+    X(uint32_t, read16_slow, (NtrCpu* c, uint32_t addr)) \
+    X(uint32_t, read8_slow, (NtrCpu* c, uint32_t addr)) \
+    X(void, write32_slow, (NtrCpu* c, uint32_t addr, uint32_t v)) \
+    X(void, write16_slow, (NtrCpu* c, uint32_t addr, uint32_t v)) \
+    X(void, write8_slow, (NtrCpu* c, uint32_t addr, uint32_t v)) \
+    /* call/jump to guest code; bit 0 = Thumb */ \
+    X(void, call, (NtrCpu* c, uint32_t target)) \
+    /* Computed jump that is not a return (a tail call): the target returns to `entry_lr`, the jumping function's own LR. */ \
+    X(void, jump, (NtrCpu* c, uint32_t target, uint32_t from, uint32_t entry_lr)) \
+    X(void, swi, (NtrCpu* c, uint32_t number, uint32_t pc)) \
+    /* scheduler events, IRQ delivery */ \
+    X(void, poll, (NtrCpu* c)) \
+    X(uint32_t, get_spsr, (NtrCpu* c)) \
+    X(void, set_cpsr, (NtrCpu* c, uint32_t value, uint32_t mask)) \
+    X(void, set_spsr, (NtrCpu* c, uint32_t value, uint32_t mask)) \
+    /* MOVS pc / LDM {..pc}^ */ \
+    X(void, exception_return, (NtrCpu* c, uint32_t target)) \
+    X(uint32_t, get_user_reg, (NtrCpu* c, uint32_t r)) \
+    X(void, set_user_reg, (NtrCpu* c, uint32_t r, uint32_t v)) \
+    X(uint32_t, mrc, (NtrCpu* c, uint32_t cp, uint32_t op1, uint32_t crn, uint32_t crm, uint32_t op2)) \
+    X(void, mcr, (NtrCpu* c, uint32_t cp, uint32_t op1, uint32_t crn, uint32_t crm, uint32_t op2, uint32_t v)) \
+    X(void, undefined, (NtrCpu* c, uint32_t pc, uint32_t opcode)) \
+    X(void, bad_jump, (NtrCpu* c, uint32_t pc, uint32_t target)) \
+    X(void, unimplemented, (NtrCpu* c, uint32_t addr)) \
+    /* debug builds of the generated code (NTR_TRACE_ENTRY) record every function entry for the fatal error report */ \
+    X(void, trace_enter, (NtrCpu* c, uint32_t addr))
+
+typedef struct NtrHostApi {
+    uint32_t abi;  /* NTR_ABI_VERSION */
+    uint32_t size; /* sizeof(NtrHostApi) */
+#define NTR_DECLARE_SERVICE(ret, name, args) ret (*name) args;
+    NTR_RUNTIME_SERVICES(NTR_DECLARE_SERVICE)
+#undef NTR_DECLARE_SERVICE
+    /* The game's own hooks (hooks.txt), by name; NULL if the host has none of that name. */
+    void* (*find_hook)(const char* name);
+} NtrHostApi;
+
+/* What a loaded module provides: one entry per recompiled function and per overlay. */
+typedef struct NtrGameInfo {
+    uint32_t abi;
+    const NtrFuncEntry* functions;
+    size_t function_count;
+    const NtrOverlayInfo* overlays;
+    size_t overlay_count;
+} NtrGameInfo;
+
+/* The module's entry point; NULL if the module cannot work with this host. */
+typedef const NtrGameInfo* (*NtrGameLoadFn)(const NtrHostApi* api);
+#define NTR_GAME_LOAD_SYMBOL "ntr_game_load"
+
+#ifdef NTR_GAME_MODULE
+/* Inside the module the runtime's services are the host's, through a table filled when the module is loaded. */
+extern NtrHostApi ntr_host;
+#define ntr_read32_slow (ntr_host.read32_slow)
+#define ntr_read16_slow (ntr_host.read16_slow)
+#define ntr_read8_slow (ntr_host.read8_slow)
+#define ntr_write32_slow (ntr_host.write32_slow)
+#define ntr_write16_slow (ntr_host.write16_slow)
+#define ntr_write8_slow (ntr_host.write8_slow)
+#define ntr_call (ntr_host.call)
+#define ntr_jump (ntr_host.jump)
+#define ntr_swi (ntr_host.swi)
+#define ntr_poll (ntr_host.poll)
+#define ntr_get_spsr (ntr_host.get_spsr)
+#define ntr_set_cpsr (ntr_host.set_cpsr)
+#define ntr_set_spsr (ntr_host.set_spsr)
+#define ntr_exception_return (ntr_host.exception_return)
+#define ntr_get_user_reg (ntr_host.get_user_reg)
+#define ntr_set_user_reg (ntr_host.set_user_reg)
+#define ntr_mrc (ntr_host.mrc)
+#define ntr_mcr (ntr_host.mcr)
+#define ntr_undefined (ntr_host.undefined)
+#define ntr_bad_jump (ntr_host.bad_jump)
+#define ntr_unimplemented (ntr_host.unimplemented)
+#define ntr_trace_enter (ntr_host.trace_enter)
+#else
+/* ---- runtime services (implemented by the runtime) ---- */
+#define NTR_PROTOTYPE_SERVICE(ret, name, args) ret ntr_##name args;
+NTR_RUNTIME_SERVICES(NTR_PROTOTYPE_SERVICE)
+#undef NTR_PROTOTYPE_SERVICE
+/* Fills in `api` with the runtime's services (find_hook is left for the host to set). */
+void ntr_fill_host_api(NtrHostApi* api);
+#endif
 
 /* ---- register / flag helpers ---- */
 #define R(n) (c->r[n])
 /* Debug builds of the generated code (NTR_TRACE_ENTRY) record every function entry in a ring buffer
  * that the runtime prints on a fatal error. */
-void ntr_trace_enter(NtrCpu* c, uint32_t addr);
 #ifdef NTR_TRACE_ENTRY
 #define NTR_ENTER(a) ntr_trace_enter(c, a)
 #else
@@ -195,7 +263,7 @@ static inline uint32_t ntr_add_q(NtrCpu* c, uint32_t a, uint32_t b) { /* add, se
 static inline uint32_t ntr_rd32(NtrCpu* c, uint32_t a) {
     uint8_t* p = c->read_pages[a >> NTR_PAGE_SHIFT];
     uint32_t v;
-    if (p) { memcpy(&v, p + (a & (NTR_PAGE_MASK & ~3u)), 4); return v; }
+    if (p) { NTR_MEMCPY(&v, p + (a & (NTR_PAGE_MASK & ~3u)), 4); return v; }
     return ntr_read32_slow(c, a & ~3u);
 }
 /* LDR semantics: misaligned addresses rotate the aligned word. */
@@ -207,7 +275,7 @@ static inline uint32_t ntr_ldr(NtrCpu* c, uint32_t a) {
 static inline uint32_t ntr_rd16(NtrCpu* c, uint32_t a) {
     uint8_t* p = c->read_pages[a >> NTR_PAGE_SHIFT];
     uint16_t v;
-    if (p) { memcpy(&v, p + (a & (NTR_PAGE_MASK & ~1u)), 2); return v; }
+    if (p) { NTR_MEMCPY(&v, p + (a & (NTR_PAGE_MASK & ~1u)), 2); return v; }
     return ntr_read16_slow(c, a & ~1u);
 }
 static inline uint32_t ntr_rd8(NtrCpu* c, uint32_t a) {
@@ -217,13 +285,13 @@ static inline uint32_t ntr_rd8(NtrCpu* c, uint32_t a) {
 }
 static inline void ntr_wr32(NtrCpu* c, uint32_t a, uint32_t v) {
     uint8_t* p = c->write_pages[a >> NTR_PAGE_SHIFT];
-    if (p) { memcpy(p + (a & (NTR_PAGE_MASK & ~3u)), &v, 4); return; }
+    if (p) { NTR_MEMCPY(p + (a & (NTR_PAGE_MASK & ~3u)), &v, 4); return; }
     ntr_write32_slow(c, a & ~3u, v);
 }
 static inline void ntr_wr16(NtrCpu* c, uint32_t a, uint32_t v) {
     uint8_t* p = c->write_pages[a >> NTR_PAGE_SHIFT];
     uint16_t h = (uint16_t)v;
-    if (p) { memcpy(p + (a & (NTR_PAGE_MASK & ~1u)), &h, 2); return; }
+    if (p) { NTR_MEMCPY(p + (a & (NTR_PAGE_MASK & ~1u)), &h, 2); return; }
     ntr_write16_slow(c, a & ~1u, v & 0xFFFF);
 }
 static inline void ntr_wr8(NtrCpu* c, uint32_t a, uint32_t v) {
