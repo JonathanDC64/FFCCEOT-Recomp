@@ -36,7 +36,6 @@
 namespace {
 
 constexpr int kScreenW = 256, kScreenH = 192;
-constexpr int kWideExtra = 43;  // widescreen: 256 + 2 * 43 = 342 pixels wide, 16:9
 constexpr double kFrameSeconds = 560190.0 / 33513982.0;  // one DS frame (59.8261 Hz)
 constexpr char kTitle[] = "Final Fantasy Crystal Chronicles: Echoes of Time";
 
@@ -281,7 +280,7 @@ public:
         v.better_polygons = settings.better_polygons;
         v.hires_coordinates = settings.hires_coordinates;
         v.interpolate = settings.interpolate;
-        v.wide_extra = settings.widescreen ? kWideExtra : 0;
+        v.wide_extra = aspect_extra(settings.aspect);
         v.hud_edges = settings.hud_edges;
         v.hud_scale = settings.hud_scale;
         // (the software renderer can't draw extra frames: it stays at 60)
@@ -311,6 +310,15 @@ public:
         if (runtime_->video().wide_extra != presenter_.wide_extra()) update_layout();  // (the layout follows what is in use)
         ++frames_;
         if (exit_after_frames && frames_ >= exit_after_frames && !menu_shot_pending()) return false;
+        for (auto [it, end] = set_at.equal_range(frames_); it != end; ++it) {
+            const size_t eq = it->second.find('=');
+            if (eq != std::string::npos && set_setting(settings, it->second.substr(0, eq), it->second.substr(eq + 1)))
+                apply_settings();
+            else
+                std::fprintf(stderr, "--set-at-frame: cannot set %s\n", it->second.c_str());
+        }
+        for (auto [it, end] = resize_at.equal_range(frames_); it != end; ++it)
+            main_thread::run([w = window_, size = it->second] { SDL_SetWindowSize(w, size.first, size.second); });
         if (skipping_) {
             // The company logos before the title cannot be skipped in the game: run through them unseen and
             // unheard at full speed. Stop at the title music, on any input, or after a safety limit.
@@ -878,6 +886,8 @@ public:
     bool read_only_save = false;     // testing: the game may save, but nothing is written to disk
     bool unpaced = false;            // testing: run as fast as possible
     uint64_t menu_at_frame = 0;      // debugging: open the menu at this frame
+    std::multimap<uint64_t, std::string> set_at;           // debugging: --set-at-frame: "key=value" settings
+    std::multimap<uint64_t, std::pair<int, int>> resize_at;  // debugging: --resize-at-frame: window sizes
     std::string menu_keys;           // debugging: and press these keys in it
     bool allow_flip_model = true;    // Windows: present through DXGI when possible
     double virtual_display_hz = 144; // testing: with --unpaced, the refresh rate display-rate 3D assumes
@@ -906,6 +916,16 @@ bool parse_align(const std::string& s, video::Align& a) {
     if (s == "top") a = video::Align::Top;
     else if (s == "middle") a = video::Align::Middle;
     else if (s == "bottom") a = video::Align::Bottom;
+    else return false;
+    return true;
+}
+
+bool parse_aspect(const std::string& s, Aspect& a) {
+    if (s == "4:3") a = Aspect::Original;
+    else if (s == "16:9") a = Aspect::W16x9;
+    else if (s == "16:10") a = Aspect::W16x10;
+    else if (s == "21:9") a = Aspect::W21x9;
+    else if (s == "32:9") a = Aspect::W32x9;
     else return false;
     return true;
 }
@@ -941,8 +961,11 @@ int main(int argc, char** argv) {
                      "  --no-interpolate                     3D at the game's 30 fps (default: interpolated to 60)\n"
                      "  --display-rate                       3D interpolated to the display's refresh rate (vsync)\n"
                      "  --no-display-rate                    3D interpolated to 60 fps\n"
-                     "  --widescreen / --no-widescreen       16:9 picture with more of the world to the sides (opengl)\n"
-                     "  --hud-edges                          widescreen: the HUD at the edges of the picture\n"
+                     "  --aspect 4:3|16:9|16:10|21:9|32:9    a wider picture with more of the world to the sides (opengl)\n"
+                     "  --widescreen / --no-widescreen       same as --aspect 16:9 / 4:3\n"
+                     "  --set-at-frame <n> <key>=<value>     debugging: change a setting (settings.ini key) at frame n\n"
+                     "  --resize-at-frame <n> <w>x<h>        debugging: resize the window at frame n\n"
+                     "  --hud-edges                          wider than 4:3: the HUD at the edges of the picture\n"
                      "  --hud-scale 50..200                  the HUD's size in percent (opengl)\n"
                      "other:\n"
                      "  --no-skip-logos --trace-calls --trace-threads --trace-files --net-log --perf --fps-probe --gx-probe --gx-check\n"
@@ -989,6 +1012,8 @@ int main(int argc, char** argv) {
 
     ntr::RuntimeOptions options;
     uint64_t exit_after_frames = 0, menu_at_frame = 0;
+    std::multimap<uint64_t, std::string> set_at;
+    std::multimap<uint64_t, std::pair<int, int>> resize_at;
     bool allow_flip_model = true;
     double virtual_display_hz = 144;
     std::map<uint64_t, std::string> screenshots;
@@ -1074,7 +1099,18 @@ int main(int argc, char** argv) {
             ;
         else if (a == "--menu-at-frame" && has_value)
             menu_at_frame = std::strtoull(argv[++i], nullptr, 10);
-        else if (a == "--menu-tab" && has_value)
+        else if (a == "--set-at-frame" && i + 2 < argc) {
+            const uint64_t f = std::strtoull(argv[++i], nullptr, 10);
+            set_at.emplace(f, argv[++i]);
+        } else if (a == "--resize-at-frame" && i + 2 < argc) {
+            const uint64_t f = std::strtoull(argv[++i], nullptr, 10);
+            int w = 0, h = 0;
+            if (std::sscanf(argv[++i], "%dx%d", &w, &h) != 2 || w < 1 || h < 1) {
+                std::fprintf(stderr, "--resize-at-frame: <w>x<h>\n");
+                return 2;
+            }
+            resize_at.emplace(f, std::make_pair(w, h));
+        } else if (a == "--menu-tab" && has_value)
             menu_tab = argv[++i];
         else if (a == "--menu-keys" && has_value)
             menu_keys = argv[++i];
@@ -1095,9 +1131,11 @@ int main(int argc, char** argv) {
         else if (a == "--interpolate")
             settings.interpolate = true;
         else if (a == "--widescreen")
-            settings.widescreen = true;
+            settings.aspect = Aspect::W16x9;
         else if (a == "--no-widescreen")
-            settings.widescreen = false;
+            settings.aspect = Aspect::Original;
+        else if (a == "--aspect" && has_value && parse_aspect(argv[i + 1], settings.aspect))
+            ++i;
         else if (a == "--hud-edges")
             settings.hud_edges = true;
         else if (a == "--hud-scale" && i + 1 < argc)
@@ -1142,6 +1180,8 @@ int main(int argc, char** argv) {
     host.virtual_display_hz = virtual_display_hz;
     host.perf = options.perf;
     host.menu_at_frame = menu_at_frame;
+    host.set_at = set_at;
+    host.resize_at = resize_at;
     host.menu_keys = menu_keys;
     host.allow_flip_model = allow_flip_model;
     const bool fullscreen = settings.fullscreen;

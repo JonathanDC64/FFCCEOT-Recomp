@@ -48,6 +48,7 @@ bool parse_enum(const std::string& v, const char* const (&names)[N], E& out) {
 }
 
 const char* const kLayouts[] = {"single", "main-side", "stacked", "side"};
+const char* const kAspects[] = {"4:3", "16:9", "16:10", "21:9", "32:9"};
 const char* const kAligns[] = {"top", "middle", "bottom"};
 const char* const kRenderers[] = {"software", "opengl", "compute"};
 const char* const kFilters[] = {"nearest", "linear", "sharp"};
@@ -78,7 +79,7 @@ const Field kFields[] = {
           }},
     ENUM_FIELD("display.side_align", layout.side_align, kAligns),
     BOOL_FIELD("display.fullscreen", fullscreen),
-    BOOL_FIELD("display.widescreen", widescreen),
+    ENUM_FIELD("display.aspect", aspect, kAspects),
     BOOL_FIELD("display.hud_edges", hud_edges),
     Field{"display.hud_size", [](const Settings& s) { return std::to_string(s.hud_scale); },
           [](Settings& s, const std::string& v) { return parse_int(v, 50, 200, s.hud_scale); }},
@@ -167,11 +168,22 @@ bool load_settings(const std::filesystem::path& path, Settings& s) {
         const size_t eq = line.find('=');
         if (eq == std::string::npos) continue;
         const std::string key = trim(line.substr(0, eq)), value = trim(line.substr(eq + 1));
+        if (key == "display.widescreen") {  // (before the aspect ratio setting)
+            bool on;
+            if (parse_bool(value, on) && on && s.aspect == Aspect::Original) s.aspect = Aspect::W16x9;
+            continue;
+        }
         for (const Field& fd : kFields)
             if (key == fd.key) fd.set(s, value);
         set_binding(s, key, value);
     }
     return true;
+}
+
+bool set_setting(Settings& s, const std::string& key, const std::string& value) {
+    for (const Field& fd : kFields)
+        if (key == fd.key) return fd.set(s, value);
+    return set_binding(s, key, value);
 }
 
 bool save_settings(const std::filesystem::path& path, const Settings& s) {

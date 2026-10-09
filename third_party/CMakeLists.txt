@@ -52,6 +52,11 @@ ffcc_patch(gpu3d_src GPU3D.cpp "            Viewport[4] = (Viewport[2] - Viewpor
 # a while (ffcc_wide_block), instead of widening a backdrop that has nothing for the sides.
 ffcc_patch(gpu3d_src GPU3D.cpp "    vertextrans->Position[3] = (vertex[0]*ClipMatrix[3] + vertex[1]*ClipMatrix[7] + vertex[2]*ClipMatrix[11] + vertex[3]*ClipMatrix[15]) >> 12;\n"
   "    vertextrans->Position[3] = (vertex[0]*ClipMatrix[3] + vertex[1]*ClipMatrix[7] + vertex[2]*ClipMatrix[11] + vertex[3]*ClipMatrix[15]) >> 12;\n    if (FfccWideExtra && ProjMatrix[11] == 0 && ProjMatrix[15] == 0x1000) // ffcc patch\n    {\n        ffcc_ortho_verts++;\n        if (FFCC_WIDE_ACTIVE) vertextrans->Position[0] = (vertextrans->Position[0] * 256) / (256 + 2 * FfccWideExtra);\n    }\n    else ffcc_persp_verts++;\n")
+# The vertices' X positions wrap at 9 bits (13 for the hi-res ones): a picture wider than 511 pixels needs more.
+ffcc_patch(gpu3d_src GPU3D.cpp "vtx->FinalPosition[0] = posX & 0x1FF;"
+  "vtx->FinalPosition[0] = posX & (FfccWideExtra ? 0x7FF : 0x1FF); // ffcc patch")
+ffcc_patch(gpu3d_src GPU3D.cpp "vtx->HiresPosition[0] = posX & 0x1FFF;"
+  "vtx->HiresPosition[0] = posX & (FfccWideExtra ? 0x7FFF : 0x1FFF); // ffcc patch")
 ffcc_write_patched(gpu3d_src ${CMAKE_CURRENT_BINARY_DIR}/melonds_patched/GPU3D.cpp)
 
 # GPU3D_OpenGL.cpp: with FfccWideExtra set, the 3D texture is (256 + 2 * extra) pixels wide (a widescreen picture; the

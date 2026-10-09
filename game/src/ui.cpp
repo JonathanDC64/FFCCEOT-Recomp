@@ -72,8 +72,8 @@ constexpr int kTabCount = int(std::size(kTabs));
 struct State {
     int layout = 0, swap = 0, pip_size = 30, side_align = 2;  // swap: 0 = top screen main, 1 = bottom
     bool second_screen = true, fullscreen = false;
-    int aspect = 0;                 // 0 = 4:3, 1 = 16:9 (OpenGL renderer)
-    int hud_position = 0;           // widescreen: 0 = centred, 1 = at the edges
+    int aspect = 0;                 // an Aspect (OpenGL renderer)
+    int hud_position = 0;           // wider than 4:3: 0 = centred, 1 = at the edges
     int hud_size = 100;             // percent
     int renderer = 1, scale = 0, filter = 1;
     bool better_polygons = false, hires_coordinates = true;
@@ -250,7 +250,7 @@ struct Menu::Impl {
         state.pip_size = int(s.layout.pip_size * 100 + 0.5f);
         state.side_align = int(s.layout.side_align);
         state.fullscreen = s.fullscreen;
-        state.aspect = s.widescreen ? 1 : 0;
+        state.aspect = int(s.aspect);
         state.hud_position = s.hud_edges ? 1 : 0;
         state.hud_size = s.hud_scale;
         state.renderer = int(s.renderer);
@@ -284,7 +284,7 @@ struct Menu::Impl {
         s.layout.pip_size = std::clamp(state.pip_size, 10, 50) / 100.0f;
         s.layout.side_align = video::Align(std::clamp(state.side_align, 0, 2));
         s.fullscreen = state.fullscreen;
-        s.widescreen = state.aspect != 0;
+        s.aspect = Aspect(std::clamp(state.aspect, 0, 4));
         s.hud_edges = state.hud_position != 0;
         s.hud_scale = std::clamp(state.hud_size, 50, 200);
         s.renderer = ntr::Renderer(std::clamp(state.renderer, 0, 2));

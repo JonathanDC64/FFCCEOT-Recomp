@@ -8,12 +8,19 @@
 #include "ntr/runtime.hpp"
 #include "video.hpp"
 
+// The top screen's aspect ratio (OpenGL renderer). The DS's 256 x 192 picture grows by "extra" 3D pixels on each side.
+enum class Aspect { Original, W16x9, W16x10, W21x9, W32x9 };
+inline int aspect_extra(Aspect a) {
+    constexpr int kExtra[] = {0, 43, 26, 100, 214};  // (192 * ratio - 256) / 2: 16:9, 16:10, 64:27, 32:9
+    return kExtra[int(a)];
+}
+
 struct Settings {
     // Display
     video::LayoutSettings layout;
     bool fullscreen = false;
-    bool widescreen = false;  // 16:9 top screen (OpenGL renderer)
-    bool hud_edges = false;   // widescreen: the HUD at the edges of the picture rather than the middle
+    Aspect aspect = Aspect::Original;  // a wider top screen (OpenGL renderer)
+    bool hud_edges = false;   // wider than 4:3: the HUD at the edges of the picture rather than the middle
     int hud_scale = 100;      // the HUD's size in percent (50-200)
     // Graphics
     ntr::Renderer renderer = ntr::Renderer::OpenGL;
@@ -41,6 +48,8 @@ struct Settings {
 // Returns false if the file does not exist.
 bool load_settings(const std::filesystem::path& path, Settings& s);
 bool save_settings(const std::filesystem::path& path, const Settings& s);
+// Sets one setting by its settings.ini key and value ("display.aspect", "21:9"). False if either is not valid.
+bool set_setting(Settings& s, const std::string& key, const std::string& value);
 
 // The DNS server for an online server setting: "wiilink" (WiiLink WFC), "kaeru" (Kaeru WFC, on Wiimmfi), "host" (the
 // host's own DNS, 0.0.0.0) or a DNS address such as "5.161.56.11". False if it is none of these.

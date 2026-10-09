@@ -185,10 +185,11 @@ and interpolation (§5.3) need our own rasteriser:
    **re-anchored per element** (left/right HUD groups) through hooks on the HUD drawing code, with a generic "center 4:3 HUD" fallback.
 4. Full-screen 2D effects (fades, master brightness) are stretched to the wide area.
 
-**Today (16:9, OpenGL renderer; `--widescreen` or Display → Aspect ratio):**
+**Today (16:9, 16:10, 21:9 and 32:9, OpenGL renderer; `--aspect` or Display → Aspect ratio):**
 - The game's G3 perspective setup (`main 02028104`, hook `cfie_perspective_aspect`) gets a wider aspect (4:3 is 0x1555).
-  The geometry engine widens a full-screen viewport to `256 + 2 * 43` pixels (`FfccWideExtra`; the 9-bit limit allows 511),
-  and the 3D texture is that wide.
+  The geometry engine widens a full-screen viewport to `256 + 2 * extra` pixels (`FfccWideExtra`: 43 for 16:9, 26, 100, 214
+  for 32:9), and the 3D texture is that wide. The vertices' X positions wrap at 9 bits (13 for the hi-res ones) in
+  melonDS, which limits a picture to 511 pixels (21:9 is 456); the patch widens the masks while a wide picture is on.
 - Engine A's 2D is natively wide too (patched melonDS shaders, `third_party/CMakeLists.txt`): the sprite pass, the
   compositor and the final pass work in `256 + 2 * extra` pixels, with the DS's 256 in the middle. The 3D layer and sprites
   reach the sides; the backgrounds (dialogs, menus) stay 4:3 in the middle. Engine B (the bottom screen) stays 256 wide, and
@@ -198,7 +199,7 @@ and interpolation (§5.3) need our own rasteriser:
 - The HUD: `RenderSprites` groups engine A's touching sprites into clusters; a cluster of at most 150 x 110 pixels at the
   left or right edge is scaled (HUD size, 50-200%) about the screen's corner and, with "HUD at the edges", moved out to the
   edge of the wide picture (a per-sprite transform in the sprite vertex shader). Dialogs and menus are BG layers and are not scaled.
-- Not done: the compute renderer, other aspect ratios, a culling hook (objects the game culls at the 4:3 edge can pop in
+- Not done: the compute renderer, a culling hook (objects the game culls at the 4:3 edge can pop in
   at the sides), HUD size for dialogs and menus.
 
 ### 5.3 60+ FPS

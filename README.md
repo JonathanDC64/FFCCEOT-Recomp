@@ -71,8 +71,8 @@ The window title shows the current settings. The same choices exist as options:
 `--renderer software|opengl|compute`, `--scale auto|1..16`, `--filter nearest|linear|sharp`, `--better-polygons`,
 `--no-hires-coordinates`.
 
-Widescreen (OpenGL renderer; Display → Aspect ratio, or `--widescreen`): a 16:9 top screen with more of the world to the
-sides. The health and magic bars can sit at the screen edges (`--hud-edges`) and be resized (`--hud-scale 50..200`);
+Widescreen (OpenGL renderer; Display → Aspect ratio, or `--aspect 16:9`): a wider top screen (16:9, 16:10, 21:9 or
+32:9) with more of the world to the sides. The health and magic bars can sit at the screen edges (`--hud-edges`) and be resized (`--hud-scale 50..200`);
 menus, dialogs and the title stay 4:3.
 
 Testing: `--input-script <file>` plays scripted input, one step per line (`<frame> press A+Up [frames]`,
