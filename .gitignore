@@ -66,3 +66,5 @@ Thumbs.db
 
 # Local test scenarios: saves and screenshots of the game (docs/TESTING.md)
 /scenarios/
+dist/
+build_pkg.log

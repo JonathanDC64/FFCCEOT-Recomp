@@ -1,4 +1,6 @@
 cmake_minimum_required(VERSION 3.28)
+# The program carries its C/C++ runtime (no Visual C++ redistributable to install), for every target including the fetched ones.
+set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 project(FFCCEOTRecomp VERSION 0.1.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
@@ -15,6 +17,17 @@ endif()
 
 # Path to the user's own ROM. Only needed for steps that generate code from it (dev mode).
 set(FFCC_ROM "" CACHE FILEPATH "Path to your own FFCC: Echoes of Time (USA) ROM dump")
+
+# A build for a release package (tools/package.py): no path of the build machine ends up in the binary or its debug info.
+option(FFCC_PACKAGE "Build for a release package" OFF)
+if(FFCC_PACKAGE)
+  if(MSVC)
+    add_compile_options("/clang:-ffile-prefix-map=${CMAKE_SOURCE_DIR}=." "/clang:-ffile-prefix-map=${CMAKE_BINARY_DIR}=.build")
+    add_link_options(/Brepro "/PDBALTPATH:%_PDB%")
+  else()
+    add_compile_options("-ffile-prefix-map=${CMAKE_SOURCE_DIR}=." "-ffile-prefix-map=${CMAKE_BINARY_DIR}=.build")
+  endif()
+endif()
 
 option(FFCC_BUILD_TESTS "Build unit tests" ON)
 option(FFCC_BUILD_GAME "Build the runtime and game executable (needs the melonDS submodule)" ON)

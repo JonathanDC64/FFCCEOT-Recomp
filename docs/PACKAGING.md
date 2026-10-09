@@ -1,7 +1,20 @@
 # Packaging, setup and releases
 
-Status: **design, for review.** Decisions marked *decided* came out of a Q&A with the project owner; the rest are proposals
-or open questions. Nothing here is implemented yet.
+Status: **mostly built.** Setup (§3, §9 steps 1-3 and 8) works, and `tools/package.py` builds the Windows package (§6).
+Decisions marked *decided* came out of a Q&A with the project owner; the rest are proposals or open questions.
+
+## 0. Making a package
+
+```
+python tools/package.py windows [--version 0.1.0-alpha] [--llvm-dir "C:/Program Files/LLVM"] [--no-build]
+```
+
+It configures a clean `build/pkg-windows` (`-DFFCC_PACKAGE=ON`: source paths are mapped away and the PDB path is just
+its name, so the binary holds nothing of the build machine; the C/C++ runtime is linked statically, so the player installs
+nothing), builds the program, runs the tests, takes **clang, lld-link and clang's own headers** from LLVM 22.1.8 (an install
+given with `--llvm-dir`, or the official archive downloaded once into `build/pkgcache` and checked against a pinned
+SHA-256), adds the licences (`NOTICE.md`, `licenses/`), scans the result for game data (ROM or save files, a built game
+module, generated code) and writes `dist/FFCCEOT-Recomp-<version>-windows-x64.zip`. Releases are published by hand, as drafts.
 
 ## 1. Goal
 
