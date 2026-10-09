@@ -78,6 +78,10 @@ const Field kFields[] = {
           }},
     ENUM_FIELD("display.side_align", layout.side_align, kAligns),
     BOOL_FIELD("display.fullscreen", fullscreen),
+    BOOL_FIELD("display.widescreen", widescreen),
+    BOOL_FIELD("display.hud_edges", hud_edges),
+    Field{"display.hud_size", [](const Settings& s) { return std::to_string(s.hud_scale); },
+          [](Settings& s, const std::string& v) { return parse_int(v, 50, 200, s.hud_scale); }},
     ENUM_FIELD("graphics.renderer", renderer, kRenderers),
     Field{"graphics.scale", [](const Settings& s) { return s.scale ? std::to_string(s.scale) : std::string("auto"); },
           [](Settings& s, const std::string& v) {

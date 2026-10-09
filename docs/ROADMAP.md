@@ -56,7 +56,8 @@ Milestones are ordered by dependency. Each ends with a demonstrable result. Desi
 - [x] Screen layouts: single screen with a picture-in-picture second screen (toggle, touchable), main + side (main
       at the left edge, the other filling the rest, top/middle/bottom), stacked, side-by-side, swap; borderless fullscreen
 - [ ] More layout options: PiP position/size/opacity settings, separate window, automatic swap/pop-up from game hooks
-- [ ] Widescreen: projection hook, culling hook, HUD anchoring, fades
+- [x] Widescreen 16:9 (OpenGL renderer): projection hook, wide 3D and engine A 2D compositor, HUD position and size, fades
+- [ ] Widescreen: more aspect ratios (21:9, 32:9, 16:10), the compute renderer, a culling hook for pop-in at the sides, dialog/menu scaling
 - [x] Measure the frame rate (`--fps-probe`): 3D at 30 Hz, top screen only, no display capture
 - [x] Frame interpolation from the GX command stream to 60 Hz (record, match, replay with blended matrices; §5.3)
 - [ ] Interpolation: check camera-cut detection on cutscenes

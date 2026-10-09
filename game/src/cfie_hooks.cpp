@@ -11,6 +11,7 @@ GameEvents events;
 OnlineBuffer online_buffer = OnlineBuffer::Low;
 bool fast_saving = true;
 AnalogMovement analog_movement = AnalogMovement::SinglePlayer;
+uint16_t aspect = 0x1555;
 Stick stick;
 }  // namespace cfie
 
@@ -147,6 +148,20 @@ extern "C" int cfie_analog_move(NtrCpu* c) {
 // 0x0206F1BC: how far a player character's animation (r0, +8 +20: the character) goes in a tick (4.12). The run has
 // one speed on the DS, so with the stick pushed part way its feet would slide: it plays slower, as much as the
 // character moves slower.
+// The perspective setup (G3 perspective: r0 = sin and r1 = cos of the half field of view, r2 = the aspect ratio):
+// widescreen is the aspect ratio. Its only callers pass the DS's 4:3.
+// The geometry engine (third_party/CMakeLists.txt) widens a viewport only while this is counting down (per VBlank), so
+// scenes that do not use this projection (the title) are not stretched.
+// A scene of orthographic geometry only (the title) stays 4:3 (ffcc_wide_block counts frames).
+extern "C" int ffcc_wide_scene;
+extern "C" int ffcc_wide_block;
+extern "C" void cfie_perspective_aspect(NtrCpu* c) {
+    if (c->r[2] == 0x1555 && cfie::aspect != 0x1555 && ffcc_wide_block == 0) {
+        c->r[2] = cfie::aspect;
+        ffcc_wide_scene = 8;
+    }
+}
+
 extern "C" int cfie_player_animation_step(NtrCpu* c) {
     const uint32_t character = ntr_rd32(c, ntr_rd32(c, c->r[0] + 8) + 20);
     if (ntr_rd32(c, character + 364) != kRunAnimation) return 0;

@@ -33,6 +33,7 @@
 namespace {
 
 constexpr int kScreenW = 256, kScreenH = 192;
+constexpr int kWideExtra = 43;  // widescreen: 256 + 2 * 43 = 342 pixels wide, 16:9
 constexpr double kFrameSeconds = 560190.0 / 33513982.0;  // one DS frame (59.8261 Hz)
 constexpr char kTitle[] = "Final Fantasy Crystal Chronicles: Echoes of Time";
 
@@ -235,6 +236,9 @@ public:
         v.better_polygons = settings.better_polygons;
         v.hires_coordinates = settings.hires_coordinates;
         v.interpolate = settings.interpolate;
+        v.wide_extra = settings.widescreen ? kWideExtra : 0;
+        v.hud_edges = settings.hud_edges;
+        v.hud_scale = settings.hud_scale;
         // (the software renderer can't draw extra frames: it stays at 60)
         v.display_rate = settings.interpolate && settings.display_rate && v.renderer != ntr::Renderer::Software;
         return v;
@@ -478,7 +482,9 @@ private:
         const ntr::VideoSettings v = wanted_video();
         if (v.renderer == sent_video_.renderer && v.scale == sent_video_.scale &&
             v.better_polygons == sent_video_.better_polygons && v.hires_coordinates == sent_video_.hires_coordinates &&
-            v.interpolate == sent_video_.interpolate && v.display_rate == sent_video_.display_rate)
+            v.interpolate == sent_video_.interpolate && v.display_rate == sent_video_.display_rate &&
+            v.wide_extra == sent_video_.wide_extra && v.hud_edges == sent_video_.hud_edges &&
+            v.hud_scale == sent_video_.hud_scale)
             return;
         runtime_->set_video(v);
         sent_video_ = v;
@@ -562,6 +568,10 @@ private:
         int w = 0, h = 0, pw = 0, ph = 0;
         SDL_GetWindowSize(window_, &w, &h);
         SDL_GetWindowSizeInPixels(window_, &pw, &ph);
+        // (the runtime's choice: the software and compute renderers stay 4:3)
+        const int extra = runtime_ ? runtime_->video().wide_extra : 0;
+        presenter_.set_wide(extra);
+        cfie::aspect = extra ? uint16_t(((256 + 2 * extra) * 4096 + 96) / 192) : uint16_t(0x1555);
         presenter_.layout(pw, ph, settings.layout);
         pixel_ratio_ = w > 0 ? float(pw) / w : 1.0f;
     }
@@ -864,6 +874,9 @@ int main(int argc, char** argv) {
                      "  --no-interpolate                     3D at the game's 30 fps (default: interpolated to 60)\n"
                      "  --display-rate                       3D interpolated to the display's refresh rate (vsync)\n"
                      "  --no-display-rate                    3D interpolated to 60 fps\n"
+                     "  --widescreen / --no-widescreen       16:9 picture with more of the world to the sides (opengl)\n"
+                     "  --hud-edges                          widescreen: the HUD at the edges of the picture\n"
+                     "  --hud-scale 50..200                  the HUD's size in percent (opengl)\n"
                      "other:\n"
                      "  --no-skip-logos --trace-calls --trace-threads --trace-files --net-log --perf --fps-probe --gx-probe --gx-check\n"
                      "  --profile-functions <file> --dump-at-frame <n> --gx-dump-at-frame <n> --exit-after-frames <n>\n"
@@ -1014,6 +1027,14 @@ int main(int argc, char** argv) {
             settings.hires_coordinates = false;
         else if (a == "--interpolate")
             settings.interpolate = true;
+        else if (a == "--widescreen")
+            settings.widescreen = true;
+        else if (a == "--no-widescreen")
+            settings.widescreen = false;
+        else if (a == "--hud-edges")
+            settings.hud_edges = true;
+        else if (a == "--hud-scale" && i + 1 < argc)
+            settings.hud_scale = std::clamp(std::atoi(argv[++i]), 50, 200);
         else if (a == "--no-interpolate")
             settings.interpolate = false;
         else if (a == "--display-rate")

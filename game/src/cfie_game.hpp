@@ -21,6 +21,8 @@ extern bool fast_saving;
 
 // Analog movement (see cfie_pack_input): when this console sends its stick in its input records. Every console of
 // this build moves a character by the stick its records carry, whatever its own setting, so all stay in step.
+// The 3D projection's aspect ratio (width over height, 4.12 fixed point): 0x1555 is the DS's 4:3.
+extern uint16_t aspect;
 enum class AnalogMovement { Off, SinglePlayer, Multiplayer };
 extern AnalogMovement analog_movement;
 

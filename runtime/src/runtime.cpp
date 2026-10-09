@@ -344,6 +344,7 @@ void RuntimeImpl::end_frame() {
     } else {
         frame.gl_texture = *static_cast<const GLuint*>(top);
         frame.scale = video_.scale;
+        frame.wide_extra = video_.wide_extra;
     }
     if (!host.on_frame(frame)) {
         quit_ = true;
@@ -837,6 +838,13 @@ void RuntimeImpl::apply_video(VideoSettings s) {
         log("video: OpenGL 4.3 is not available for the compute renderer, using OpenGL\n");
         s.renderer = Renderer::OpenGL;
     }
+    // (The widescreen picture is made by the OpenGL and compute renderers only.)
+    if (s.renderer != Renderer::OpenGL) s.wide_extra = 0;
+    s.wide_extra = std::clamp(s.wide_extra, 0, 128);
+    melonDS::FfccWideExtra = s.wide_extra;
+    s.hud_scale = std::clamp(s.hud_scale, 50, 200);
+    melonDS::FfccHudEdges = s.hud_edges && s.wide_extra;
+    melonDS::FfccHudScale = s.hud_scale;
     if (!video_applied_ || s.renderer != video_.renderer) {
         if (s.renderer == Renderer::Software)
             n.SetRenderer(std::make_unique<melonDS::SoftRenderer>(n));

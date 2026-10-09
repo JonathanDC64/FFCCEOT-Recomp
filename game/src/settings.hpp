@@ -12,6 +12,9 @@ struct Settings {
     // Display
     video::LayoutSettings layout;
     bool fullscreen = false;
+    bool widescreen = false;  // 16:9 top screen (OpenGL renderer)
+    bool hud_edges = false;   // widescreen: the HUD at the edges of the picture rather than the middle
+    int hud_scale = 100;      // the HUD's size in percent (50-200)
     // Graphics
     ntr::Renderer renderer = ntr::Renderer::OpenGL;
     int scale = 0;  // internal resolution multiplier, 0 = match the window

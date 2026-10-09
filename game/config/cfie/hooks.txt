@@ -37,3 +37,6 @@ main 02082a40 instead cfie_pack_input
 main 020af120 before cfie_apply_input
 main 02056498 instead cfie_analog_move
 main 0206f1bc instead cfie_player_animation_step
+
+# Widescreen: the projection's aspect ratio (the game's only perspective setup, called with 4:3).
+main 02028104 before cfie_perspective_aspect

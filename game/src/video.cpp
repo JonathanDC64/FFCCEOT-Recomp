@@ -21,12 +21,13 @@ constexpr int kScreenW = 256, kScreenH = 192;
 
 const char* kVS = R"(#version 140
 uniform vec4 uDest;  // x0, y0, x1, y1 in clip space (y0 = top edge)
+uniform vec2 uUvX;   // the part of the texture's width the screen shows
 uniform float uLayer;
 in vec2 vPos;        // unit quad, (0,0) = top left
 out vec3 fTex;
 void main() {
     gl_Position = vec4(mix(uDest.xy, uDest.zw, vPos), 0.0, 1.0);
-    fTex = vec3(vPos, uLayer);
+    fTex = vec3(mix(uUvX.x, uUvX.y, vPos.x), vPos.y, uLayer);
 }
 )";
 
@@ -141,6 +142,7 @@ bool Presenter::init(SDL_Window* window, bool allow_flip_model) {
     u_out_size_ = glGetUniformLocation(prog, "uOutSize");
     u_tex_ = glGetUniformLocation(prog, "uTex");
     u_opacity_ = glGetUniformLocation(prog, "uOpacity");
+    u_uv_x_ = glGetUniformLocation(prog, "uUvX");
 
     const float quad[] = {0, 0, 1, 0, 0, 1, 1, 1};  // triangle strip
     GLuint b, a, t;
@@ -198,15 +200,17 @@ void Presenter::layout(int w, int h, const LayoutSettings& s) {
     width_ = w;
     height_ = h;
     const int first = s.swap ? 1 : 0, second = 1 - first;
+    // Width over height of each screen: the top one is wider with widescreen.
+    const float standard = float(kScreenW) / kScreenH;
+    const float aspect[2] = {wide_extra_ ? float(kScreenW + 2 * wide_extra_) / kScreenH : standard, standard};
     if (s.layout == Layout::Single) {
         // The main screen as large as fits; the other in the bottom right corner, over the main one if it must.
-        const float k = std::min(float(w) / kScreenW, float(h) / kScreenH);
-        const float sw = kScreenW * k, sh = kScreenH * k;
+        const float sh = std::min(float(h), w / aspect[first]), sw = sh * aspect[first];
         views_[0] = {first, {(w - sw) / 2, (h - sh) / 2, sw, sh}, 1.0f, false};
         view_count_ = 1;
         if (s.second_screen) {
-            const float ph = std::min(h * std::clamp(s.pip_size, 0.1f, 0.5f), float(w) * kScreenH / kScreenW / 2);
-            const float pw = ph * kScreenW / kScreenH, margin = std::round(h * 0.015f);
+            const float ph = std::min(h * std::clamp(s.pip_size, 0.1f, 0.5f), w / aspect[second] / 2);
+            const float pw = ph * aspect[second], margin = std::round(h * 0.015f);
             views_[1] = {second, {w - pw - margin, h - ph - margin, pw, ph}, std::clamp(s.pip_opacity, 0.2f, 1.0f), true};
             view_count_ = 2;
         }
@@ -216,12 +220,12 @@ void Presenter::layout(int w, int h, const LayoutSettings& s) {
         // The main screen as tall as the window allows while leaving the side screen at least 30% of its width,
         // pinned to the left; the side screen takes the rest of the width, aligned to the main screen's top, middle
         // or bottom.
-        const float k = std::min(float(h) / kScreenH, float(w) / (kScreenW * 1.3f));
-        const Rect main{0, std::round((h - kScreenH * k) / 2), kScreenW * k, kScreenH * k};
-        float sw = w - main.w, sh = sw * kScreenH / kScreenW;
+        const float mh = std::min(float(h), w / (aspect[first] * 1.3f));
+        const Rect main{0, std::round((h - mh) / 2), mh * aspect[first], mh};
+        float sw = w - main.w, sh = sw / aspect[second];
         if (sh > h) {
             sh = float(h);
-            sw = sh * kScreenW / kScreenH;
+            sw = sh * aspect[second];
         }
         const float sx = main.w + (w - main.w - sw) / 2;
         const float sy = s.side_align == Align::Top      ? main.y
@@ -233,12 +237,18 @@ void Presenter::layout(int w, int h, const LayoutSettings& s) {
         return;
     }
     const bool stacked = s.layout == Layout::Stacked;
-    const float k = stacked ? std::min(float(w) / kScreenW, float(h) / (kScreenH * 2))
-                            : std::min(float(w) / (kScreenW * 2), float(h) / kScreenH);
-    const float sw = kScreenW * k, sh = kScreenH * k;
-    const float x = (w - (stacked ? sw : sw * 2)) / 2, y = (h - (stacked ? sh * 2 : sh)) / 2;
-    views_[0] = {first, {x, y, sw, sh}, 1.0f, false};
-    views_[1] = {second, {stacked ? x : x + sw, stacked ? y + sh : y, sw, sh}, 1.0f, false};
+    const float wa = aspect[first], wb = aspect[second];
+    const float sh = stacked ? std::min(float(h) / 2, w / std::max(wa, wb)) : std::min(float(h), w / (wa + wb));
+    const float wa_px = sh * wa, wb_px = sh * wb;
+    if (stacked) {
+        const float y = (h - sh * 2) / 2;
+        views_[0] = {first, {(w - wa_px) / 2, y, wa_px, sh}, 1.0f, false};
+        views_[1] = {second, {(w - wb_px) / 2, y + sh, wb_px, sh}, 1.0f, false};
+    } else {
+        const float x = (w - wa_px - wb_px) / 2, y = (h - sh) / 2;
+        views_[0] = {first, {x, y, wa_px, sh}, 1.0f, false};
+        views_[1] = {second, {x + wa_px, y, wb_px, sh}, 1.0f, false};
+    }
     view_count_ = 2;
 }
 
@@ -310,10 +320,16 @@ void Presenter::draw(const ntr::Frame* frame, Filter filter) {
                 glDisable(GL_SCISSOR_TEST);
             }
             if (v.opacity < 1.0f) glEnable(GL_BLEND);
-            glUniform4f(u_dest_, r.x / width_ * 2 - 1, 1 - r.y / height_ * 2, (r.x + r.w) / width_ * 2 - 1,
-                        1 - (r.y + r.h) / height_ * 2);
+            // The renderer's output is wider with widescreen: the bottom screen is its middle part.
+            const bool wide = frame->wide_extra > 0 && !frame->top;
+            const float inner = wide ? float(kScreenW) / (kScreenW + 2 * frame->wide_extra) : 1.0f;
+            const float u0 = v.screen == 1 ? (1 - inner) / 2 : 0.0f, u1 = v.screen == 1 ? 1 - u0 : 1.0f;
+            glUniform2f(u_uv_x_, u0, u1);
+            const Rect& pr = r;
+            glUniform4f(u_dest_, pr.x / width_ * 2 - 1, 1 - pr.y / height_ * 2, (pr.x + pr.w) / width_ * 2 - 1,
+                        1 - (pr.y + pr.h) / height_ * 2);
             glUniform1f(u_layer_, float(v.screen));
-            glUniform2f(u_out_size_, r.w, r.h);
+            glUniform2f(u_out_size_, v.screen == 1 && inner < 1.0f ? pr.w / inner : pr.w, pr.h);
             glUniform1f(u_opacity_, v.opacity);
             glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
             glDisable(GL_BLEND);

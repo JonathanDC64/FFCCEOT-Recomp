@@ -59,7 +59,28 @@
                 <span class="label">Fullscreen</span>
                 <input type="checkbox" data-checked="fullscreen"/>
             </div>
+            <div class="row nav" data-if="renderer == 1">
+                <span class="label">Aspect ratio</span>
+                <select data-value="aspect">
+                    <option value="0">4:3 (original)</option>
+                    <option value="1">16:9 (widescreen)</option>
+                </select>
+            </div>
+            <div class="row nav" data-if="renderer == 1 &amp;&amp; aspect == 1">
+                <span class="label">HUD position</span>
+                <select data-value="hud_position">
+                    <option value="0">Centred (as the original)</option>
+                    <option value="1">At the screen edges</option>
+                </select>
+            </div>
+            <div class="row nav" data-if="renderer == 1">
+                <span class="label">HUD size</span>
+                <input type="range" min="50" max="200" step="5" data-value="hud_size"/>
+                <span class="value">{{ hud_size }}%</span>
+            </div>
             <p class="note">Click the second screen with the mouse to touch it.</p>
+            <p class="note" data-if="renderer != 1">The widescreen picture and the HUD size need the OpenGL renderer (Graphics).</p>
+            <p class="note" data-if="renderer == 1 &amp;&amp; aspect == 1">Widescreen shows more of the world to the sides; menus, dialogs and the title stay 4:3. The HUD size applies to the health and magic bars in the corners.</p>
         </div>
 
         <div class="page" data-if="tab == 'graphics'">

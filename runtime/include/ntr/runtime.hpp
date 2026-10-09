@@ -46,6 +46,10 @@ struct VideoSettings {
     bool interpolate = false;        // 3D at 60 fps: blend the game's 30 Hz scenes (one frame of latency)
     bool display_rate = false;       // with interpolate and a GL renderer: blend for each displayed frame instead,
                                      // through render_between() (3D at the display's refresh rate)
+    int wide_extra = 0;              // GL renderers: extra 3D pixels on each side of the 256-wide picture, at 1x (widescreen);
+                                     // the game's projection must be widened to match (cfie::aspect)
+    bool hud_edges = false;          // OpenGL: the HUD's sprite clusters sit at the edges of the wide picture, not in the middle
+    int hud_scale = 100;             // OpenGL: the HUD's size in percent
 };
 
 // One finished frame of both screens.
@@ -53,9 +57,13 @@ struct Frame {
     // Software renderer: the two 256x192 screens (0xAARRGGBB); null for the GL renderers.
     const uint32_t* top = nullptr;
     const uint32_t* bottom = nullptr;
-    // GL renderers: a GL_TEXTURE_2D_ARRAY of (256 x 192) * scale texels, layer 0 the top screen, layer 1 the bottom.
+    // GL renderers: a GL_TEXTURE_2D_ARRAY of (256 x 192) * scale texels (wider with widescreen), layer 0 the top screen,
+    // layer 1 the bottom.
     unsigned gl_texture = 0;
     int scale = 1;
+    // Widescreen: the array texture is (256 + 2 * wide_extra) * scale texels wide (0: 256 * scale). The top screen's
+    // picture fills it; the bottom screen's 256 pixels are in the middle.
+    int wide_extra = 0;
 };
 
 // Callbacks into the frontend.

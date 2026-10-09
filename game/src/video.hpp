@@ -71,6 +71,10 @@ public:
     bool has_compute() const { return gl43_; }
     bool flip_model() const { return flip_ != nullptr; }
 
+    // Widescreen: the top screen is (256 + 2 * extra) pixels wide (0 = 4:3), like the renderer's output texture, in
+    // which the bottom screen is in the middle. Takes effect with the next layout().
+    void set_wide(int extra) { wide_extra_ = extra; }
+    int wide_extra() const { return wide_extra_; }
     // Lays the screens out for the window's current size.
     void layout(int window_px_w, int window_px_h, const LayoutSettings& settings);
     // The visible screens in drawing order (later ones are on top).
@@ -108,6 +112,8 @@ private:
     bool gl43_ = false;
     bool vsync_ = false;
     unsigned program_ = 0, vbo_ = 0, vao_ = 0, soft_tex_ = 0;
+    int wide_extra_ = 0;
+    int u_uv_x_ = -1;
     int u_dest_ = -1, u_layer_ = -1, u_sharp_ = -1, u_out_size_ = -1, u_tex_ = -1, u_opacity_ = -1;
     int width_ = 0, height_ = 0;
     ScreenView views_[2];

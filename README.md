@@ -8,7 +8,7 @@ A static recompilation of **Final Fantasy Crystal Chronicles: Echoes of Time** (
 
 - Native PC executable. The game's ARM code is translated to C and compiled, not emulated.
 - **60+ FPS** through frame interpolation, with game logic kept at its native tick.
-- **Widescreen** (16:9 → 32:9) and resolutions up to **4K** and beyond.
+- **Widescreen** (16:9 now, more ratios planned) and resolutions up to **4K** and beyond.
 - **Modern controls**: full gamepad play with no touch screen needed, plus rebinding and mouse-as-stylus.
 - **Single-screen play** by default. The second screen is available as an overlay, picture-in-picture, side-by-side, stacked, or a separate window.
 - **Online multiplayer restored** through community Nintendo WFC revival servers, plus LAN play between PCs.
@@ -69,6 +69,10 @@ shows blended images in between, at 60 fps or at the display's refresh rate, e.g
 The window title shows the current settings. The same choices exist as options:
 `--renderer software|opengl|compute`, `--scale auto|1..16`, `--filter nearest|linear|sharp`, `--better-polygons`,
 `--no-hires-coordinates`.
+
+Widescreen (OpenGL renderer; Display → Aspect ratio, or `--widescreen`): a 16:9 top screen with more of the world to the
+sides. The health and magic bars can sit at the screen edges (`--hud-edges`) and be resized (`--hud-scale 50..200`);
+menus, dialogs and the title stay 4:3.
 
 Testing: `--input-script <file>` plays scripted input, one step per line (`<frame> press A+Up [frames]`,
 `<frame> touch x,y [frames]`, `<frame> stick x,y [frames]` in percent, `<frame> shot file.png`, `<frame> quit`; `+N` as the frame means N frames after the
