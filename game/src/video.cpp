@@ -8,6 +8,7 @@
 #include <memory>
 #include <string>
 
+#include "ntr/hash.hpp"
 #include "OpenGLSupport.h"  // melonDS: glad and the shader compile helper
 #ifdef _WIN32
 #include "flip_present.hpp"
@@ -56,9 +57,9 @@ void main() {
 
 }  // namespace
 
-void Presenter::save_png(const char* path, unsigned target, int width, int height) {
+SDL_Surface* Presenter::read_back(unsigned target, int width, int height) {
     SDL_Surface* surf = SDL_CreateSurface(width, height, SDL_PIXELFORMAT_ABGR8888);
-    if (!surf) return;
+    if (!surf) return nullptr;
     glBindFramebuffer(GL_READ_FRAMEBUFFER, target);
     glReadBuffer(target ? GL_COLOR_ATTACHMENT0 : GL_BACK);
     glPixelStorei(GL_PACK_ALIGNMENT, 4);
@@ -66,8 +67,53 @@ void Presenter::save_png(const char* path, unsigned target, int width, int heigh
     glReadPixels(0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, surf->pixels);
     glPixelStorei(GL_PACK_ROW_LENGTH, 0);
     SDL_FlipSurface(surf, SDL_FLIP_VERTICAL);  // GL rows run bottom-up
+    return surf;
+}
+
+void Presenter::save_png(const char* path, unsigned target, int width, int height) {
+    SDL_Surface* surf = read_back(target, width, height);
+    if (!surf) return;
     if (!SDL_SavePNG(surf, path)) std::fprintf(stderr, "cannot save %s: %s\n", path, SDL_GetError());
     SDL_DestroySurface(surf);
+}
+
+void Presenter::gpu_begin() {
+    serial_++;
+    if (!gpu_timing_ || gpu_active_ || !GLAD_GL_VERSION_3_3) return;
+    GpuQuery q;
+    q.serial = serial_;
+    if (!gpu_free_.empty()) {
+        q.id = gpu_free_.back();
+        gpu_free_.pop_back();
+    } else if (gpu_pending_.size() < 16) {
+        glGenQueries(1, &q.id);
+    } else {
+        return;  // the results are not coming back: skip this one
+    }
+    glBeginQuery(GL_TIME_ELAPSED, q.id);
+    gpu_pending_.push_back(q);
+    gpu_active_ = true;
+}
+
+void Presenter::gpu_end() {
+    if (!gpu_active_) return;
+    glEndQuery(GL_TIME_ELAPSED);
+    gpu_active_ = false;
+}
+
+bool Presenter::poll_gpu_time(std::uint64_t& serial, double& ms) {
+    if (gpu_pending_.empty() || gpu_active_) return false;
+    const GpuQuery q = gpu_pending_.front();
+    GLint ready = 0;
+    glGetQueryObjectiv(q.id, GL_QUERY_RESULT_AVAILABLE, &ready);
+    if (!ready) return false;
+    GLuint64 ns = 0;
+    glGetQueryObjectui64v(q.id, GL_QUERY_RESULT, &ns);
+    gpu_pending_.pop_front();
+    gpu_free_.push_back(q.id);
+    serial = q.serial;
+    ms = double(ns) / 1e6;
+    return true;
 }
 
 const char* layout_name(Layout l) {
@@ -416,6 +462,12 @@ void Presenter::show_second(const ntr::Frame* frame, Filter filter, const char* 
 
 void Presenter::swap(const char* screenshot) {
     if (screenshot) save_png(screenshot, target_, width_, height_);
+    if (hash_pictures_) {
+        if (SDL_Surface* surf = read_back(target_, width_, height_)) {
+            picture_hash_ = ntr::hash64(surf->pixels, size_t(surf->pitch) * size_t(surf->h), picture_hash_);
+            SDL_DestroySurface(surf);
+        }
+    }
 #ifdef _WIN32
     if (flip_) {
         flip_->present(vsync_, tearing_);

@@ -129,7 +129,8 @@ Milestones are ordered by dependency. Each ends with a demonstrable result. Desi
 - [ ] Online with real DS/emulator clients, and a save launched in another instance (another MAC) keeping its account
 - [x] Network tab: input buffer (Low delay by default, Medium, or the game's Original) for connections whose packets
       come late
-- [ ] Determinism harness (input replay + per-frame state hashes)
+- [x] Determinism harness: exclusive input replay, per-frame state and picture hashes, perf CSV, `tools/scenario.py` (docs/TESTING.md)
+- [ ] Run the determinism check in a netplay session (two instances, one input log)
 - [x] Local wireless between instances on one PC (MP frames through shared memory, own MAC per instance)
 - [ ] Local wireless between PCs: MP frames over UDP, discovery
 - [ ] Cross-play test with real DS/Wii (Dolphin) clients on WiiLink WFC

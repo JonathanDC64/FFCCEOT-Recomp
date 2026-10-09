@@ -88,7 +88,7 @@ add_custom_command(
 file(GLOB FFCC_UI_SOURCES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/*.cpp)
 
 # The game executable: takes the user's ROM on the command line.
-add_executable(ffcc src/main.cpp src/game_module.cpp src/process.cpp src/setup.cpp src/crash_report.cpp src/crash_dialog.cpp src/report.cpp src/video.cpp src/cfie_hooks.cpp src/settings.cpp src/input.cpp src/app_icon.cpp ${FFCC_UI_SOURCES} ${FFCC_UI_ASSETS})
+add_executable(ffcc src/main.cpp src/game_module.cpp src/process.cpp src/setup.cpp src/crash_report.cpp src/crash_dialog.cpp src/report.cpp src/video.cpp src/cfie_hooks.cpp src/settings.cpp src/input.cpp src/app_icon.cpp src/input_script.cpp ${FFCC_UI_SOURCES} ${FFCC_UI_ASSETS})
 target_include_directories(ffcc PRIVATE src)
 if(FFCC_ROM)
   add_dependencies(ffcc cfie_game)  # (built together, next to the executable)

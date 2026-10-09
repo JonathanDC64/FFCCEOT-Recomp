@@ -64,6 +64,10 @@ struct Frame {
     // Widescreen: the array texture is (256 + 2 * wide_extra) * scale texels wide (0: 256 * scale). The top screen's
     // picture fills it; the bottom screen's 256 pixels are in the middle.
     int wide_extra = 0;
+    // Measurements of the emulation up to this frame (testing, see docs/TESTING.md).
+    double emu_ms = 0;               // host time spent emulating this frame (not the frontend's pacing or presenting)
+    uint64_t interp_steps = 0;       // instructions the interpreter ran for the frames' functions this frame
+    uint64_t state_hash = 0;         // RuntimeOptions::frame_hash: a hash of the emulated memory and the CPU's clock
 };
 
 // Callbacks into the frontend.
@@ -89,6 +93,7 @@ struct RuntimeOptions {
     bool gx_probe = false;     // log how well each 3D scene's GX command stream matches the previous one
     bool gx_check = false;     // replay each 3D scene's GX commands and check the polygon list comes out the same
     uint64_t gx_dump_at_frame = 0;  // write the first 3D scene swapped in at or after this frame to gx_scene.txt
+    bool frame_hash = false;   // Frame::state_hash (a few hundred microseconds a frame)
     bool trace_files = false;  // log which ROM file each cartridge read hits (with the frame number)
     bool net_log = false;      // log the console's internet traffic: DNS lookups and answers, TCP connections
     // Speed-ups (set_fast_cart, set_cpu_speed) at start.

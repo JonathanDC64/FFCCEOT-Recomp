@@ -18,6 +18,7 @@
 #include "SPU.h"
 #include "gx_hook.hpp"
 #include "local_wireless.hpp"
+#include "ntr/hash.hpp"
 #include "ntr/rom.hpp"
 #include "runtime_internal.hpp"
 
@@ -342,6 +343,7 @@ void RuntimeImpl::advance() {
 void RuntimeImpl::end_frame() {
     melonDS::NDS& n = *nds;
     frames_++;
+    const auto emulated_until = std::chrono::steady_clock::now();
 
     int avail = n.SPU.GetOutputSize();
     if (avail > 0) {
@@ -365,6 +367,19 @@ void RuntimeImpl::end_frame() {
         frame.gl_texture = *static_cast<const GLuint*>(top);
         frame.scale = video_.scale;
         frame.wide_extra = video_.wide_extra;
+    }
+    if (perf_mark_ != std::chrono::steady_clock::time_point{})
+        frame.emu_ms = std::chrono::duration<double, std::milli>(emulated_until - perf_mark_).count();
+    frame.interp_steps = interp_steps_ - frame_steps_mark_;
+    frame_steps_mark_ = interp_steps_;
+    if (options.frame_hash) {
+        // The main RAM and the two work RAMs hold everything the game computes; the clock catches a run that is
+        // late or early without any memory differing yet.
+        uint64_t h = ntr::hash64(n.MainRAM, size_t(n.MainRAMMask) + 1);
+        h = ntr::hash64(n.SharedWRAM, n.SharedWRAMSize, h);
+        h = ntr::hash64(n.ARM7WRAM, n.ARM7WRAMSize, h);
+        const uint64_t clock[2] = {uint64_t(cpu.cycles), frames_};
+        frame.state_hash = ntr::hash64(clock, sizeof clock, h);
     }
     if (!host.on_frame(frame)) {
         quit_ = true;

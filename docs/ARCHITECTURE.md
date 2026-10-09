@@ -613,7 +613,8 @@ accessibility (button holds → toggles, colour filters) · Steam Deck profile.
   Coverage reports from real play sessions.
 - **Runtime**: unit tests for DIV/SQRT, BIOS decompression, VRAM mapping, the GX matrix engine. Golden-image tests of the 3D renderer
   at 1× against melonDS output (run locally by developers with their own ROM; never in CI).
-- **Determinism**: replay recorded input logs and compare per-frame state hashes. This guards netplay cross-play.
+- **Determinism**: replay recorded input logs and compare per-frame state hashes (`--frame-hash`, `tools/scenario.py compare`;
+  docs/TESTING.md). This guards netplay cross-play and finds where two builds or settings part ways.
 - **CI** (GitHub Actions) builds without a ROM: recompiler, runtime and unit tests, plus the copyright-guard check. CI never has access to game data.
 
 ## 11. Main risks

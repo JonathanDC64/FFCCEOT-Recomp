@@ -32,9 +32,11 @@
 #include "game_module.hpp"
 #include "report.hpp"
 #include "input.hpp"
+#include "input_script.hpp"
 #include "main_thread.hpp"
 #include "ntr/rom.hpp"
 #include "ntr/runtime.hpp"
+#include "perf_log.hpp"
 #include "settings.hpp"
 #include "setup.hpp"
 #include "ui/app.hpp"
@@ -62,142 +64,18 @@ std::vector<uint8_t> read_file(const std::filesystem::path& p) {
     return std::vector<uint8_t>(std::istreambuf_iterator<char>(f), {});
 }
 
-// Testing: scripted input (--input-script). One step per line, "<frame> <command> [args]", where <frame> is a frame
-// number or +N (N frames after the previous step's frame) and the commands are
-//   press A+Up [frames]    hold these DS buttons for a number of frames (default 1)
-//   tap A+Up               these DS buttons went down this frame, even if not held (a tap shorter than a frame)
-//   touch x,y [frames]     touch the bottom screen at a DS pixel (default 1 frame)
-//   stick x,y [frames]     push the left stick (percent, -100 to 100, y down; default 1 frame)
-//   shot file.png          save the window
-//   quit                   exit
-// Blank lines and lines starting with # are ignored. Script input adds to the real input. --record-input writes the
-// real input in this form, so a session can be replayed: the emulation is deterministic (the DS clock starts at the
-// same date on every boot) as long as the save file and the CPU speed and fast loading settings are the same.
-struct ScriptStep {
-    uint64_t frame = 0, frames = 1;
-    uint32_t buttons = 0, taps = 0;
-    int touch_x = -1, touch_y = -1;
-    bool stick = false;
-    int stick_x = 0, stick_y = 0;
-    std::string shot;
-    bool quit = false;
-};
+using ScriptStep = input_script::Step;
 
-const std::pair<const char*, uint32_t> kButtonNames[] = {
-    {"A", ntr::KeyA},   {"B", ntr::KeyB},       {"X", ntr::KeyX},       {"Y", ntr::KeyY},
-    {"L", ntr::KeyL},   {"R", ntr::KeyR},       {"Start", ntr::KeyStart}, {"Select", ntr::KeySelect},
-    {"Up", ntr::KeyUp}, {"Down", ntr::KeyDown}, {"Left", ntr::KeyLeft}, {"Right", ntr::KeyRight}};
-
-std::string button_names(uint32_t buttons) {
-    std::string s;
-    for (const auto& [n, bit] : kButtonNames)
-        if (buttons & bit) s += (s.empty() ? "" : "+") + std::string(n);
-    return s;
-}
-
-// --record-input: the input of every emulated frame, as input script steps (held buttons and touches as runs).
-class InputRecorder {
-public:
-    bool open(const std::filesystem::path& path) {
-        f_ = std::fopen(path.string().c_str(), "w");
-        if (!f_) return false;
-        std::fprintf(f_, "# recorded with --record-input\n");
-        return true;
-    }
-    ~InputRecorder() {
-        if (!f_) return;
-        end_runs(~0ull);
-        std::fclose(f_);
-    }
-    // The input for emulated frame `frame`: buttons held, buttons that went down since the last frame, the touch.
-    void add(uint64_t frame, uint32_t held, uint32_t pressed, bool touching, int x, int y) {
-        if (!f_) return;
-        const uint32_t edges = held & ~last_held_;
-        if (pressed & ~edges) std::fprintf(f_, "%llu tap %s\n", (unsigned long long)frame, button_names(pressed & ~edges).c_str());
-        if (held != last_held_ || touching != last_touching_ || (touching && (x != last_x_ || y != last_y_))) {
-            end_runs(frame);
-            if (held) held_from_ = frame;
-            if (touching) touch_from_ = frame;
-        }
-        last_held_ = held;
-        last_touching_ = touching;
-        last_x_ = x;
-        last_y_ = y;
-        last_frame_ = frame;
-    }
-
-private:
-    void end_runs(uint64_t frame) {
-        const uint64_t end = frame == ~0ull ? last_frame_ + 1 : frame;
-        if (last_held_)
-            std::fprintf(f_, "%llu press %s %llu\n", (unsigned long long)held_from_, button_names(last_held_).c_str(),
-                         (unsigned long long)(end - held_from_));
-        if (last_touching_)
-            std::fprintf(f_, "%llu touch %d,%d %llu\n", (unsigned long long)touch_from_, last_x_, last_y_,
-                         (unsigned long long)(end - touch_from_));
-        std::fflush(f_);
-    }
-
-    FILE* f_ = nullptr;
-    uint32_t last_held_ = 0;
-    bool last_touching_ = false;
-    int last_x_ = 0, last_y_ = 0;
-    uint64_t held_from_ = 0, touch_from_ = 0, last_frame_ = 0;
-};
-
-bool parse_buttons(const std::string& s, uint32_t& out) {
-    const auto& kNames = kButtonNames;
-    out = 0;
-    std::stringstream in(s);
-    for (std::string name; std::getline(in, name, '+');) {
-        bool found = false;
-        for (const auto& [n, bit] : kNames)
-            if (SDL_strcasecmp(n, name.c_str()) == 0) {
-                out |= bit;
-                found = true;
-            }
-        if (!found) return false;
-    }
-    return out != 0;
-}
-
-bool load_input_script(const std::filesystem::path& path, std::vector<ScriptStep>& steps) {
-    std::ifstream f(path);
-    if (!f) {
-        std::fprintf(stderr, "cannot read the input script %s\n", path.string().c_str());
-        return false;
-    }
-    uint64_t last = 0;
-    int line_no = 0;
-    for (std::string line; std::getline(f, line);) {
-        ++line_no;
-        std::stringstream in(line);
-        std::string when, cmd, arg;
-        if (!(in >> when) || when[0] == '#') continue;
-        in >> cmd >> arg;
-        ScriptStep s;
-        s.frame = when[0] == '+' ? last + std::strtoull(when.c_str() + 1, nullptr, 10)
-                                 : std::strtoull(when.c_str(), nullptr, 10);
-        bool ok = true;
-        if (cmd == "press") ok = parse_buttons(arg, s.buttons);
-        else if (cmd == "tap") ok = parse_buttons(arg, s.taps);
-        else if (cmd == "touch") ok = std::sscanf(arg.c_str(), "%d,%d", &s.touch_x, &s.touch_y) == 2;
-        else if (cmd == "stick") s.stick = ok = std::sscanf(arg.c_str(), "%d,%d", &s.stick_x, &s.stick_y) == 2;
-        else if (cmd == "shot") s.shot = arg, ok = !arg.empty();
-        else if (cmd == "quit") s.quit = true;
-        else ok = false;
-        if (cmd == "press" || cmd == "touch" || cmd == "stick") {
-            uint64_t n = 0;
-            if (in >> n) s.frames = std::max<uint64_t>(n, 1);
-        }
-        if (!ok) {
-            std::fprintf(stderr, "%s:%d: cannot read \"%s\"\n", path.string().c_str(), line_no, line.c_str());
-            return false;
-        }
-        steps.push_back(s);
-        last = s.frame;
-    }
-    return true;
+// The settings that decide what the emulation does (the rest only changes how it is shown): a recording lists them
+// (`# require`) and a replay refuses to run with others, because the run would drift from the recording.
+std::map<std::string, std::string> emulation_settings(const Settings& s) {
+    const char* analog[] = {"off", "single-player", "multiplayer"};
+    return {{"cpu_speed", std::to_string(s.cpu_speed)},
+            {"fast_loading", s.fast_loading ? "1" : "0"},
+            {"fast_saving", s.fast_saving ? "1" : "0"},
+            {"skip_logos", s.skip_logos ? "1" : "0"},
+            {"analog_movement", analog[std::clamp(int(s.controls.analog_movement), 0, 2)]},
+            {"aspect", std::to_string(int(s.aspect))}};
 }
 
 class SdlHost final : public ntr::Host {
@@ -324,6 +202,12 @@ public:
         runtime_ = nullptr;
     }
 
+    // Testing: what the presenter measures for --frame-hash (the picture) and --perf-log (the GPU time).
+    void test_logs(bool pictures, bool gpu) {
+        presenter_.hash_pictures(pictures);
+        presenter_.gpu_timing(gpu);
+    }
+
     bool on_frame(const ntr::Frame& frame) override {
         if (!show_frame(frame)) return false;
         // Input last, once the frame has been shown and paced: the runtime hands it to the DS for the frame that runs
@@ -366,6 +250,7 @@ public:
                     presenter_.set_vsync(false);
                     present_ui_only();
                 }
+                log_frame(frame);
                 return true;
             }
             skipping_ = false;
@@ -388,14 +273,38 @@ public:
             present_display_rate(frame, shot_path);
         } else {
             presenter_.set_vsync(false);
-            presenter_.present(&frame, settings.filter, shot_path);
+            present_timed(&frame, shot_path, 0, 0, 0);
         }
         if (++frames_since_save_ > 120) flush_save();
         if (script_shot) script_shot_.clear();
         if (report_shot) finish_report();
+        pace_late_ms_ = 0;
         if (script_quit_ && frames_ >= script_quit_) return false;
         if (!unpaced && !runtime_->video().display_rate) pace();
+        log_frame(frame);
         return true;
+    }
+
+    // Presents a picture; with --perf-log, times it (the k-th of the emulated frame).
+    void present_timed(const ntr::Frame* f, const char* shot_path, int k, double interp_ms, double late_ms) {
+        if (!perf_log.is_open()) {
+            presenter_.present(f, settings.filter, shot_path);
+            return;
+        }
+        const double t = seconds();
+        presenter_.present(f, settings.filter, shot_path);
+        perf_log.presented(frames_, k, (seconds() - t) * 1000.0, interp_ms, late_ms, presenter_.present_serial());
+    }
+
+    // The testing logs of an emulated frame, once it has been shown (--perf-log, --frame-hash).
+    void log_frame(const ntr::Frame& frame) {
+        if (perf_log.is_open()) {
+            std::uint64_t serial;
+            double ms;
+            while (presenter_.poll_gpu_time(serial, ms)) perf_log.gpu(serial, ms);
+            perf_log.emulated(frames_, frame.emu_ms, frame.interp_steps, pace_late_ms_);
+        }
+        hash_log.add(frames_, frame.state_hash, presenter_.take_picture_hash());
     }
 
     void on_audio(const int16_t* samples, size_t frames) override {
@@ -717,6 +626,14 @@ private:
     // Puts edited settings into effect as they are changed (the game is running behind the menu).
     void apply_settings() {
         settings_dirty_ = true;
+        // A setting that changes the emulation, changed during a recording: the replay drifts from here.
+        if (recorder.is_open()) {
+            const auto now = emulation_settings(settings);
+            for (const auto& [key, value] : now)
+                if (emulation_last_[key] != value)
+                    recorder.warning(frames_ + 1, key + " changed to " + value + ": the replay drifts after this frame");
+            emulation_last_ = now;
+        }
         if (settings.fullscreen != fullscreen_) set_fullscreen(settings.fullscreen);
         ui::apply_scale();
         update_layout();
@@ -922,6 +839,17 @@ private:
         bool down[input::kActionCount];
         for (int i = 0; i < input::kActionCount; i++)
             down[i] = (c.key[i] != SDL_SCANCODE_UNKNOWN && k[c.key[i]]) || input::pad_held(gamepad_, c.pad[i], dead);
+        // A replay is the only input the game gets: the real keyboard, mouse and gamepad are ignored (--mix-real-input).
+        const bool exclusive = !script.empty() && !mix_real_input;
+        if (exclusive)
+            for (int i = 0; i < input::kFirstAppAction; i++) down[i] = false;
+        if (recorder.is_open() && k[SDL_SCANCODE_F12] != mark_down_) {
+            mark_down_ = k[SDL_SCANCODE_F12];
+            if (mark_down_) {
+                recorder.mark(frames_ + 1);
+                ui::push_toast({"info", "Marked", "Frame " + std::to_string(frames_ + 1) + " is marked in the recording.", std::chrono::seconds(3)});
+            }
+        }
 
         uint32_t b = 0;
         for (int i = 0; i < input::kFirstAppAction; i++)
@@ -929,7 +857,7 @@ private:
         // The left stick: the D-pad direction nearest its own (one of eight), and for analog movement its direction
         // and how far it is pushed past the deadzone.
         float lx = 0, ly = 0;
-        if (gamepad_ && c.stick_moves) {
+        if (gamepad_ && c.stick_moves && !exclusive) {
             lx = SDL_GetGamepadAxis(gamepad_, SDL_GAMEPAD_AXIS_LEFTX) / 32767.0f;
             ly = SDL_GetGamepadAxis(gamepad_, SDL_GAMEPAD_AXIS_LEFTY) / 32767.0f;
         }
@@ -955,10 +883,10 @@ private:
         float mx, my, sx = 0, sy = 0;
         const SDL_MouseButtonFlags mb = SDL_GetMouseState(&mx, &my);  // (relative to the window the mouse is in)
         const bool in_second = window2_ && SDL_GetMouseFocus() == window2_;
-        bool touching = (mb & SDL_BUTTON_LMASK) &&
+        bool touching = !exclusive && (mb & SDL_BUTTON_LMASK) &&
                         (in_second ? presenter_.screen_at_second(mx * pixel_ratio2_, my * pixel_ratio2_, &sx, &sy)
                                    : presenter_.screen_at(mx * pixel_ratio_, my * pixel_ratio_, &sx, &sy)) == 1;
-        if (mb & SDL_BUTTON_LMASK) b |= 1u << 31;  // (only for the hold below: any click)
+        if (!exclusive && (mb & SDL_BUTTON_LMASK)) b |= 1u << 31;  // (only for the hold below: any click)
 
         // Around the menu, input is ignored until everything is let go.
         if (input_hold_) {
@@ -968,12 +896,14 @@ private:
             presses_ = 0;
             stick = {};
         }
+        script_analog(stick);
         cfie::stick = stick;
         cfie::analog_movement = c.analog_movement;
         b &= ~(1u << 31);
+        if (exclusive) presses_ = 0;
         script_input(b, touching, sx, sy);
         const int tx = std::clamp(int(sx), 0, kScreenW - 1), ty = std::clamp(int(sy), 0, kScreenH - 1);
-        recorder.add(frames_ + 1, b, presses_, touching, tx, ty);
+        recorder.add(frames_ + 1, b, presses_, touching, tx, ty, stick.x, stick.y);
         runtime_->set_buttons(b, presses_);
         presses_ = 0;
         if (touching)
@@ -989,6 +919,16 @@ private:
         for (const ScriptStep& s : script) {
             if (s.frame > f) break;
             if (s.stick && f < s.frame + s.frames) x = s.stick_x / 100.0f, y = s.stick_y / 100.0f;
+        }
+    }
+
+    // The stick as the game gets it, from --input-script `analog` steps active in the next emulated frame (what a recording
+    // holds: after the deadzone, so the replay's own deadzone does not matter).
+    void script_analog(cfie::Stick& stick) const {
+        const uint64_t f = frames_ + 1;
+        for (const ScriptStep& s : script) {
+            if (s.frame > f) break;
+            if (s.analog && f < s.frame + s.frames) stick = {s.analog_x, s.analog_y};
         }
     }
 
@@ -1046,7 +986,9 @@ private:
             }
             const double shown = (unpaced ? virtual_clock_ : last_refresh_) + period;  // when a frame drawn now shows
             if (shown >= frame_end) break;  // that refresh belongs to the next emulated frame
+            const double between_from = seconds();
             const unsigned between = runtime_->render_between((shown - emu_time_) / kFrameSeconds);
+            const double interp_ms = (seconds() - between_from) * 1000.0;
             ntr::Frame f = frame;
             if (between) f.gl_texture = between;
             std::string path;
@@ -1057,7 +999,7 @@ private:
                     path.insert(dot == std::string::npos ? path.size() : dot, "-" + std::to_string(k));
                 }
             }
-            presenter_.present(&f, settings.filter, shot_path ? path.c_str() : nullptr);
+            present_timed(&f, shot_path ? path.c_str() : nullptr, k, interp_ms, refresh_late_ms_);
             if (unpaced)
                 virtual_clock_ += period;
             else if (presenter_.flip_model())
@@ -1089,6 +1031,7 @@ private:
                 std::fprintf(stderr, "perf: frame %llu: presented %.1f ms late\n", (unsigned long long)frames_,
                              (now - next_present_) * 1000.0);
             const unsigned between = runtime_->render_between(std::clamp((now - emu_time_) / kFrameSeconds, 0.0, 1.0));
+            const double interp_ms = (seconds() - now) * 1000.0;
             ntr::Frame f = frame;
             if (between) f.gl_texture = between;
             std::string path;
@@ -1099,7 +1042,7 @@ private:
                     path.insert(dot == std::string::npos ? path.size() : dot, "-" + std::to_string(k));
                 }
             }
-            presenter_.present(&f, settings.filter, shot_path ? path.c_str() : nullptr);
+            present_timed(&f, shot_path ? path.c_str() : nullptr, k, interp_ms, std::max(0.0, now - next_present_) * 1000.0);
             if (perf) note_presents(now);
             next_present_ += period;
             if (next_present_ < seconds() - 0.05) next_present_ = seconds();  // fell behind: resync
@@ -1143,6 +1086,7 @@ private:
     // A display refresh at `t`. With --perf, a refresh that came more than a refresh late (a frame shown twice, or
     // a hitch) is logged.
     void note_refresh(double t, double period) {
+        refresh_late_ms_ = last_refresh_ > 0 ? std::max(0.0, t - last_refresh_ - period) * 1000.0 : 0;
         if (perf && last_refresh_ > 0 && t - last_refresh_ > 1.5 * period)
             std::fprintf(stderr, "perf: frame %llu: %.1f ms between refreshes (%.1f ms expected)\n",
                          (unsigned long long)frames_, (t - last_refresh_) * 1000.0, period * 1000.0);
@@ -1156,6 +1100,7 @@ private:
         if (perf && now > next_frame_ + std::chrono::duration<double>(kFrameSeconds / 2))
             std::fprintf(stderr, "perf: frame %llu: %.1f ms late\n", (unsigned long long)frames_,
                          std::chrono::duration<double>(now - next_frame_).count() * 1000.0);
+        pace_late_ms_ = std::max(0.0, std::chrono::duration<double>(now - next_frame_).count()) * 1000.0;
         if (next_frame_ < now - std::chrono::milliseconds(100)) next_frame_ = now;  // fell behind: resync
         while (clock::now() < next_frame_) {
             auto left = next_frame_ - clock::now();
@@ -1236,7 +1181,13 @@ public:
     uint64_t crash_at_frame = 0, abort_at_frame = 0, report_at_frame = 0;  // testing the crash dialog and the report
     std::map<uint64_t, std::string> screenshots;  // debugging: save the window at these frames
     std::vector<ScriptStep> script;  // testing: scripted input, in frame order
-    InputRecorder recorder;          // testing: --record-input (writes nothing unless opened)
+    PerfLog perf_log;  // testing: --perf-log
+    HashLog hash_log;  // testing: --frame-hash
+    double pace_late_ms_ = 0, refresh_late_ms_ = 0;
+    input_script::Recorder recorder;  // testing: --record-input (writes nothing unless opened)
+    bool mix_real_input = false;      // testing: --mix-real-input: a replay also gets the real keyboard, mouse and gamepad
+    std::map<std::string, std::string> emulation_last_;  // emulation_settings() as the recording last saw them
+    bool mark_down_ = false;          // F12 (marks the recording) was down last frame
     bool read_only_save = false;     // testing: the game may save, but nothing is written to disk
     bool unpaced = false;            // testing: run as fast as possible
     bool show_prelaunch = false;     // the start screen is shown over the window
@@ -1410,8 +1361,16 @@ int main(int argc, char** argv) {
                      "  --toolchain <dir>                    the compiler to build the game with (default: next to the program)\n"
                      "  --data-dir <folder>                  keep the settings, the save and the game in this folder\n"
                      "testing:\n"
-                     "  --input-script <file>                scripted input, screenshots and exit (see main.cpp)\n"
-                     "  --record-input <file>                write the input of every frame as an input script\n"
+                     "  --input-script <file>                scripted input, screenshots and exit (see src/input_script.hpp)\n"
+                     "  --record-input <file>                write the input of every frame as an input script (F12 marks a frame)\n"
+                     "  --perf-log <file.csv>                a row per emulated frame and per picture shown: emulation, present, GPU\n"
+                     "                                       and interpolation times in ms (see docs/TESTING.md)\n"
+                     "  --perf-from-frame <n>                leave the rows before frame n out of --perf-log\n"
+                     "  --frame-hash <file>                  per frame: a hash of the emulated memory and of the picture (find where\n"
+                     "                                       two runs start to differ)\n"
+                     "  --shots <dir> <from> <to> <step>     screenshots of every <step>th frame from <from> to <to>\n"
+                     "  --mix-real-input                     a replay also gets the real keyboard, mouse and gamepad\n"
+                     "  --ignore-require                     replay a recording made with other emulation settings anyway\n"
                      "  --game-module <file>                 the recompiled game (default: cfie_game next to the program)\n"
                      "  --crash-at-frame <n>               crash (access violation) at frame n, to see the crash dialog\n"
                      "  --abort-at-frame <n>                 abort at frame n, likewise\n"
@@ -1454,6 +1413,10 @@ int main(int argc, char** argv) {
     double virtual_display_hz = 144;
     std::map<uint64_t, std::string> screenshots;
     std::vector<ScriptStep> script;
+    input_script::Script script_file;
+    bool mix_real_input = false, ignore_require = false;
+    std::filesystem::path perf_log_path, frame_hash_path;
+    uint64_t perf_from_frame = 0;
     std::filesystem::path record_path;
     for (int i = first_option; i < argc; i++) {
         const std::string a = argv[i];
@@ -1531,9 +1494,35 @@ int main(int argc, char** argv) {
             const uint64_t f = std::strtoull(argv[++i], nullptr, 10);
             screenshots[f] = argv[++i];
         } else if (a == "--input-script" && has_value) {
-            if (!load_input_script(argv[++i], script)) return 2;
-            std::stable_sort(script.begin(), script.end(),
-                             [](const ScriptStep& x, const ScriptStep& y) { return x.frame < y.frame; });
+            std::string error;
+            if (!input_script::load(argv[++i], script_file, error)) {
+                std::fprintf(stderr, "%s\n", error.c_str());
+                return 2;
+            }
+            script = script_file.steps;
+        } else if (a == "--perf-log" && has_value) {
+            perf_log_path = argv[++i];
+        } else if (a == "--perf-from-frame" && has_value) {
+            perf_from_frame = std::strtoull(argv[++i], nullptr, 10);
+        } else if (a == "--frame-hash" && has_value) {
+            frame_hash_path = argv[++i];
+            options.frame_hash = true;
+        } else if (a == "--shots" && i + 4 < argc) {
+            // A screenshot of every <step>th frame from <from> to <to>, in a folder: frame_000120.png, ...
+            const std::filesystem::path dir = argv[++i];
+            const uint64_t from = std::strtoull(argv[++i], nullptr, 10), to = std::strtoull(argv[++i], nullptr, 10);
+            const uint64_t step = std::max<uint64_t>(std::strtoull(argv[++i], nullptr, 10), 1);
+            std::error_code ec;
+            std::filesystem::create_directories(dir, ec);
+            for (uint64_t f = std::max<uint64_t>(from, 1); f <= to; f += step) {
+                char name[32];
+                std::snprintf(name, sizeof name, "frame_%06llu.png", (unsigned long long)f);
+                screenshots[f] = (dir / name).string();
+            }
+        } else if (a == "--mix-real-input") {
+            mix_real_input = true;
+        } else if (a == "--ignore-require") {
+            ignore_require = true;
         } else if (a == "--record-input" && has_value) {
             record_path = argv[++i];
         } else if (a == "--game-module" && has_value) {
@@ -1693,9 +1682,42 @@ int main(int argc, char** argv) {
     host.report_at_frame = report_at_frame;
     host.screenshots = screenshots;
     host.script = std::move(script);
-    if (!record_path.empty() && !host.recorder.open(record_path)) {
-        std::fprintf(stderr, "cannot write %s\n", record_path.string().c_str());
+    host.mix_real_input = mix_real_input;
+    if (!perf_log_path.empty() && !host.perf_log.open(perf_log_path, perf_from_frame)) {
+        std::fprintf(stderr, "cannot write %s\n", perf_log_path.string().c_str());
         return 2;
+    }
+    if (!frame_hash_path.empty() && !host.hash_log.open(frame_hash_path)) {
+        std::fprintf(stderr, "cannot write %s\n", frame_hash_path.string().c_str());
+        return 2;
+    }
+    host.test_logs(!frame_hash_path.empty(), !perf_log_path.empty());
+    if (!ignore_require) {
+        // A recording is replayed with the settings it was made with, or not at all.
+        std::string mismatch;
+        if (!input_script::check_require(script_file, emulation_settings(host.settings), mismatch)) {
+            std::fprintf(stderr, "the recording was made with other settings: %s (--ignore-require replays it anyway)\n",
+                         mismatch.c_str());
+            return 2;
+        }
+    }
+    for (const std::string& w : script_file.warnings)
+        std::fprintf(stderr, "recording warning: %s\n", w.c_str());
+    if (!record_path.empty()) {
+        if (!host.recorder.open(record_path)) {
+            std::fprintf(stderr, "cannot write %s\n", record_path.string().c_str());
+            return 2;
+        }
+        host.emulation_last_ = emulation_settings(host.settings);
+        std::string require = "require";
+        for (const auto& [key, value] : host.emulation_last_) require += " " + key + "=" + value;
+        host.recorder.comment("rev " + report::version());
+        if (!save_path.empty() && std::filesystem::exists(save_path)) {
+            const auto save = read_file(save_path);
+            host.recorder.comment("save " + save_path.filename().string() + " " + std::to_string(save.size()) +
+                                  " bytes, crc32 " + ntr::crc32_hex(ntr::crc32(save)));
+        }
+        host.recorder.comment(require);
     }
     host.read_only_save = read_only_save;
     host.unpaced = unpaced;

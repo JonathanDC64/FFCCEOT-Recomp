@@ -18,7 +18,8 @@ Square Enix or Nintendo. It contains **no** game code, assets, or data. To use i
 - Disassembly listings of game code beyond short, necessary excerpts in issues or docs (prefer describing behaviour).
 - Square Enix / Nintendo logos, artwork, fonts or music, including inside the UI theme. (The game's DS icon is read from the
   player's own ROM on their machine and written only into their own `ffcc.exe` and windows; never into the repo or a release.)
-- Save files, screenshots of copyrighted UI as test fixtures, or golden images rendered from game data.
+- Save files, screenshots of copyrighted UI as test fixtures, or golden images rendered from game data. (Test scenarios
+  live in `scenarios/`, which is git-ignored; a recording is text and can be shared, but only works with the save it was made from.)
 - Links to ROM downloads.
 
 ## How this is enforced

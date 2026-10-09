@@ -3,11 +3,14 @@
 #pragma once
 
 #include <cstdint>
+#include <deque>
 #include <functional>
 #include <memory>
+#include <vector>
 
 #include "ntr/runtime.hpp"
 
+struct SDL_Surface;
 struct SDL_Window;
 
 namespace video {
@@ -115,14 +118,34 @@ public:
     // Drawn over every frame that present() shows (the settings menu), before it is saved or swapped in.
     std::function<void()> overlay;
     void present(const ntr::Frame* frame, Filter filter, const char* screenshot = nullptr) {
+        gpu_begin();
         draw(frame, filter);
         if (overlay) overlay();
+        gpu_end();
         swap(screenshot);
         if (window2_) show_second(frame, filter, screenshot);
     }
 
+    // Testing (--perf-log, --frame-hash). The hash of what was swapped in since the last call (every present adds to it);
+    // it covers the whole window, so it only matches between runs with the same window size and settings.
+    void hash_pictures(bool on) { hash_pictures_ = on; }
+    std::uint64_t take_picture_hash() {
+        const std::uint64_t h = picture_hash_;
+        picture_hash_ = 0;
+        return h;
+    }
+    // The GPU time of present()'s drawing, from timer queries read a few presents late so that nothing stalls. Each
+    // present has a serial (1, 2, ...; present_serial() is the last one begun); poll_gpu_time() gives the finished ones in
+    // order, and not at all where the driver has no timer queries.
+    void gpu_timing(bool on) { gpu_timing_ = on; }
+    std::uint64_t present_serial() const { return serial_; }
+    bool poll_gpu_time(std::uint64_t& serial, double& ms);
+
 private:
+    SDL_Surface* read_back(unsigned target, int width, int height);  // the pixels of a framebuffer, top row first
     void save_png(const char* path, unsigned target, int width, int height);
+    void gpu_begin();
+    void gpu_end();
     void draw_views(unsigned target, int width, int height, const ScreenView* views, int count, const ntr::Frame* frame,
                     Filter filter);
     void show_second(const ntr::Frame* frame, Filter filter, const char* screenshot);
@@ -145,6 +168,14 @@ private:
     std::unique_ptr<FlipPresenter> flip2_;
     int width2_ = 0, height2_ = 0;
     ScreenView view2_;
+    bool hash_pictures_ = false, gpu_timing_ = false, gpu_active_ = false;
+    std::uint64_t picture_hash_ = 0, serial_ = 0;
+    struct GpuQuery {
+        unsigned id = 0;
+        std::uint64_t serial = 0;
+    };
+    std::deque<GpuQuery> gpu_pending_;  // begun and ended, not yet read
+    std::vector<unsigned> gpu_free_;    // query objects not in use
 };
 
 }  // namespace video

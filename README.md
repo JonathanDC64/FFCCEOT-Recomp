@@ -86,7 +86,7 @@ Testing: `--input-script <file>` plays scripted input, one step per line (`<fram
 `<frame> touch x,y [frames]`, `<frame> stick x,y [frames]` in percent, `<frame> shot file.png`, `<frame> quit`; `+N` as the frame means N frames after the
 previous step). Automated runs should not touch your own files: `--save-file <copy.sav>` uses another save file,
 `--read-only-save` never writes the save, `--no-settings` neither reads nor writes `settings.ini`, and `--unpaced` runs
-as fast as possible.
+as fast as possible. To record a problem and replay it with timings and frame hashes, see [docs/TESTING.md](docs/TESTING.md).
 
 ## Documentation
 

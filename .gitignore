@@ -63,3 +63,6 @@ __pycache__/
 .venv/
 .DS_Store
 Thumbs.db
+
+# Local test scenarios: saves and screenshots of the game (docs/TESTING.md)
+/scenarios/

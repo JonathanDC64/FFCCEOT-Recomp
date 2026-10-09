@@ -32,3 +32,9 @@ if(WIN32)
   target_link_libraries(test_icon PRIVATE user32 shell32)
 endif()
 add_test(NAME icon COMMAND test_icon)
+
+# Scripted input and its recorder: the recording round trip, marks, and the settings a recording requires.
+add_executable(test_input_script test_input_script.cpp ${PROJECT_SOURCE_DIR}/game/src/input_script.cpp)
+target_include_directories(test_input_script PRIVATE ${PROJECT_SOURCE_DIR}/game/src)
+target_link_libraries(test_input_script PRIVATE ntr_runtime ntr_common)
+add_test(NAME input_script COMMAND test_input_script)
