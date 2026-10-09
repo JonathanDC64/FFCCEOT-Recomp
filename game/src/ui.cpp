@@ -286,7 +286,7 @@ struct Menu::Impl {
     bool store_state() {
         if (state == applied) return false;
         Settings& s = *settings;
-        s.layout.layout = video::Layout(std::clamp(state.layout, 0, 3));
+        s.layout.layout = video::Layout(std::clamp(state.layout, 0, 4));
         s.layout.swap = state.swap != 0;
         s.layout.second_screen = state.second_screen;
         s.layout.pip_size = std::clamp(state.pip_size, 10, 50) / 100.0f;

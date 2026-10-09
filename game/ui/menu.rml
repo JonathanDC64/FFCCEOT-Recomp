@@ -29,8 +29,10 @@
                     <option value="1">Main + side</option>
                     <option value="2">Stacked</option>
                     <option value="3">Side by side</option>
+                    <option value="4">Two windows</option>
                 </select>
             </div>
+            <p class="note" data-if="layout == 4">The main screen is in this window and the other in a second window, which you can move and resize (closing it goes back to a single screen). Click the second window with the mouse to touch it.</p>
             <div class="row nav">
                 <span class="label">Main screen</span>
                 <select data-value="swap">

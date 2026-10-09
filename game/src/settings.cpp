@@ -47,7 +47,7 @@ bool parse_enum(const std::string& v, const char* const (&names)[N], E& out) {
     return false;
 }
 
-const char* const kLayouts[] = {"single", "main-side", "stacked", "side"};
+const char* const kLayouts[] = {"single", "main-side", "stacked", "side", "windows"};
 const char* const kAspects[] = {"4:3", "16:9", "16:10", "21:9", "32:9"};
 const char* const kPacings[] = {"vsync", "variable"};
 const char* const kAligns[] = {"top", "middle", "bottom"};

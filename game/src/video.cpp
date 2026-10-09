@@ -56,14 +56,14 @@ void main() {
 
 }  // namespace
 
-void Presenter::save_png(const char* path) {
-    SDL_Surface* surf = SDL_CreateSurface(width_, height_, SDL_PIXELFORMAT_ABGR8888);
+void Presenter::save_png(const char* path, unsigned target, int width, int height) {
+    SDL_Surface* surf = SDL_CreateSurface(width, height, SDL_PIXELFORMAT_ABGR8888);
     if (!surf) return;
-    glBindFramebuffer(GL_READ_FRAMEBUFFER, target_);
-    glReadBuffer(target_ ? GL_COLOR_ATTACHMENT0 : GL_BACK);
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, target);
+    glReadBuffer(target ? GL_COLOR_ATTACHMENT0 : GL_BACK);
     glPixelStorei(GL_PACK_ALIGNMENT, 4);
     glPixelStorei(GL_PACK_ROW_LENGTH, surf->pitch / 4);
-    glReadPixels(0, 0, width_, height_, GL_RGBA, GL_UNSIGNED_BYTE, surf->pixels);
+    glReadPixels(0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, surf->pixels);
     glPixelStorei(GL_PACK_ROW_LENGTH, 0);
     SDL_FlipSurface(surf, SDL_FLIP_VERTICAL);  // GL rows run bottom-up
     if (!SDL_SavePNG(surf, path)) std::fprintf(stderr, "cannot save %s: %s\n", path, SDL_GetError());
@@ -76,6 +76,7 @@ const char* layout_name(Layout l) {
     case Layout::MainSide: return "main + side";
     case Layout::Stacked: return "stacked";
     case Layout::SideBySide: return "side by side";
+    case Layout::Windows: return "two windows";
     }
     return "?";
 }
@@ -186,6 +187,7 @@ bool Presenter::init(SDL_Window* window, bool allow_flip_model) {
 
 void Presenter::shutdown() {
     if (!context_) return;
+    close_second();
     flip_.reset();
     GLuint t = soft_tex_, b = vbo_, a = vao_;
     if (t) glDeleteTextures(1, &t);
@@ -203,12 +205,12 @@ void Presenter::layout(int w, int h, const LayoutSettings& s) {
     // Width over height of each screen: the top one is wider with widescreen.
     const float standard = float(kScreenW) / kScreenH;
     const float aspect[2] = {wide_extra_ ? float(kScreenW + 2 * wide_extra_) / kScreenH : standard, standard};
-    if (s.layout == Layout::Single) {
+    if (s.layout == Layout::Single || s.layout == Layout::Windows) {
         // The main screen as large as fits; the other in the bottom right corner, over the main one if it must.
         const float sh = std::min(float(h), w / aspect[first]), sw = sh * aspect[first];
         views_[0] = {first, {(w - sw) / 2, (h - sh) / 2, sw, sh}, 1.0f, false};
         view_count_ = 1;
-        if (s.second_screen) {
+        if (s.second_screen && s.layout == Layout::Single) {
             const float ph = std::min(h * std::clamp(s.pip_size, 0.1f, 0.5f), w / aspect[second] / 2);
             const float pw = ph * aspect[second], margin = std::round(h * 0.015f);
             views_[1] = {second, {w - pw - margin, h - ph - margin, pw, ph}, std::clamp(s.pip_opacity, 0.2f, 1.0f), true};
@@ -266,22 +268,28 @@ int Presenter::screen_at(float px, float py, float* local_x, float* local_y) con
 float Presenter::largest_screen_height() const {
     float h = 0;
     for (int i = 0; i < view_count_; i++) h = std::max(h, views_[i].rect.h);
+    if (window2_) h = std::max(h, view2_.rect.h);
     return h;
 }
 
 void Presenter::draw(const ntr::Frame* frame, Filter filter) {
-    // melonDS's GL renderers share this context: put back the state the screen pass relies on.
 #ifdef _WIN32
     target_ = flip_ ? flip_->begin(width_, height_) : 0;
 #endif
-    glBindFramebuffer(GL_FRAMEBUFFER, target_);
+    draw_views(target_, width_, height_, views_, view_count_, frame, filter);
+}
+
+void Presenter::draw_views(unsigned target, int width, int height, const ScreenView* views, int count,
+                           const ntr::Frame* frame, Filter filter) {
+    // melonDS's GL renderers share this context: put back the state the screen pass relies on.
+    glBindFramebuffer(GL_FRAMEBUFFER, target);
     glDisable(GL_DEPTH_TEST);
     glDisable(GL_STENCIL_TEST);
     glDisable(GL_BLEND);
     glDisable(GL_SCISSOR_TEST);
     glDisable(GL_CULL_FACE);
     glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
-    glViewport(0, 0, width_, height_);
+    glViewport(0, 0, width, height);
     glClearColor(0, 0, 0, 1);
     glClear(GL_COLOR_BUFFER_BIT);
 
@@ -307,14 +315,14 @@ void Presenter::draw(const ntr::Frame* frame, Filter filter) {
         glUniform1i(u_sharp_, filter == Filter::Sharp);
         glBindVertexArray(vao_);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-        for (int i = 0; i < view_count_; i++) {
-            const ScreenView& v = views_[i];
+        for (int i = 0; i < count; i++) {
+            const ScreenView& v = views[i];
             const Rect& r = v.rect;
             if (v.framed && v.opacity >= 1.0f) {
                 // A thin border sets the picture-in-picture apart from the screen under it.
-                const int b = std::max(2, height_ / 400);
+                const int b = std::max(2, height / 400);
                 glEnable(GL_SCISSOR_TEST);
-                glScissor(int(r.x) - b, height_ - int(r.y + r.h) - b, int(r.w) + 2 * b, int(r.h) + 2 * b);
+                glScissor(int(r.x) - b, height - int(r.y + r.h) - b, int(r.w) + 2 * b, int(r.h) + 2 * b);
                 glClearColor(0.55f, 0.6f, 0.7f, 1);
                 glClear(GL_COLOR_BUFFER_BIT);
                 glDisable(GL_SCISSOR_TEST);
@@ -326,8 +334,8 @@ void Presenter::draw(const ntr::Frame* frame, Filter filter) {
             const float u0 = v.screen == 1 ? (1 - inner) / 2 : 0.0f, u1 = v.screen == 1 ? 1 - u0 : 1.0f;
             glUniform2f(u_uv_x_, u0, u1);
             const Rect& pr = r;
-            glUniform4f(u_dest_, pr.x / width_ * 2 - 1, 1 - pr.y / height_ * 2, (pr.x + pr.w) / width_ * 2 - 1,
-                        1 - (pr.y + pr.h) / height_ * 2);
+            glUniform4f(u_dest_, pr.x / width * 2 - 1, 1 - pr.y / height * 2, (pr.x + pr.w) / width * 2 - 1,
+                        1 - (pr.y + pr.h) / height * 2);
             glUniform1f(u_layer_, float(v.screen));
             glUniform2f(u_out_size_, v.screen == 1 && inner < 1.0f ? pr.w / inner : pr.w, pr.h);
             glUniform1f(u_opacity_, v.opacity);
@@ -338,8 +346,76 @@ void Presenter::draw(const ntr::Frame* frame, Filter filter) {
     }
 }
 
+bool Presenter::open_second(SDL_Window* window, bool allow_flip_model) {
+    close_second();
+    window2_ = window;
+#ifdef _WIN32
+    if (allow_flip_model && flip_) {  // (the first window's choice: a GL swap if it had none)
+        void* hwnd = SDL_GetPointerProperty(SDL_GetWindowProperties(window), SDL_PROP_WINDOW_WIN32_HWND_POINTER, nullptr);
+        auto flip = std::make_unique<FlipPresenter>();
+        std::string error;
+        if (hwnd && flip->init(hwnd, error))
+            flip2_ = std::move(flip);
+        else
+            std::printf("second window: OpenGL swap (flip model unavailable: %s)\n", error.c_str());
+    }
+#else
+    (void)allow_flip_model;
+#endif
+    return true;
+}
+
+void Presenter::close_second() {
+    flip2_.reset();
+    window2_ = nullptr;
+}
+
+void Presenter::layout_second(int w, int h, const LayoutSettings& s) {
+    width2_ = w;
+    height2_ = h;
+    const int second = s.swap ? 0 : 1;  // the screen that is not the main window's
+    const float aspect = second == 0 && wide_extra_ ? float(kScreenW + 2 * wide_extra_) / kScreenH
+                                                    : float(kScreenW) / kScreenH;
+    const float sh = std::min(float(h), w / aspect), sw = sh * aspect;
+    view2_ = {second, {(w - sw) / 2, (h - sh) / 2, sw, sh}, 1.0f, false};
+}
+
+int Presenter::screen_at_second(float px, float py, float* local_x, float* local_y) const {
+    if (!window2_ || !view2_.rect.contains(px, py)) return -1;
+    *local_x = (px - view2_.rect.x) / view2_.rect.w * kScreenW;
+    *local_y = (py - view2_.rect.y) / view2_.rect.h * kScreenH;
+    return view2_.screen;
+}
+
+void Presenter::show_second(const ntr::Frame* frame, Filter filter, const char* screenshot) {
+    unsigned target = 0;
+#ifdef _WIN32
+    if (flip2_) target = flip2_->begin(width2_, height2_);
+#endif
+    if (!flip2_) {
+        SDL_GL_MakeCurrent(window2_, static_cast<SDL_GLContext>(context_));
+        SDL_GL_SetSwapInterval(0);
+    }
+    draw_views(target, width2_, height2_, &view2_, 1, frame, filter);
+    if (screenshot) {  // (named like the first window's, with -window2 before the extension)
+        std::string path = screenshot;
+        const size_t dot = path.rfind('.');
+        path.insert(dot == std::string::npos ? path.size() : dot, "-window2");
+        save_png(path.c_str(), target, width2_, height2_);
+    }
+#ifdef _WIN32
+    if (flip2_) {
+        flip2_->present(false);  // (at once: the first window's vsync is the one that paces the frames)
+        return;
+    }
+#endif
+    SDL_GL_SwapWindow(window2_);
+    SDL_GL_MakeCurrent(window_, static_cast<SDL_GLContext>(context_));
+    SDL_GL_SetSwapInterval(flip_ || !vsync_ ? 0 : 1);
+}
+
 void Presenter::swap(const char* screenshot) {
-    if (screenshot) save_png(screenshot);
+    if (screenshot) save_png(screenshot, target_, width_, height_);
 #ifdef _WIN32
     if (flip_) {
         flip_->present(vsync_, tearing_);

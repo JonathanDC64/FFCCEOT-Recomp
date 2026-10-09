@@ -31,6 +31,7 @@ enum class Layout {
     MainSide,    // the main screen at the left edge; the other fills the width that is left, on the right
     Stacked,     // one above the other, as on the console
     SideBySide,  // next to each other, the same size
+    Windows,     // the main screen fills the window; the other one fills a second window
 };
 const char* layout_name(Layout l);
 
@@ -78,6 +79,15 @@ public:
     int wide_extra() const { return wide_extra_; }
     // Lays the screens out for the window's current size.
     void layout(int window_px_w, int window_px_h, const LayoutSettings& settings);
+
+    // The Windows layout: the other screen is shown in a window of its own (opened and closed by the frontend, which
+    // owns it), drawn and shown with every frame that present() shows. It has no menu or screenshots.
+    bool open_second(SDL_Window* window, bool allow_flip_model = true);
+    void close_second();
+    bool has_second() const { return window2_ != nullptr; }
+    void layout_second(int window_px_w, int window_px_h, const LayoutSettings& settings);
+    // The screen under a position in the second window (see screen_at).
+    int screen_at_second(float px, float py, float* local_x, float* local_y) const;
     // The visible screens in drawing order (later ones are on top).
     int view_count() const { return view_count_; }
     const ScreenView& view(int i) const { return views_[i]; }
@@ -108,10 +118,14 @@ public:
         draw(frame, filter);
         if (overlay) overlay();
         swap(screenshot);
+        if (window2_) show_second(frame, filter, screenshot);
     }
 
 private:
-    void save_png(const char* path);
+    void save_png(const char* path, unsigned target, int width, int height);
+    void draw_views(unsigned target, int width, int height, const ScreenView* views, int count, const ntr::Frame* frame,
+                    Filter filter);
+    void show_second(const ntr::Frame* frame, Filter filter, const char* screenshot);
 
     SDL_Window* window_ = nullptr;
     void* context_ = nullptr;  // SDL_GLContext
@@ -127,6 +141,10 @@ private:
     int width_ = 0, height_ = 0;
     ScreenView views_[2];
     int view_count_ = 0;
+    SDL_Window* window2_ = nullptr;  // the second window (Windows layout)
+    std::unique_ptr<FlipPresenter> flip2_;
+    int width2_ = 0, height2_ = 0;
+    ScreenView view2_;
 };
 
 }  // namespace video

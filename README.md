@@ -58,10 +58,10 @@ tabs). Settings are saved to `settings.ini` next to the save (in `%APPDATA%\FFCC
 options below override them for one run, and the hotkeys change them too.
 
 Screens: by default the top screen fills the window and the bottom screen is a picture-in-picture in the corner
-(click it to touch). F1 cycles the layout (single, main + side, stacked, side by side), F2 swaps the screens, F3 or
+(click it to touch). F1 cycles the layout (single, main + side, stacked, side by side, two windows), F2 swaps the screens, F3 or
 the right stick click shows/hides the picture-in-picture, F4 moves the side screen of the main + side layout (the main
 screen at the left edge, the other filling the rest of the width) between bottom, middle and top. Options:
-`--layout single|main-side|stacked|side`, `--side-align top|middle|bottom`, `--swap-screens`, `--no-second-screen`.
+`--layout single|main-side|stacked|side|windows`, `--side-align top|middle|bottom`, `--swap-screens`, `--no-second-screen`.
 
 Video: the screens are rendered with OpenGL at a multiple of the DS resolution that matches the window (up to 16×,
 4K and beyond). While playing: F5 cycles the renderer (software, OpenGL, compute), F6/F7 lower/raise the internal

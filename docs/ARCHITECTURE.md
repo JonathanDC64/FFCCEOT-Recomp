@@ -374,13 +374,15 @@ refreshes pace the emulation instead, and every refresh gets its own frame.
 **Today** (`game/src/video.cpp`): single screen (default; the top screen as large as fits, the other as a framed
 picture-in-picture in the bottom-right corner that can be hidden and takes mouse touches), main + side (the main
 screen at the window's left edge, the other filling the remaining width at the top, middle or bottom), stacked and side-by-side,
-each with the screens swappable. The layout works on the renderer's two-layer output texture, so it is the same for
+each with the screens swappable, and two windows (the main screen in the window, the other in a second window that opens
+with the layout and closes with it, or when it is closed; it takes mouse touches too). The presenter draws the second
+window's screen with the same context (its own flip-model swapchain, shown at once) after the first window's. The layout works on the renderer's two-layer output texture, so it is the same for
 every renderer, and the automatic internal resolution follows the largest screen on the window.
 
 **Plan:** each DS screen is composited into its own render target. Then the layout compositor shows:
 - **Single (default)**: the main screen full-window. The second screen is a **toggleable overlay** (hold or toggle) or a
   **picture-in-picture** panel. Position, size and opacity are configurable, and the panel is mouse-clickable as a touch surface.
-- **Swap** (show the other screen as main), **side-by-side**, **stacked**, and **separate window** (for a second monitor).
+- **Swap** (show the other screen as main), **side-by-side**, **stacked**, and **separate window** (done: Layout::Windows).
 - Auto-switching: game hooks tell the compositor when the bottom screen carries something the player must see
   (e.g. full menus), so it can pop up or swap automatically.
 

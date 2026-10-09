@@ -195,7 +195,7 @@ public:
             return false;
         }
         const video::Layout l = settings.layout.layout;
-        const bool wide = l == video::Layout::Single || l == video::Layout::MainSide;
+        const bool wide = l == video::Layout::Single || l == video::Layout::MainSide || l == video::Layout::Windows;
         const bool stacked = l == video::Layout::Stacked;
         window_ = SDL_CreateWindow(kTitle, wide ? 1280 : stacked ? kScreenW * 3 : kScreenW * 2 * 3,
                                    wide ? 720 : stacked ? kScreenH * 2 * 3 : kScreenH * 3,
@@ -256,6 +256,8 @@ public:
         flush_save();
         if (settings_dirty_ && !settings_path.empty()) save_settings(settings_path, settings);
         menu_.shutdown();
+        settings.layout.layout = video::Layout::Single;  // (closes the second window; not saved)
+        sync_second_window();
         if (audio_) SDL_DestroyAudioStream(audio_);
         audio_ = nullptr;
         if (gamepad_) SDL_CloseGamepad(gamepad_);
@@ -436,6 +438,16 @@ private:
     bool handle_common_event(const SDL_Event& e) {
         switch (e.type) {
         case SDL_EVENT_QUIT: return false;
+        case SDL_EVENT_WINDOW_CLOSE_REQUESTED:
+            if (e.window.windowID == SDL_GetWindowID(window_)) return false;
+            if (window2_ && e.window.windowID == SDL_GetWindowID(window2_)) {  // the second window was closed
+                settings.layout.layout = video::Layout::Single;
+                settings_dirty_ = true;
+                title_dirty_ = true;
+                if (menu_.is_open()) menu_.reload();
+                update_layout();
+            }
+            break;
         case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
             update_layout();
             sync_video();
@@ -461,6 +473,7 @@ private:
         menu_.open();
         if (!menu_.is_open()) return;
         skipping_ = false;  // (the menu is not to be skipped past)
+        if (window2_) main_thread::run([w = window_] { SDL_RaiseWindow(w); }, false);  // (the menu is in the first window)
         menu_frames_ = 0;
         menu_was_open_ = true;
         input_hold_ = true;  // whatever opened the menu is not game input
@@ -520,7 +533,7 @@ private:
         video::LayoutSettings& layout = settings.layout;
         const int scale = runtime_->video().scale;
         switch (key) {
-        case SDLK_F1: layout.layout = video::Layout((int(layout.layout) + 1) % 4); break;
+        case SDLK_F1: layout.layout = video::Layout((int(layout.layout) + 1) % 5); break;
         case SDLK_F4:
             if (layout.layout != video::Layout::MainSide) return;
             layout.side_align = video::Align((int(layout.side_align) + 1) % 3);
@@ -636,7 +649,33 @@ private:
         settings_dirty_ = true;
     }
 
+    // The second window is open in the Windows layout only.
+    void sync_second_window() {
+        const bool wanted = settings.layout.layout == video::Layout::Windows;
+        if (wanted && !window2_) {
+            main_thread::run([this] {
+                int x = 0, y = 0, w = 0, h = 0;
+                SDL_GetWindowPosition(window_, &x, &y);
+                SDL_GetWindowSize(window_, &w, &h);
+                const bool top_main = !settings.layout.swap;  // the other screen: the bottom one, or the top one
+                const int top_w = (kScreenW + 2 * aspect_extra(settings.aspect)) * 3;  // (the widened top screen)
+                window2_ = SDL_CreateWindow(kTitle, top_main ? kScreenW * 3 : top_w, kScreenH * 3,
+                                            SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY);
+                if (!window2_) return;
+                SDL_SetWindowPosition(window2_, x + w + 8, y);
+                SDL_SetWindowTitle(window2_, (std::string(kTitle) + "  |  second screen").c_str());
+            });
+            if (window2_) presenter_.open_second(window2_, allow_flip_model);
+        } else if (!wanted && window2_) {
+            presenter_.close_second();
+            SDL_Window* w = window2_;
+            window2_ = nullptr;
+            main_thread::run([w] { SDL_DestroyWindow(w); });
+        }
+    }
+
     void update_layout() {
+        sync_second_window();
         int w = 0, h = 0, pw = 0, ph = 0;
         SDL_GetWindowSize(window_, &w, &h);
         SDL_GetWindowSizeInPixels(window_, &pw, &ph);
@@ -646,6 +685,12 @@ private:
         cfie::aspect = extra ? uint16_t(((256 + 2 * extra) * 4096 + 96) / 192) : uint16_t(0x1555);
         presenter_.layout(pw, ph, settings.layout);
         pixel_ratio_ = w > 0 ? float(pw) / w : 1.0f;
+        if (window2_) {
+            SDL_GetWindowSize(window2_, &w, &h);
+            SDL_GetWindowSizeInPixels(window2_, &pw, &ph);
+            presenter_.layout_second(pw, ph, settings.layout);
+            pixel_ratio2_ = w > 0 ? float(pw) / w : 1.0f;
+        }
     }
 
     void update_input() {
@@ -687,9 +732,11 @@ private:
 
         // Mouse on the bottom screen (wherever the layout puts it, picture-in-picture included) = stylus.
         float mx, my, sx = 0, sy = 0;
-        const SDL_MouseButtonFlags mb = SDL_GetMouseState(&mx, &my);
-        bool touching =
-            (mb & SDL_BUTTON_LMASK) && presenter_.screen_at(mx * pixel_ratio_, my * pixel_ratio_, &sx, &sy) == 1;
+        const SDL_MouseButtonFlags mb = SDL_GetMouseState(&mx, &my);  // (relative to the window the mouse is in)
+        const bool in_second = window2_ && SDL_GetMouseFocus() == window2_;
+        bool touching = (mb & SDL_BUTTON_LMASK) &&
+                        (in_second ? presenter_.screen_at_second(mx * pixel_ratio2_, my * pixel_ratio2_, &sx, &sy)
+                                   : presenter_.screen_at(mx * pixel_ratio_, my * pixel_ratio_, &sx, &sy)) == 1;
         if (mb & SDL_BUTTON_LMASK) b |= 1u << 31;  // (only for the hold below: any click)
 
         // Around the menu, input is ignored until everything is let go.
@@ -912,6 +959,8 @@ private:
     video::Presenter presenter_;
     ui::Menu menu_;
     float pixel_ratio_ = 1;  // window pixels per window coordinate (high-DPI displays)
+    SDL_Window* window2_ = nullptr;  // the second screen's window (Windows layout)
+    float pixel_ratio2_ = 1;
     bool fullscreen_ = false;
     SDL_Rect windowed_{};    // the window's place before going fullscreen
     bool windowed_maximized_ = false;
@@ -986,6 +1035,7 @@ bool parse_layout(const std::string& s, video::Layout& l) {
     else if (s == "main-side") l = video::Layout::MainSide;
     else if (s == "stacked") l = video::Layout::Stacked;
     else if (s == "side") l = video::Layout::SideBySide;
+    else if (s == "windows") l = video::Layout::Windows;
     else return false;
     return true;
 }

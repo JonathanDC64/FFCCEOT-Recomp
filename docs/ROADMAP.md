@@ -55,7 +55,8 @@ Milestones are ordered by dependency. Each ends with a demonstrable result. Desi
 - [ ] SDL_GPU GX rasteriser with DS rules at N× scale; texture cache
 - [x] Screen layouts: single screen with a picture-in-picture second screen (toggle, touchable), main + side (main
       at the left edge, the other filling the rest, top/middle/bottom), stacked, side-by-side, swap; borderless fullscreen
-- [ ] More layout options: PiP position/size/opacity settings, separate window, automatic swap/pop-up from game hooks
+- [x] Two windows layout: the other screen in a window of its own (touchable)
+- [ ] More layout options: PiP position/size/opacity settings, automatic swap/pop-up from game hooks, remembering the second window's place and size
 - [x] Widescreen 16:9 (OpenGL renderer): projection hook, wide 3D and engine A 2D compositor, HUD position and size, fades
 - [x] Widescreen aspect ratios: 16:9, 16:10, 21:9, 32:9 (Display → Aspect ratio, `--aspect`)
 - [ ] Widescreen: the compute renderer, a culling hook for pop-in at the sides, dialog/menu scaling
