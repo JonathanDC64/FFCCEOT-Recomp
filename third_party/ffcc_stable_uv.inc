@@ -7,10 +7,30 @@
     // grid of small quads whose corners are the bilinear blend of the four corners (in clip space, which is exact for
     // the bilinear patch in 3D, and in texture space): each small quad is nearly affine, so every rasteriser agrees,
     // and the texture stays on the surface.
-    if (NumPolygons == 0) ffcc_subdivided = 0;  // (a new scene)
+    // Polygon RAM is finite (2048 polygons, 6144 vertices) and a scene that runs out of it loses its last polygons (usually
+    // the characters), so the cuts are budgeted: what the cuts of this scene have added so far, plus what the previous scene
+    // (the game draws the same scene again and again) used without them, must leave a margin.
+    if (!ffcc_subdividing)
+    {
+        if (NumPolygons == 0)  // (a new scene)
+        {
+            if (ffcc_last_p > ffcc_added_p && ffcc_last_v > ffcc_added_v)
+            {
+                ffcc_base_p = ffcc_last_p - ffcc_added_p;
+                ffcc_base_v = ffcc_last_v - ffcc_added_v;
+            }
+            ffcc_added_p = ffcc_added_v = ffcc_last_p = ffcc_last_v = 0;
+        }
+        else
+        {
+            ffcc_last_p = NumPolygons;
+            ffcc_last_v = NumVertices;
+        }
+    }
     if (FfccStableUV && !ffcc_subdividing && (PolygonMode & 0x1) && ((TexParam >> 26) & 0x7) != 0 && ((TexParam >> 26) & 0x7) != 1 && ((TexParam >> 26) & 0x7) != 6 &&
         ((CurPolygonAttr >> 16) & 0x1F) == 31 && ((CurPolygonAttr >> 4) & 0x3) != 3 &&
-        NumPolygons < 1200 && NumVertices < 3600 && ffcc_subdivided < 48)
+        ffcc_added_p + 16 + ffcc_base_p + ffcc_base_p / 8 + 128 <= 2048 &&
+        ffcc_added_v + 52 + ffcc_base_v + ffcc_base_v / 8 + 384 <= 6144 && NumPolygons < 1900 && NumVertices < 5700)
     {
         const Vertex* q = TempVertexBuffer;
         bool outside = false;
@@ -100,7 +120,7 @@
                 SubmitPolygon();
             };
             ffcc_subdividing = true;
-            ffcc_subdivided++;
+            const int polys0 = (int)NumPolygons, verts0 = (int)NumVertices;
             for (int j = 1; j < N - 1; j++)
             {
                 for (int i = 1; i < N - 1; i++)
@@ -140,6 +160,8 @@
             }
             PolygonMode = savedMode;
             ffcc_subdividing = false;
+            ffcc_added_p += (int)NumPolygons - polys0 - 1;  // (the quad itself would have used one polygon and its corners)
+            ffcc_added_v += (int)NumVertices - verts0 - 4;
             for (int i = 0; i < 4; i++) TempVertexBuffer[i] = saved[i];
             LastStripPolygon = nullptr;
             return;

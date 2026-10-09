@@ -67,7 +67,7 @@ ffcc_patch(gpu3d_src GPU3D.cpp "void GPU3D::SubmitPolygon() noexcept\n{\n"
 ffcc_patch(gpu3d_src GPU3D.cpp "#include <algorithm>\n"
   "#include <algorithm>\n#include <cmath>\n")
 ffcc_patch(gpu3d_src GPU3D.cpp "bool FfccGxReplaying = false;\n"
-  "bool FfccGxReplaying = false;\nint FfccStableUV = 0; // ffcc patch\nint FfccSmoothTex = 0; // ffcc patch\nstatic bool ffcc_subdividing = false;\nstatic int ffcc_subdivided = 0;\n#define FFCC_UV_GRID 4\n")
+  "bool FfccGxReplaying = false;\nint FfccStableUV = 0; // ffcc patch\nint FfccSmoothTex = 0; // ffcc patch\nstatic bool ffcc_subdividing = false;\nstatic int ffcc_added_p = 0, ffcc_added_v = 0, ffcc_base_p = 0, ffcc_base_v = 0, ffcc_last_p = 0, ffcc_last_v = 0;\n#define FFCC_UV_GRID 4\n")
 ffcc_write_patched(gpu3d_src ${CMAKE_CURRENT_BINARY_DIR}/melonds_patched/GPU3D.cpp)
 
 # GPU3D_OpenGL.cpp: with FfccWideExtra set, the 3D texture is (256 + 2 * extra) pixels wide (a widescreen picture; the

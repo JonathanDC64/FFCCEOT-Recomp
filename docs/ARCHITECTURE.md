@@ -389,7 +389,8 @@ console) cuts such a quad into a small grid before clipping, with the corners of
 space and in texture space, which keeps the texture on the surface for every renderer. The outline stays the original
 four corners (the neighbouring tiles share those edges; pieces along them would leave cracks) and only opaque textured
 quads in perspective scenes are touched, within a budget that leaves room in polygon and vertex RAM (a scene that runs
-out of it loses its last polygons, which are usually characters). The code is `third_party/ffcc_stable_uv.inc`,
+out of it loses its last polygons, which are usually characters): the cuts added so far plus what the previous scene used
+without them (the game draws the same scene again and again) must stay clear of the 2048 polygons and 6144 vertices, with a margin. The code is `third_party/ffcc_stable_uv.inc`,
 spliced into the start of `GPU3D::SubmitPolygon` at configure time.
 
 ### 5.3b Texture smoothing
