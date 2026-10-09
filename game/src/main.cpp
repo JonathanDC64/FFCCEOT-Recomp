@@ -851,8 +851,14 @@ private:
         present_count_++;
     }
 
-    // The frames per second presented with variable refresh: the limit, or the display's refresh rate.
-    double rate_hz() const { return settings.rate_cap > 0 ? settings.rate_cap : display_hz(); }
+    // The frames per second presented with variable refresh: the limit, or a little under the display's refresh rate. At
+    // or above the panel's top rate a frame can arrive while the panel is still drawing the last one, and then it tears
+    // (the usual advice for G-Sync and FreeSync is a limit 3 fps under the refresh rate).
+    double rate_hz() const {
+        if (settings.rate_cap > 0) return settings.rate_cap;
+        const double hz = display_hz();
+        return hz - std::max(3.0, hz * 0.02);
+    }
 
     // Sleeps until `t` (seconds()), spinning for the last half millisecond.
     static void wait_until(double t) {

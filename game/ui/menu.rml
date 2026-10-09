@@ -130,7 +130,7 @@
             <div class="row nav" data-if="frame_rate == 2 &amp;&amp; renderer != 0 &amp;&amp; pacing == 1">
                 <span class="label">Frame rate limit</span>
                 <select data-value="rate_cap">
-                    <option value="0">Display refresh rate</option>
+                    <option value="0">Just under the display's rate</option>
                     <option value="1">60 fps</option>
                     <option value="2">90 fps</option>
                     <option value="3">120 fps</option>

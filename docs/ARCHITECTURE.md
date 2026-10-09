@@ -344,10 +344,11 @@ refreshes pace the emulation instead, and every refresh gets its own frame.
 - **The software renderer** composites on the CPU line by line, so it stays at 60.
 - **Variable refresh** (Graphics → Frame pacing, `--pacing variable`, `--rate-cap <fps>`): for G-Sync and FreeSync
   displays there are no refreshes to wait for. The frontend presents on a timer of its own (sleep, then spin for the last
-  half millisecond) at the display's refresh rate or a limit, each frame with the 3D blended for the moment it is
+  half millisecond) at a limit or, by default, 3 fps (2% on a fast display) under the display's refresh rate (at the panel's
+  top rate a frame can land while the panel is still drawing the last one, and tears), each frame with the 3D blended for the moment it is
   presented, and the flip-model swapchain presents with `DXGI_PRESENT_ALLOW_TEARING` (the swapchain is created with
   `DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING` where the system supports it), so the frame reaches the display at once. Measured
-  with `--perf`: 143.9 presents per second at the 144 Hz display's rate, and 100.0 and 60.0 with limits of 100 and 60.
+  with `--perf`: 100.0 and 60.0 presents per second with limits of 100 and 60.
   On a display without variable refresh it tears. A GL swap without vsync does the same.
 - **Not yet:** a low-latency mode that extrapolates (below).
 
