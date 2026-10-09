@@ -56,17 +56,27 @@ void test_parse() {
                 "30 touch 12,34 2\n"
                 "40 analog 0.25,-0.5 4\n"
                 "50 shot out.png\n"
+                "55 rstick 100,-50 6\n"
+                "58 spell 4\n"
                 "60 quit\n");
     input_script::Script s;
     std::string error;
     CHECK(input_script::load(path, s, error));
-    CHECK(s.steps.size() == 6);
+    CHECK(s.steps.size() == 8);
     CHECK(s.steps[0].frame == 10 && s.steps[0].frames == 3 && s.steps[0].buttons == (ntr::KeyA | ntr::KeyUp));
     CHECK(s.steps[1].frame == 15 && s.steps[1].taps == ntr::KeyStart);  // "+5" counts from the step before
     CHECK(s.steps[2].touch_x == 12 && s.steps[2].touch_y == 34 && s.steps[2].frames == 2);
     CHECK(s.steps[3].analog && s.steps[3].analog_x == 0.25f && s.steps[3].analog_y == -0.5f);
     CHECK(s.steps[4].shot == "out.png");
-    CHECK(s.steps[5].quit);
+    CHECK(s.steps[5].rstick && s.steps[5].rstick_x == 100 && s.steps[5].rstick_y == -50 && s.steps[5].frames == 6);
+    CHECK(s.steps[6].spell == 4 && s.steps[0].spell == -1);
+    CHECK(s.steps[7].quit);
+
+    write(path, "5 spell 6\n");  // (the elements are 0 to 5)
+    input_script::Script out_of_range;
+    CHECK(!input_script::load(path, out_of_range, error));
+    write(path, "5 rstick 100\n");
+    CHECK(!input_script::load(path, out_of_range, error));
 
     write(path, "5 press Q\n");
     input_script::Script bad;
@@ -122,6 +132,7 @@ void test_round_trip() {
             if (f >= 30 && f <= 39) x = ax, y = ay, held |= ntr::KeyUp;
             rec.add(f, held, pressed, touching, 100, 50, x, y);
         }
+        rec.spell(15, 3);
         rec.mark(25, "bug");
         rec.warning(26, "something");
     }
@@ -131,6 +142,13 @@ void test_round_trip() {
     CHECK(s.require.size() == 1);
     CHECK(s.marks.size() == 1 && s.marks[0].frame == 25 && s.marks[0].label == "bug");
     CHECK(s.warnings.size() == 1);
+    int spells = 0;
+    for (const auto& step : s.steps)
+        if (step.spell >= 0) {
+            spells++;
+            CHECK(step.frame == 15 && step.spell == 3);
+        }
+    CHECK(spells == 1);
     for (std::uint64_t f = 1; f <= 40; f++) {
         const Frame g = at(s, f);
         const bool a = f >= 3 && f <= 8, up = f >= 30 && f <= 39;

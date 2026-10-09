@@ -4,6 +4,7 @@
 #include <SDL3/SDL.h>
 
 #include "cfie_game.hpp"
+#include "spell_ring.hpp"
 
 #include <string>
 
@@ -36,6 +37,11 @@ struct Bindings {
     SDL_Scancode key[kActionCount]{};  // SDL_SCANCODE_UNKNOWN = unbound
     PadInput pad[kActionCount]{};
     bool stick_moves = true;  // the left stick also works as the D-pad
+    bool spell_ring = true;   // the right stick picks the spell element in a radial (see spell_ring.hpp)
+    ring::Orientation spell_ring_orientation = ring::Orientation::Sides;  // ... which way round (see spell_ring.hpp)
+    int spell_ring_size = 70;  // its size, percent of the screen's height (the radial is that big across)
+    int spell_ring_x = 50;    // where it sits on the screen, percent from the left (0 flush left, 100 flush right)
+    int spell_ring_y = 50;    // ... and from the top
     int deadzone = 35;        // stick deadzone, percent of the full range
     // The character walks the stick's way at its speed, not the D-pad's eight directions (see cfie_pack_input).
     cfie::AnalogMovement analog_movement = cfie::AnalogMovement::SinglePlayer;

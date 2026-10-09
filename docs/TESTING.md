@@ -55,6 +55,11 @@ what it needs, and a replay refuses to run with other emulation settings (`--ign
 # warning: frame 9000: cpu_speed changed to 1: the replay drifts after this frame
 ```
 
+Spell element picks (the right-stick radial or the number keys) are recorded as `spell N` (0-5, the gems top to bottom)
+and replayed from it; a hand-written script can push the right stick with `rstick x,y [frames]` (percent, y down), which
+opens the radial in screenshots too. The radial's sounds change the emulated memory like the menu's, so for state hashes
+compare runs with the same setting.
+
 The analog stick is recorded exactly (`analog x,y`), so a replay with a gamepad plugged in or a mouse moved gives the same
 game: **a replay ignores the real keyboard, mouse and gamepad** (`--mix-real-input` adds them again). Changing an
 emulation setting (CPU speed, fast loading, ...) in the menu while recording is noted as a `# warning:`.

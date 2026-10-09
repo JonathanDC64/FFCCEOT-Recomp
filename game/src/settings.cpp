@@ -63,6 +63,7 @@ const char* const kRenderers[] = {"software", "opengl", "compute"};
 const char* const kFilters[] = {"nearest", "linear", "sharp"};
 const char* const kOnlineBuffers[] = {"low", "medium", "original"};
 const char* const kAnalogMovements[] = {"off", "single-player", "multiplayer"};
+const char* const kRingOrientations[] = {"sides", "top"};
 
 #define BOOL_FIELD(key, member)                                                   \
     Field {                                                                       \
@@ -150,6 +151,14 @@ const Field kFields[] = {
           }},
     ENUM_FIELD("online.buffer", online_buffer, kOnlineBuffers),
     BOOL_FIELD("controls.stick_moves", controls.stick_moves),
+    BOOL_FIELD("controls.spell_ring", controls.spell_ring),
+    ENUM_FIELD("controls.spell_ring_orientation", controls.spell_ring_orientation, kRingOrientations),
+    Field{"controls.spell_ring_size", [](const Settings& s) { return std::to_string(s.controls.spell_ring_size); },
+          [](Settings& s, const std::string& v) { return parse_int(v, 30, 150, s.controls.spell_ring_size); }},
+    Field{"controls.spell_ring_x", [](const Settings& s) { return std::to_string(s.controls.spell_ring_x); },
+          [](Settings& s, const std::string& v) { return parse_int(v, 0, 100, s.controls.spell_ring_x); }},
+    Field{"controls.spell_ring_y", [](const Settings& s) { return std::to_string(s.controls.spell_ring_y); },
+          [](Settings& s, const std::string& v) { return parse_int(v, 0, 100, s.controls.spell_ring_y); }},
     ENUM_FIELD("controls.analog_movement", controls.analog_movement, kAnalogMovements),
     Field{"controls.deadzone", [](const Settings& s) { return std::to_string(s.controls.deadzone); },
           [](Settings& s, const std::string& v) { return parse_int(v, 5, 90, s.controls.deadzone); }},

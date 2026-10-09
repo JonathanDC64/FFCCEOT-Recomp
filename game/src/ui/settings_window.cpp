@@ -451,6 +451,30 @@ SettingsWindow::SettingsWindow(bool prelaunch) : mPrelaunch(prelaunch) {
             "enter a new area could still fall out of step. Choose Single-player when playing with a DS or an "
             "emulator.",
             [] { return !cfg().controls.stick_moves; });
+        bool_row(leftPane, rightPane, "Spell radial", [](auto& s) -> auto& { return s.controls.spell_ring; },
+            "Push the right stick to pick the spell element from a radial of the six gems. The element is chosen as soon "
+            "as you point at it, then hold X to cast. The game's own ways (touching a gem, R + left or right) still work.");
+        enum_row(
+            leftPane, rightPane, "Radial orientation", [](auto& s) -> auto& { return s.controls.spell_ring_orientation; },
+            {0, 1}, {"One each side", "Three on top"},
+            "Which way round the six gems sit. One each side: one gem to the right, one to the left, two above and two below. "
+            "Three on top: red, blue and yellow across the top from left to right, then green, orange and teal below, "
+            "going round clockwise.",
+            [] { return !cfg().controls.spell_ring; });
+        number_row(
+            leftPane, rightPane, "Radial size", [](auto& s) -> auto& { return s.controls.spell_ring_size; },
+            "How big the spell radial is, in percent of the screen's height.", 30, 150, 5, "%",
+            [] { return !cfg().controls.spell_ring; });
+        number_row(
+            leftPane, rightPane, "Radial position, across", [](auto& s) -> auto& { return s.controls.spell_ring_x; },
+            "Where the spell radial sits on the screen from left (0) to right (100). 50 is the middle; it always stays "
+            "on the screen.",
+            0, 100, 5, "%", [] { return !cfg().controls.spell_ring; });
+        number_row(
+            leftPane, rightPane, "Radial position, down", [](auto& s) -> auto& { return s.controls.spell_ring_y; },
+            "Where the spell radial sits on the screen from top (0) to bottom (100). 50 is the middle; it always stays "
+            "on the screen.",
+            0, 100, 5, "%", [] { return !cfg().controls.spell_ring; });
     });
 
     add_tab("Game", [this](Rml::Element* content) {

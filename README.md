@@ -55,7 +55,9 @@ default. In multiplayer it needs every player on this PC version: choose "Single
 another emulator in the room, everyone stays on the eight directions (`--analog-movement
 off|single-player|multiplayer` sets it for one run). Every DS button and the screen/fullscreen actions can be rebound to a key and a
 gamepad input on the menu's Controls page, which names buttons for the connected controller (Xbox, PlayStation,
-Nintendo). The company logos before the title screen are skipped; pass `--no-skip-logos` to watch them.
+Nintendo). The right stick picks the spell element: push it and a radial of the six gems appears, point at one to select
+it (then hold X to cast); the number keys 1-6 do the same (the Controls page can turn the radial off). The company logos
+before the title screen are skipped; pass `--no-skip-logos` to watch them.
 
 Settings: Esc (or Guide, or Back + Start on a gamepad) opens the settings menu over the game (which keeps running, without input,
 so online play stays in sync): screen layout,
@@ -83,7 +85,7 @@ Widescreen (OpenGL renderer; Display → Aspect ratio, or `--aspect 16:9`): a wi
 menus, dialogs and the title stay 4:3.
 
 Testing: `--input-script <file>` plays scripted input, one step per line (`<frame> press A+Up [frames]`,
-`<frame> touch x,y [frames]`, `<frame> stick x,y [frames]` in percent, `<frame> shot file.png`, `<frame> quit`; `+N` as the frame means N frames after the
+`<frame> touch x,y [frames]`, `<frame> stick x,y [frames]` and `<frame> rstick x,y [frames]` in percent, `<frame> shot file.png`, `<frame> quit`; `+N` as the frame means N frames after the
 previous step). Automated runs should not touch your own files: `--save-file <copy.sav>` uses another save file,
 `--read-only-save` never writes the save, `--no-settings` neither reads nor writes `settings.ini`, and `--unpaced` runs
 as fast as possible. To record a problem and replay it with timings and frame hashes, see [docs/TESTING.md](docs/TESTING.md).

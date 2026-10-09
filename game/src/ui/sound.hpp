@@ -17,6 +17,9 @@ enum class Sound {
     ItemEnable,      // item enabled ("On")
     ItemDisable,     // item disabled ("Off")
     Warning,         // warning prompt
+    RingOpen,        // the spell radial comes up
+    RingMove,        // it points at another element
+    RingClose,       // it goes away
 };
 
 constexpr Sound kSoundClick = Sound::Click;

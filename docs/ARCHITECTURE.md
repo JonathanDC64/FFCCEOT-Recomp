@@ -463,6 +463,32 @@ it. The records carry no positions, so a console moving a character differently 
   matched. With the check turned off, the positions split, which shows the comparison catches a desync. Played
   between two instances over the Wi-Fi Connection too, with no drift noticed.
 
+**Spell radial** (Controls page, on by default; `game/src/spell_ring.cpp`, `Overlay::update_spell_ring`). The game picks
+a spell element (red, blue, yellow, green, orange, teal: the six gems on the bottom screen, top to bottom) by a touch on
+a gem or R + left/right. Pushing the right stick opens a radial of six holders in the gems' look (our own art,
+`tools/gen_spell_ring_art.py`) over the main screen; the one the stick points at is picked at once, and the radial
+shrinks away when the stick returns. The number keys 1-6 pick the gems directly. Its size (a share of the screen's
+height) and position (a share of the room it has left, so it stays on the screen) are settings; the backdrop is a picture,
+not a big rounded box (RmlUi drew seams across that).
+- How the game stores it: one byte at `0x02135148` (0-5), read by `0x020B5D44` and written by `0x020B5D38`. The game's
+  R + D-pad handler (`0x020C6CCC`) changes it by calling the action dispatcher `0x020C68A0(0x02136D6C, element + 1)`, which
+  runs the gem's handler: the byte, the highlight on the bottom screen, the HUD. The frontend makes that same call
+  (`cfie::request_spell`) from a `before` hook on the HUD's per-tick pad updater (`0x020C6C3C`, `cfie_spell_pad`), on the
+  game's own thread. No touch is synthesised and no RAM is written from outside the game.
+- Gating: that updater only runs while the field's spell bar is live, so the hook counts its calls
+  (`cfie::spell_ticks`) and the frontend opens the radial only when the count moved in the last few frames. In a menu,
+  a dialogue or the map nothing is drawn and nothing is requested (checked with the main menu open).
+- Selection (`ring::pick`): opens above 60% push and closes below 40%, six 60-degree sectors, with an 8-degree margin at
+  the boundaries so it does not chatter. The elements run clockwise, the gems' order going down the screen. Orientation
+  setting: one each side (sectors centred on right, upper right, upper left, left, lower left, lower right; red is at the
+  upper right) or three on top (turned 30 degrees: red, blue, yellow left to right across the top, then green at the
+  lower right, orange at the bottom, teal at the lower left).
+- Recordings: each request is written as a `spell N` step (and replayed from it), so a replay needs no stick; a script
+  with `rstick x,y [frames]` pushes the right stick for the radial's picture and requests, unless it has `spell` steps.
+- Sounds: the game's own menu effects through `ui::play_sound` (open 1006, move 1004, close 1002), like the settings
+  menu. They go through the game's sound manager and so change its memory (a state hash differs from a run without them).
+- Netplay: the choice is local to a console, as R + D-pad is; this path was not played over a network.
+
 The menu's Controls page rebinds them: an input already used by another action
 swaps over, so nothing is bound twice. Pad inputs are saved by position (`east`, `+leftx`, `righttrigger`) and shown
 with the connected controller's names via `SDL_GetGamepadButtonLabelForType`. The menu itself stays on fixed inputs

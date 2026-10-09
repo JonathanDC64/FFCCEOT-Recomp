@@ -41,6 +41,15 @@ void queue_sound(uint16_t id);
 // Logs the id of every sound effect the game starts (to stderr), to learn the numbers (--log-sounds).
 extern bool log_sounds;
 
+// The spell element (the six gems of the bottom screen, top to bottom: 0 to 5). request_spell asks for one; the game's
+// own pad handler applies it at its next tick, the way R + D-pad does, so it only happens while the field's HUD is
+// live and the game decides what is allowed. Safe to call from any thread.
+void request_spell(int element);
+// The element the game has now (-1 until its HUD has run once), and how many ticks the HUD's pad handler has run:
+// a counter that moves means the player is on the field with the spell bar.
+int spell_element();
+uint64_t spell_ticks();
+
 // The hooks of game/config/cfie/hooks.txt by name, for the game module (null for a name that is not one).
 void* find_hook(const char* name);
 

@@ -99,7 +99,9 @@ Milestones are ordered by dependency. Each ends with a demonstrable result. Desi
 **Result: fully playable on a gamepad without touching the bottom screen. Themed launcher and in-game menu.**
 - [x] Binding system + rebinding UI (keyboard and gamepad, controller-specific button names)
 - [ ] Button glyph images, several bindings per action, more app actions (fast-forward, screenshot)
-- [ ] FFCC touch-free scheme (spell ring, menus, map), mouse-as-stylus
+- [x] Spell element on the right stick: a radial of the six gems (number keys 1-6 too), through the game's own R + D-pad
+      call ([ARCHITECTURE.md §6](ARCHITECTURE.md#6-input-and-the-no-touch-screen-scheme))
+- [ ] FFCC touch-free scheme for the rest (menus, map), mouse-as-stylus
 - [x] Analog movement (Controls page: off, single-player (default), or single-player and multiplayer): the character
       walks the way the left stick points, at the speed times how far it is pushed, and its run plays slower to match.
       The stick travels in the input records' unused touch bytes, so every console moves every character the same;

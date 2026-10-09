@@ -8,6 +8,8 @@
 //   touch x,y [frames]     touch the bottom screen at a DS pixel (default 1 frame)
 //   stick x,y [frames]     push the left stick (percent, -100 to 100, y down; default 1 frame), through the deadzone
 //   analog x,y [frames]    the stick as the game gets it (-1 to 1, after the deadzone; what --record-input writes)
+//   rstick x,y [frames]    push the right stick (percent, -100 to 100, y down): the spell radial opens and points
+//   spell N                the game's spell element (0 to 5: the gems top to bottom) is asked for this frame
 //   shot file.png          save the window
 //   quit                   exit
 // Blank lines and lines starting with # are ignored, except these comments, which carry what a recording needs:
@@ -36,6 +38,9 @@ struct Step {
     int stick_x = 0, stick_y = 0;
     bool analog = false;
     float analog_x = 0, analog_y = 0;
+    bool rstick = false;
+    int rstick_x = 0, rstick_y = 0;
+    int spell = -1;
     std::string shot;
     bool quit = false;
 };
@@ -72,6 +77,7 @@ public:
     void comment(const std::string& text);
     // The input for emulated frame `frame`: buttons held, buttons that went down since the last frame, the touch, the stick.
     void add(std::uint64_t frame, std::uint32_t held, std::uint32_t pressed, bool touching, int x, int y, float ax, float ay);
+    void spell(std::uint64_t frame, int element);
     void mark(std::uint64_t frame, const std::string& label = {});
     void warning(std::uint64_t frame, const std::string& text);
 

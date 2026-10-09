@@ -94,10 +94,12 @@ bool load(const std::filesystem::path& path, Script& script, std::string& error)
         else if (cmd == "touch") ok = std::sscanf(arg.c_str(), "%d,%d", &s.touch_x, &s.touch_y) == 2;
         else if (cmd == "stick") s.stick = ok = std::sscanf(arg.c_str(), "%d,%d", &s.stick_x, &s.stick_y) == 2;
         else if (cmd == "analog") s.analog = ok = std::sscanf(arg.c_str(), "%f,%f", &s.analog_x, &s.analog_y) == 2;
+        else if (cmd == "rstick") s.rstick = ok = std::sscanf(arg.c_str(), "%d,%d", &s.rstick_x, &s.rstick_y) == 2;
+        else if (cmd == "spell") ok = std::sscanf(arg.c_str(), "%d", &s.spell) == 1 && s.spell >= 0 && s.spell <= 5;
         else if (cmd == "shot") s.shot = arg, ok = !arg.empty();
         else if (cmd == "quit") s.quit = true;
         else ok = false;
-        if (cmd == "press" || cmd == "touch" || cmd == "stick" || cmd == "analog") {
+        if (cmd == "press" || cmd == "touch" || cmd == "stick" || cmd == "analog" || cmd == "rstick") {
             std::uint64_t n = 0;
             if (in >> n) s.frames = std::max<std::uint64_t>(n, 1);
         }
@@ -147,6 +149,11 @@ void Recorder::mark(std::uint64_t frame, const std::string& label) {
     if (!f_) return;
     std::fprintf(f_, "# mark %llu %s\n", (unsigned long long)frame, label.c_str());
     std::fflush(f_);
+}
+
+void Recorder::spell(std::uint64_t frame, int element) {
+    if (!f_) return;
+    std::fprintf(f_, "%llu spell %d\n", (unsigned long long)frame, element);
 }
 
 void Recorder::warning(std::uint64_t frame, const std::string& text) {

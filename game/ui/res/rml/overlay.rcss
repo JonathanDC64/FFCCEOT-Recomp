@@ -126,3 +126,62 @@ toast icon {
         top: 20dp;
     }
 }
+
+/* The spell radial (see Overlay::update_spell_ring): placed by the code, grows into view while the right stick is pushed. */
+.spell-ring {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    filter: opacity(0);
+    transform: scale(0.55);
+    transition: filter transform 0.16s cubic-out;
+    pointer-events: none;
+}
+
+.spell-ring[open] {
+    filter: opacity(1);
+    transform: scale(1);
+}
+
+.ring-backdrop {
+    position: absolute;
+    decorator: image(../ring-backdrop.png contain center center);
+}
+
+.ring-slot {
+    position: absolute;
+    transform: scale(1);
+    transform-origin: center;
+    transition: transform 0.1s cubic-out;
+}
+
+.ring-slot.selected {
+    transform: scale(1.14);
+}
+
+.ring-holder {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    transform-origin: center;
+    decorator: image(../ring-holder.png contain center center);
+}
+
+.ring-slot.selected .ring-holder {
+    decorator: image(../ring-holder-selected.png contain center center);
+}
+
+.ring-orb {
+    position: absolute;
+}
+
+.ring-orb.element0 { decorator: image(../ring-orb0.png contain center center); }
+.ring-orb.element1 { decorator: image(../ring-orb1.png contain center center); }
+.ring-orb.element2 { decorator: image(../ring-orb2.png contain center center); }
+.ring-orb.element3 { decorator: image(../ring-orb3.png contain center center); }
+.ring-orb.element4 { decorator: image(../ring-orb4.png contain center center); }
+.ring-orb.element5 { decorator: image(../ring-orb5.png contain center center); }

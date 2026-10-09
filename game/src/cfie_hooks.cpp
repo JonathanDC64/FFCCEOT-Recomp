@@ -36,6 +36,9 @@ constexpr uint32_t kSinCosTable = 0x020CD780;               // FX_SinCosTable_: 
 constexpr uint32_t kAnimationStep = 0x0206F1C8;             // (character): 1, or 1.5 and 0.5 under Haste and Slow
 constexpr uint32_t kRunAnimation = 0x52554E20;              // 'RUN ', at a character's +364 while it plays
 constexpr uint32_t kStartSound = 0x020B2B10;                // (_, id): the sound manager starts sound effect `id`
+constexpr uint32_t kSpellElement = 0x02135148;              // the selected spell element (a byte, 0 to 5)
+constexpr uint32_t kSpellActions = 0x02136D6C;              // the field HUD's actions: (actions, element + 1) selects one
+constexpr uint32_t kTriggerAction = 0x020C68A0;             // (actions, id): runs the handler of an action
 constexpr uint32_t kBlankInputCall = 0x020ADF81;            // return address: a slot nobody's records came in for
 
 // Menu sounds: a small ring of requests from the frontend, started by cfie_sound_update.
@@ -47,6 +50,10 @@ constexpr uint32_t kSoundQueue = 16;
 constexpr int64_t kSoundMaxAgeMs = 300;
 SoundRequest sound_queue[kSoundQueue];
 std::atomic<uint32_t> sound_head{0}, sound_tail{0};
+
+std::atomic<int> spell_request{-1};
+std::atomic<int> spell_now{-1};
+std::atomic<uint64_t> spell_tick_count{0};
 
 int64_t now_ms() {
     return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch())
@@ -115,6 +122,27 @@ extern "C" void cfie_sound_update(NtrCpu* c) {
         c->r[1] = id;
         ntr_call(c, kStartSound | 1);
     }
+    c->r[0] = r0, c->r[1] = r1, c->r[2] = r2, c->r[3] = r3, c->r[14] = lr;
+}
+
+namespace cfie {
+void request_spell(int element) { spell_request.store(element, std::memory_order_relaxed); }
+int spell_element() { return spell_now.load(std::memory_order_relaxed); }
+uint64_t spell_ticks() { return spell_tick_count.load(std::memory_order_relaxed); }
+}  // namespace cfie
+
+// 0x020C6C3C (the field HUD's pad updater, once per tick: r0 = its state): applies a requested spell element through the
+// game's action dispatcher, the call its R + D-pad handler (0x020C6CCC) makes.
+extern "C" void cfie_spell_pad(NtrCpu* c) {
+    const int current = int(int8_t(ntr_rd8(c, kSpellElement)));
+    spell_now.store(current, std::memory_order_relaxed);
+    spell_tick_count.fetch_add(1, std::memory_order_relaxed);
+    const int want = spell_request.exchange(-1, std::memory_order_relaxed);
+    if (want < 0 || want > 5 || want == current) return;
+    const uint32_t r0 = c->r[0], r1 = c->r[1], r2 = c->r[2], r3 = c->r[3], lr = c->r[14];
+    c->r[0] = kSpellActions;
+    c->r[1] = uint32_t(want + 1);
+    ntr_call(c, kTriggerAction | 1);
     c->r[0] = r0, c->r[1] = r1, c->r[2] = r2, c->r[3] = r3, c->r[14] = lr;
 }
 
@@ -293,6 +321,7 @@ void* cfie::find_hook(const char* name) {
         {"cfie_os_irq_handler", reinterpret_cast<void*>(&cfie_os_irq_handler)},
         {"cfie_on_bgm_play", reinterpret_cast<void*>(&cfie_on_bgm_play)},
         {"cfie_sound_update", reinterpret_cast<void*>(&cfie_sound_update)},
+        {"cfie_spell_pad", reinterpret_cast<void*>(&cfie_spell_pad)},
         {"cfie_on_sound_start", reinterpret_cast<void*>(&cfie_on_sound_start)},
         {"cfie_pack_input", reinterpret_cast<void*>(&cfie_pack_input)},
         {"cfie_apply_input", reinterpret_cast<void*>(&cfie_apply_input)},

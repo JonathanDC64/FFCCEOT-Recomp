@@ -115,6 +115,17 @@ std::deque<Toast>& get_toasts() noexcept;
 void show_menu_notification() noexcept;
 bool consume_menu_notification_request() noexcept;
 
+// The spell radial (see spell_ring.hpp), drawn by the overlay: whether it is up, which of its six sectors is picked (-1
+// none), and where it goes: its centre in window pixels and the height of the screen it sits on (it scales with it).
+struct SpellRingView {
+    bool open = false;
+    int sector = -1;
+    bool top = false;  // the Top orientation (see spell_ring.hpp)
+    float x = 0, y = 0, size = 0;
+};
+void set_spell_ring(const SpellRingView& view) noexcept;
+const SpellRingView& get_spell_ring() noexcept;
+
 // The UI's size from the settings (Auto, or 50-200%).
 void apply_scale() noexcept;
 

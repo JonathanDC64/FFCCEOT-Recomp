@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "ntr/recomp.h"
@@ -109,6 +110,8 @@ struct RuntimeOptions {
     // Builds with FFCC_TRACE_ENTRY only: write each function's first/last frame and call count here on exit.
     std::string profile_path;
     uint64_t dump_at_frame = 0;  // print the CPU state and recent function entries at this frame (debugging)
+    // Write the 4 MB main RAM to <path> after these frames (reverse engineering: diff two dumps to find a variable).
+    std::vector<std::pair<uint64_t, std::string>> ram_dumps;
     // The GL renderers need a current OpenGL context (3.2 core, or 4.3 for Compute) with its functions loaded through
     // melonDS's glad (gladLoadGLLoader) on the thread that calls run(). Without one they fall back to Software.
     VideoSettings video;

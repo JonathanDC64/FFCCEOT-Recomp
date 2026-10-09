@@ -356,6 +356,13 @@ void RuntimeImpl::end_frame() {
     if (options.fps_probe) probe_frame();
     if (gx_) gx_->report(frames_);
     if (options.dump_at_frame && frames_ == options.dump_at_frame) dump_state();
+    for (const auto& d : options.ram_dumps) {
+        if (d.first != frames_) continue;
+        if (FILE* f = std::fopen(d.second.c_str(), "wb")) {
+            std::fwrite(n.MainRAM, 1, size_t(n.MainRAMMask) + 1, f);
+            std::fclose(f);
+        }
+    }
 
     Frame frame;
     void* top = nullptr;

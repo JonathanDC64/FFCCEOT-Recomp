@@ -33,6 +33,7 @@
 #include "report.hpp"
 #include "input.hpp"
 #include "input_script.hpp"
+#include "spell_ring.hpp"
 #include "main_thread.hpp"
 #include "ntr/rom.hpp"
 #include "ntr/runtime.hpp"
@@ -49,6 +50,7 @@
 #include "ui/prelaunch.hpp"
 #include "ui/preset.hpp"
 #include "ui/rom_setup.hpp"
+#include "ui/sound.hpp"
 #include "ui/ui.hpp"
 #include "ui/ui_script.hpp"
 #include "video.hpp"
@@ -864,6 +866,7 @@ private:
             ly = SDL_GetGamepadAxis(gamepad_, SDL_GAMEPAD_AXIS_LEFTY) / 32767.0f;
         }
         script_stick(lx, ly);
+        spell_ring(exclusive);
         cfie::Stick stick;
         if (const float length = std::hypot(lx, ly); length > dead) {
             const float diagonal = 0.38268343f * length;  // sin(22.5 degrees)
@@ -915,6 +918,81 @@ private:
         input_active_ = b != 0 || touching;
     }
 
+    // The spell radial: the right stick opens it and picks an element as soon as it points at one; the game gets the
+    // pick the way its own R + D-pad does (cfie::request_spell). Only while the game's spell bar is live (its HUD
+    // updates it every tick on the field), so a push in a menu, a dialogue or the map does nothing.
+    void spell_ring(bool exclusive) {
+        const input::Bindings& c = settings.controls;
+        if (!script_scanned_) {
+            script_scanned_ = true;
+            for (const ScriptStep& s : script) script_spells_ = script_spells_ || s.spell >= 0;
+        }
+        const uint64_t f = frames_ + 1;
+        if (const uint64_t ticks = cfie::spell_ticks(); ticks != ring_ticks_) {
+            ring_ticks_ = ticks;
+            ring_tick_frame_ = f;
+        }
+        // The right stick (a script's `rstick` replaces it), unless it is bound to something else.
+        float rx = 0, ry = 0;
+        bool bound = false;
+        for (int i = 0; i < input::kActionCount; i++) {
+            const input::PadInput& p = c.pad[i];
+            bound = bound || (p.kind == input::PadInput::Kind::Axis &&
+                              (p.index == SDL_GAMEPAD_AXIS_RIGHTX || p.index == SDL_GAMEPAD_AXIS_RIGHTY));
+        }
+        bool scripted = false;
+        for (const ScriptStep& s : script) {
+            if (s.frame > f) break;
+            if (s.rstick && f < s.frame + s.frames) rx = s.rstick_x / 100.0f, ry = s.rstick_y / 100.0f, scripted = true;
+        }
+        if (gamepad_ && c.spell_ring && !bound && !exclusive && !scripted) {
+            rx = SDL_GetGamepadAxis(gamepad_, SDL_GAMEPAD_AXIS_RIGHTX) / 32767.0f;
+            ry = SDL_GetGamepadAxis(gamepad_, SDL_GAMEPAD_AXIS_RIGHTY) / 32767.0f;
+        }
+        const bool live = ring_ticks_ != 0 && f - ring_tick_frame_ <= 8;
+        const bool allowed = live && !input_hold_ && !ui::any_document_visible() && (scripted || c.spell_ring);
+        const ring::State before = ring_;
+        ring_ = ring::pick(allowed ? rx : 0, allowed ? ry : 0, before, c.spell_ring_orientation);
+        if (ring_.open && !before.open) ui::play_sound(ui::Sound::RingOpen);
+        if (!ring_.open && before.open) ui::play_sound(ui::Sound::RingClose);
+        if (ring_.open && (ring_.sector != before.sector || !before.open)) {
+            if (before.open) ui::play_sound(ui::Sound::RingMove);
+            // (a recording holds the requests as `spell` steps, and a replay of it makes them from those)
+            if (!script_spells_) {
+                const int element = ring::element_of(ring_.sector, c.spell_ring_orientation);
+                cfie::request_spell(element);
+                recorder.spell(f, element);
+            }
+        }
+        // The number keys 1 to 6 pick the elements directly, the gems from top to bottom (the keyboard's way to the same call).
+        if (!exclusive && allowed && !script_spells_) {
+            const bool* k = SDL_GetKeyboardState(nullptr);
+            for (int i = 0; i < 6; i++) {
+                const bool down = k[SDL_SCANCODE_1 + i];
+                if (down && !number_down_[i]) {
+                    cfie::request_spell(i);
+                    recorder.spell(f, i);
+                    ui::play_sound(ui::Sound::RingMove);
+                }
+                number_down_[i] = down;
+            }
+        }
+        ui::SpellRingView view{ring_.open, ring_.sector, c.spell_ring_orientation == ring::Orientation::Top};
+        if (presenter_.view_count() > 0) {
+            int shown = 0;
+            for (int i = 0; i < presenter_.view_count(); i++)
+                if (presenter_.view(i).screen == 0) shown = i;
+            const auto& r = presenter_.view(shown).rect;
+            // The radial's size is a share of the screen's height; its position is a share of the room it has left on the screen
+            // (so 0 and 100 put it against the edges and it never leaves the screen).
+            view.size = r.h * c.spell_ring_size / 100.0f;
+            const float reach = ring::kDiscRadius * view.size;
+            view.x = r.w > 2 * reach ? r.x + reach + (r.w - 2 * reach) * c.spell_ring_x / 100.0f : r.x + r.w / 2;
+            view.y = r.h > 2 * reach ? r.y + reach + (r.h - 2 * reach) * c.spell_ring_y / 100.0f : r.y + r.h / 2;
+        }
+        ui::set_spell_ring(view);
+    }
+
     // The left stick from --input-script steps active in the next emulated frame, if any (replacing the real one).
     void script_stick(float& x, float& y) const {
         const uint64_t f = frames_ + 1;
@@ -941,6 +1019,7 @@ private:
             if (s.frame > f) break;
             if (s.quit && !script_quit_) script_quit_ = s.frame;
             if (!s.shot.empty()) screenshots.emplace(s.frame, s.shot);
+            if (s.spell >= 0 && s.frame == f) cfie::request_spell(s.spell);
             if (f >= s.frame + s.frames) continue;
             b |= s.buttons;
             presses_ |= s.taps;
@@ -1154,6 +1233,12 @@ private:
     bool skipping_ = false;
     bool input_active_ = false;
     bool input_hold_ = false;
+    ring::State ring_;                 // the spell radial: where the right stick points
+    uint64_t ring_ticks_ = 0;          // the game's spell bar updates seen, and the frame of the last one
+    uint64_t ring_tick_frame_ = 0;
+    bool number_down_[6] = {};         // the number keys 1 to 6 (spell elements) were down last frame
+    bool script_scanned_ = false;      // the script has `spell` steps (a recording: the radial's requests are in it)
+    bool script_spells_ = false;
     bool app_down_[input::kActionCount] = {};  // app action inputs held last frame
     uint32_t presses_ = 0;  // DS buttons that went down (input events) since the last update_input
 
@@ -1346,7 +1431,7 @@ int main(int argc, char** argv) {
                      "  --hud-scale 50..200                  the HUD's size in percent (opengl)\n"
                      "other:\n"
                      "  --no-skip-logos --trace-calls --trace-threads --trace-files --net-log --perf --fps-probe --gx-probe --gx-check\n"
-                     "  --profile-functions <file> --dump-at-frame <n> --gx-dump-at-frame <n> --exit-after-frames <n>\n"
+                     "  --profile-functions <file> --dump-at-frame <n> --dump-ram-at-frame <n> <file> --gx-dump-at-frame <n> --exit-after-frames <n>\n"
                      "  --screenshot-at-frame <n> <file.png>\n"
                      "  --no-flip-model                      Windows: present with a plain OpenGL swap\n"
                      "game:\n"
@@ -1476,6 +1561,10 @@ int main(int argc, char** argv) {
             options.profile_path = argv[++i];
         else if (a == "--dump-at-frame" && has_value)
             options.dump_at_frame = std::strtoull(argv[++i], nullptr, 10);
+        else if (a == "--dump-ram-at-frame" && i + 2 < argc) {
+            options.ram_dumps.emplace_back(std::strtoull(argv[i + 1], nullptr, 10), argv[i + 2]);
+            i += 2;
+        }
         else if (a == "--exit-after-frames" && has_value)
             exit_after_frames = std::strtoull(argv[++i], nullptr, 10);
         else if (a == "--crash-at-frame" && has_value)

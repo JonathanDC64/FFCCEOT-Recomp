@@ -38,3 +38,8 @@ add_executable(test_input_script test_input_script.cpp ${PROJECT_SOURCE_DIR}/gam
 target_include_directories(test_input_script PRIVATE ${PROJECT_SOURCE_DIR}/game/src)
 target_link_libraries(test_input_script PRIVATE ntr_runtime ntr_common)
 add_test(NAME input_script COMMAND test_input_script)
+
+# The spell radial's sector picking (no SDL or game data needed).
+add_executable(test_spell_ring test_spell_ring.cpp ${PROJECT_SOURCE_DIR}/game/src/spell_ring.cpp)
+target_include_directories(test_spell_ring PRIVATE ${PROJECT_SOURCE_DIR}/game/src)
+add_test(NAME spell_ring COMMAND test_spell_ring)

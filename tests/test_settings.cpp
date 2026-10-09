@@ -28,6 +28,11 @@ void test_round_trip() {
     a.preset_chosen = true;
     a.volume = 40;
     a.hud_scale = 150;
+    a.controls.spell_ring = false;
+    a.controls.spell_ring_orientation = ring::Orientation::Top;
+    a.controls.spell_ring_size = 90;
+    a.controls.spell_ring_x = 20;
+    a.controls.spell_ring_y = 80;
     input::assign_key(a.controls, input::Action::OpenMenu, SDL_SCANCODE_F9);
     input::assign_pad(a.controls, input::Action::OpenMenu, input::PadInput::button(SDL_GAMEPAD_BUTTON_GUIDE));
     const auto path = temp_ini();
@@ -41,6 +46,9 @@ void test_round_trip() {
     CHECK(b.volume == 40);
     CHECK(b.hud_scale == 150);
     CHECK(b.controls == a.controls);
+    CHECK(!b.controls.spell_ring);
+    CHECK(b.controls.spell_ring_orientation == ring::Orientation::Top);
+    CHECK(b.controls.spell_ring_size == 90 && b.controls.spell_ring_x == 20 && b.controls.spell_ring_y == 80);
     CHECK(b.controls.key[int(input::Action::OpenMenu)] == SDL_SCANCODE_F9);
     std::filesystem::remove(path);
 }
@@ -56,6 +64,7 @@ void test_defaults_survive() {
     CHECK(b.ui_scale == d.ui_scale);
     CHECK(b.menu_sounds == d.menu_sounds);
     CHECK(b.controls == d.controls);
+    CHECK(d.controls.spell_ring);
     CHECK(d.controls.key[int(input::Action::OpenMenu)] == SDL_SCANCODE_F1);
     std::filesystem::remove(path);
 }
@@ -70,6 +79,10 @@ void test_set_setting() {
     CHECK(s.skip_prelaunch);
     CHECK(set_setting(s, "audio.menu_sounds", "false"));
     CHECK(!s.menu_sounds);
+    CHECK(set_setting(s, "controls.spell_ring_x", "100"));
+    CHECK(set_setting(s, "controls.spell_ring_x", "101"));  // (clamped, like the other numbers)
+    CHECK(set_setting(s, "controls.spell_ring_size", "10"));
+    CHECK(s.controls.spell_ring_x == 100 && s.controls.spell_ring_size == 30);
     CHECK(!set_setting(s, "no.such_key", "1"));
 }
 

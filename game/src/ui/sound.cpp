@@ -21,13 +21,16 @@ std::uint16_t effect_for(Sound sound) noexcept {
         return 1041;
     case Sound::MenuClose:
     case Sound::WindowClose:
+    case Sound::RingClose:
     case Sound::ItemDisable:
     case Sound::Warning:
         return 1002;
     case Sound::TabChanged:
+    case Sound::RingOpen:
         return 1006;
     case Sound::ItemFocus:
     case Sound::ItemChange:
+    case Sound::RingMove:
         return 1004;
     }
     return 0;
