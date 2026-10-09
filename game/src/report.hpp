@@ -28,6 +28,10 @@ std::string system_info();
 // Hides the user's name, profile folder and computer name from text that is going to be posted.
 std::string redact(std::string text);
 
+// The program is a windowed one (no console window of its own when started from the desktop). Started from a terminal, this
+// ties its output to that terminal again, so the options and messages still show there. Windows only; call first.
+void attach_parent_console();
+
 // Sends this process's standard output and error to ffcc.log in the data dir as well as where they went (the previous
 // run's log is kept as ffcc.prev.log). Windows only.
 void start_log();

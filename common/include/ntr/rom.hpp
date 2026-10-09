@@ -21,6 +21,9 @@ public:
 using Sha1Digest = std::array<uint8_t, 20>;
 
 Sha1Digest sha1(std::span<const uint8_t> data);
+// CRC-32 (the checksum dump databases list next to the SHA-1), as 8 lowercase hex digits.
+uint32_t crc32(std::span<const uint8_t> data);
+std::string crc32_hex(uint32_t crc);
 std::string to_hex(std::span<const uint8_t> bytes);
 
 // Nintendo "backwards LZ" used for the ARM9 static module and (optionally) overlays.
@@ -134,6 +137,7 @@ private:
 // ROM dumps this project knows how to set up.
 struct KnownRom {
     const char* sha1_hex;
+    const char* crc32_hex;
     const char* game_code;
     const char* region;
     const char* description;

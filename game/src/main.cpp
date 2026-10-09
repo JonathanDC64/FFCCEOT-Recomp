@@ -4,9 +4,11 @@
 //
 // Shows the screens in a choice of layouts (by default the top screen with the bottom one as a picture-in-picture),
 // with keyboard/gamepad input, touch via the mouse and audio output. Video goes through OpenGL, which also lets
-// melonDS render the screens at a multiple of the DS resolution. Esc (or Guide / Back + Start) opens the settings
-// menu, which is drawn over the game (it keeps running, as online play needs, but gets no input); the settings are
-// kept in settings.ini next to the save. The game runs on its own thread so that dragging the window does not stop it.
+// melonDS render the screens at a multiple of the DS resolution. The interface is a port of Dusklight's (src/ui): a
+// start screen over the window on every launch (once the game is built it runs behind that screen; the first time the
+// ROM is chosen and the game built from it there), and a menu on F1 or R+Start, drawn over the game (which keeps running,
+// as online play needs, but gets no input). The settings are kept in settings.ini next to the save. The game runs on
+// its own thread so that dragging the window does not stop it.
 #include <SDL3/SDL.h>
 
 #include <algorithm>
@@ -32,7 +34,19 @@
 #include "ntr/rom.hpp"
 #include "ntr/runtime.hpp"
 #include "settings.hpp"
-#include "ui.hpp"
+#include "setup.hpp"
+#include "ui/app.hpp"
+#include "ui/file_dialog.hpp"
+#include "ui/host.hpp"
+#include "ui/input.hpp"
+#include "ui/menu_bar.hpp"
+#include "ui/modal.hpp"
+#include "ui/overlay.hpp"
+#include "ui/prelaunch.hpp"
+#include "ui/preset.hpp"
+#include "ui/rom_setup.hpp"
+#include "ui/ui.hpp"
+#include "ui/ui_script.hpp"
 #include "video.hpp"
 
 namespace {
@@ -192,6 +206,9 @@ public:
     // owns OpenGL, the audio and everything else (init_graphics ... shutdown_graphics). It reads events with
     // SDL_PeepEvents, which does not pump the queue, and sends the few window changes it makes to the main thread.
     bool open_window() {
+        // The window's close button asks first (ui::request_quit_confirm); SDL's own QUIT after the last window closes
+        // must not bypass that. A QUIT is then only the system's (logoff, Ctrl+C).
+        SDL_SetHint(SDL_HINT_QUIT_ON_LAST_WINDOW_CLOSE, "0");
         if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMEPAD)) {
             std::fprintf(stderr, "SDL_Init failed: %s\n", SDL_GetError());
             return false;
@@ -232,14 +249,8 @@ public:
             return false;
         }
         update_layout();
-        presenter_.overlay = [this] {
-            if (!menu_.is_open()) return;
-            int w = 0, h = 0;
-            SDL_GetWindowSizeInPixels(window_, &w, &h);
-            menu_.render(w, h);
-        };
-        if (!menu_.init(window_, &settings, presenter_.has_compute()))
-            std::fprintf(stderr, "the settings menu is unavailable\n");
+        presenter_.overlay = [this] { draw_ui(); };
+        init_ui();
 
         SDL_AudioSpec spec{SDL_AUDIO_S16, 2, 48000};
         audio_ = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &spec, nullptr, nullptr);
@@ -257,7 +268,11 @@ public:
     void shutdown_graphics() {
         flush_save();
         if (settings_dirty_ && !settings_path.empty()) save_settings(settings_path, settings);
-        menu_.shutdown();
+        if (ui_ready_) {
+            ui::shutdown();
+            ui::host::shutdown();
+            ui_ready_ = false;
+        }
         settings.layout.layout = video::Layout::Single;  // (closes the second window; not saved)
         sync_second_window();
         if (audio_) SDL_DestroyAudioStream(audio_);
@@ -297,6 +312,13 @@ public:
         sent_video_ = rt->video();
         sync_video();
         update_title();
+        // The first run offers the Welcome presets, once the game is up (as Dusklight does after it has started).
+        if (ui_ready_ && !settings.preset_chosen) ui::push_document(std::make_unique<ui::PresetWindow>());
+    }
+
+    // The game is gone (its window stays for the start screen).
+    void detach() {
+        runtime_ = nullptr;
     }
 
     bool on_frame(const ntr::Frame& frame) override {
@@ -313,7 +335,7 @@ public:
         if (title_dirty_) update_title();  // a change made last frame is now in effect
         if (runtime_->video().wide_extra != presenter_.wide_extra()) update_layout();  // (the layout follows what is in use)
         ++frames_;
-        if (exit_after_frames && frames_ >= exit_after_frames && !menu_shot_pending()) return false;
+        if (exit_after_frames && frames_ >= exit_after_frames) return false;
         if (crash_at_frame && frames_ == crash_at_frame) *static_cast<volatile int*>(nullptr) = 1;  // (--crash-at-frame)
         if (abort_at_frame && frames_ == abort_at_frame) {
             std::fprintf(stderr, "fatal: test abort (--abort-at-frame)\n");
@@ -332,30 +354,30 @@ public:
         if (skipping_) {
             // The company logos before the title cannot be skipped in the game: run through them unseen and
             // unheard at full speed. Stop at the title music, on any input, or after a safety limit.
-            if (!cfie::events.title_bgm_started && !input_active_ && frames_ < kMaxLogoSkipFrames) return true;
+            if (!cfie::events.title_bgm_started && !input_active_ && frames_ < kMaxLogoSkipFrames) {
+                // The interface keeps being drawn while it is over the logos (the start screen, or its fade-out and the
+                // hint after Play), every few frames: they are skipped at full speed, and its animations run on real time.
+                const double now = seconds();
+                if (ui::any_document_visible()) ui_visible_at_ = now;
+                if (now - ui_visible_at_ < 3.0 && (frames_ & 3) == 0) {
+                    presenter_.set_vsync(false);
+                    present_ui_only();
+                }
+                return true;
+            }
             skipping_ = false;
             next_frame_ = std::chrono::steady_clock::now();
         }
-        if (menu_at_frame && frames_ == menu_at_frame) {
-            open_menu();
-            menu_key_pos_ = 0;
-        }
-        // Debugging: a screenshot asked for at or before this frame, while the menu is open, is taken once the menu
-        // has settled. Otherwise it is taken at its own frame.
+        // Debugging: a screenshot asked for at this frame.
         const char* shot_path = nullptr;
-        bool menu_shot = false;
-        if (menu_.is_open()) {
-            const auto pending = screenshots.lower_bound(menu_shot_from_);
-            if (pending != screenshots.end() && pending->first <= frames_ && ++menu_frames_ >= 10) {
-                shot_path = pending->second.c_str();
-                menu_shot = true;
-            }
-        } else {
+        {
             const auto shot = screenshots.find(frames_);
             if (shot != screenshots.end()) shot_path = shot->second.c_str();
         }
+        if (!script_shot_.empty()) shot_path = script_shot_.c_str();  // (--ui-script: the frame that follows the step)
+        const bool script_shot = !script_shot_.empty();
         bool report_shot = false;
-        if (report_countdown_ > 0 && !menu_.is_open() && --report_countdown_ == 0) {
+        if (report_countdown_ > 0 && !ui::any_document_visible() && --report_countdown_ == 0) {
             shot_path = report_shot_.c_str();  // (the game itself, a few frames after the menu closed)
             report_shot = true;
         }
@@ -366,11 +388,8 @@ public:
             presenter_.present(&frame, settings.filter, shot_path);
         }
         if (++frames_since_save_ > 120) flush_save();
+        if (script_shot) script_shot_.clear();
         if (report_shot) finish_report();
-        if (menu_shot) {
-            menu_shot_from_ = frames_ + 1;
-            if (exit_after_frames && frames_ >= exit_after_frames) return false;
-        }
         if (script_quit_ && frames_ >= script_quit_) return false;
         if (!unpaced && !runtime_->video().display_rate) pace();
         return true;
@@ -395,75 +414,84 @@ public:
     }
 
 private:
+    // Game thread: the events of the window, to the interface first and then to the game.
     bool pump_events() {
-        // Debugging: key presses for the menu (--menu-keys, comma-separated SDL key names such as "Down,Down,Return"),
-        // one per frame so that each takes effect before the next.
-        if (menu_.is_open() && menu_key_pos_ < menu_keys.size()) {
-            const size_t comma = std::min(menu_keys.find(',', menu_key_pos_), menu_keys.size());
-            SDL_Event k{};
-            k.type = SDL_EVENT_KEY_DOWN;
-            k.key.key = SDL_GetKeyFromName(menu_keys.substr(menu_key_pos_, comma - menu_key_pos_).c_str());
-            k.key.scancode = SDL_GetScancodeFromKey(k.key.key, nullptr);
-            k.key.down = true;
-            SDL_PushEvent(&k);
-            menu_key_pos_ = comma + 1;
-        }
+        script_tick();
         // (SDL_PeepEvents takes what the main thread has pumped; SDL_PollEvent would pump from this thread.)
         SDL_Event e;
         while (SDL_PeepEvents(&e, 1, SDL_GETEVENT, SDL_EVENT_FIRST, SDL_EVENT_LAST) > 0) {
             if (!handle_common_event(e)) return false;
-            if (menu_.is_open()) {  // the game doesn't see the keys, buttons or clicks meant for the menu
-                menu_.handle_event(e);
+            if (window_hotkey(e)) continue;
+            ui::handle_event(e);
+            if (ui::any_document_visible()) {  // the game doesn't see the keys, buttons or clicks meant for the interface
+                input_hold_ = true;
                 continue;
             }
+            if (!runtime_) continue;
             switch (e.type) {
             case SDL_EVENT_KEY_DOWN:
-                if (e.key.key == SDLK_ESCAPE) open_menu();
-                else if (!e.key.repeat) hotkey(e.key.key);
-                if (!e.key.repeat)
+                if (!e.key.repeat) {
+                    hotkey(e.key.key);
                     for (int i = 0; i < input::kFirstAppAction; i++)
                         if (settings.controls.key[i] == e.key.scancode) presses_ |= kDsBits[i];
+                }
                 break;
             case SDL_EVENT_GAMEPAD_BUTTON_DOWN: {
                 const auto b = SDL_GamepadButton(e.gbutton.button);
                 for (int i = 0; i < input::kFirstAppAction; i++)
                     if (settings.controls.pad[i] == input::PadInput::button(b)) presses_ |= kDsBits[i];
-                // Guide, or Back and Start together, opens the menu.
-                const auto held = [&](SDL_GamepadButton o) { return gamepad_ && SDL_GetGamepadButton(gamepad_, o); };
-                if (b == SDL_GAMEPAD_BUTTON_GUIDE || (b == SDL_GAMEPAD_BUTTON_START && held(SDL_GAMEPAD_BUTTON_BACK)) ||
-                    (b == SDL_GAMEPAD_BUTTON_BACK && held(SDL_GAMEPAD_BUTTON_START)))
-                    open_menu();
                 break;
             }
             default: break;
             }
         }
-        if (menu_.quit_requested) return false;
-        if (menu_.report_requested) {
-            menu_.report_requested = false;
-            menu_.close();
+        return after_events();
+    }
+
+    // What the interface asked for during the events, and its opening and closing.
+    bool after_events() {
+        if (quit_requested_) return false;
+        if (report_requested_) {
+            report_requested_ = false;
+            ui::close_all_documents();
             begin_report();
         }
-        if (menu_.changed) {
-            menu_.changed = false;
+        if (settings_changed_) {
+            settings_changed_ = false;
             apply_settings();
         }
-        if (menu_was_open_ && !menu_.is_open()) resumed();
-        menu_was_open_ = menu_.is_open();
+        const bool ui_open = ui::any_document_visible();
+        if (ui_was_open_ && !ui_open) resumed();
+        if (ui_open) input_hold_ = true;  // (the interface has the keys: the game gets nothing while it is open)
+        ui_was_open_ = ui_open;
         return true;
     }
 
-    // Events handled the same way whether or not the menu is open. Returns false to quit.
+    // Alt+Enter: fullscreen, in the game, over the menus and on the start screen alike (F11 is polled with the game's input).
+    bool window_hotkey(const SDL_Event& e) {
+        if (e.type != SDL_EVENT_KEY_DOWN || e.key.repeat || (e.key.mod & SDL_KMOD_ALT) == 0) return false;
+        if (e.key.key != SDLK_RETURN && e.key.key != SDLK_KP_ENTER) return false;
+        toggle_fullscreen();
+        input_hold_ = true;  // (the Enter that goes with it is not game input, nor a click on the interface)
+        if (settings_dirty_ && !settings_path.empty()) save_settings(settings_path, settings);
+        settings_dirty_ = false;
+        return true;
+    }
+
+    // Events handled the same way whether or not the interface is open. Returns false to quit.
     bool handle_common_event(const SDL_Event& e) {
         switch (e.type) {
         case SDL_EVENT_QUIT: return false;
         case SDL_EVENT_WINDOW_CLOSE_REQUESTED:
-            if (e.window.windowID == SDL_GetWindowID(window_)) return false;
+            if (e.window.windowID == SDL_GetWindowID(window_)) {
+                if (!ui_ready_) return false;
+                ui::request_quit_confirm();
+                break;
+            }
             if (window2_ && e.window.windowID == SDL_GetWindowID(window2_)) {  // the second window was closed
                 settings.layout.layout = video::Layout::Single;
                 settings_dirty_ = true;
                 title_dirty_ = true;
-                if (menu_.is_open()) menu_.reload();
                 update_layout();
             }
             break;
@@ -485,30 +513,134 @@ private:
         return true;
     }
 
-    // The game goes on behind the menu (online play can't wait): the menu is drawn over each frame, the game gets no
-    // input, and the sound plays on.
-    void open_menu() {
-        if (menu_.is_open()) return;
-        menu_.open();
-        if (!menu_.is_open()) return;
-        skipping_ = false;  // (the menu is not to be skipped past)
-        if (window2_) main_thread::run([w = window_] { SDL_RaiseWindow(w); }, false);  // (the menu is in the first window)
-        menu_frames_ = 0;
-        menu_was_open_ = true;
-        input_hold_ = true;  // whatever opened the menu is not game input
-    }
-
-    // The menu closed: what it changed that waits for that takes effect, and the settings are saved.
+    // The interface closed: what it changed that waits for that takes effect, and the settings are saved.
     void resumed() {
-        runtime_->set_fast_cart(settings.fast_loading);
-        runtime_->set_cpu_speed(settings.cpu_speed);
+        if (runtime_) {
+            runtime_->set_fast_cart(settings.fast_loading);
+            runtime_->set_cpu_speed(settings.cpu_speed);
+        }
         if (settings_dirty_) {
             if (!settings_path.empty()) save_settings(settings_path, settings);
             settings_dirty_ = false;
         }
-        input_hold_ = true;  // the button or key that closed the menu is not game input either
+        input_hold_ = true;  // the button or key that closed it is not game input either
     }
 
+    // --ui-script: one step per frame.
+    void script_tick() {
+        if (!ui::script::active()) return;
+        ui::script::Hooks hooks;
+        hooks.game_running = [this] { return runtime_ != nullptr; };
+        hooks.frames = [this] { return uint64_t(frames_.load()); };
+        hooks.set = [this](const std::string& kv) {
+            const size_t eq = kv.find('=');
+            if (eq == std::string::npos || !set_setting(settings, kv.substr(0, eq), kv.substr(eq + 1))) return false;
+            apply_settings();
+            return true;
+        };
+        hooks.resize = [this](int w, int h) { main_thread::run([win = window_, w, h] { SDL_SetWindowSize(win, w, h); }); };
+        hooks.shot = [this](const std::string& path) { script_shot_ = path; };
+        hooks.quit = [this] { quit_requested_ = true; };
+        hooks.shot_dir = ui_shot_dir;
+        ui::script::tick(hooks);
+    }
+
+    // The interface alone, over black (no game frame to show): a frame of the start screen.
+    void present_ui_only() {
+        const char* shot = script_shot_.empty() ? nullptr : script_shot_.c_str();
+        presenter_.present(nullptr, settings.filter, shot);
+        script_shot_.clear();
+    }
+
+    // Game thread: the interface over the window (Dusklight's UI, ported in src/ui), updated and drawn with every frame
+    // that is shown.
+    void draw_ui() {
+        if (!ui_ready_) return;
+        int w = 0, h = 0;
+        SDL_GetWindowSizeInPixels(window_, &w, &h);
+        ui::update();
+        ui::host::render(w, h);
+    }
+
+    void init_ui() {
+        if (!ui::host::init(window_)) {
+            std::fprintf(stderr, "the menu is unavailable\n");
+            return;
+        }
+        ui::App& a = ui::app();
+        a.settings = &settings;
+        a.bindings = &settings.controls;
+        a.compute_available = presenter_.has_compute();
+        a.settings_changed = [this] { settings_changed_ = true; };
+        a.save_settings = [this] {
+            if (!settings_path.empty()) save_settings(settings_path, settings);
+            settings_dirty_ = false;
+        };
+        a.report_issue = [this] { report_requested_ = true; };
+        a.quit = [this] { quit_requested_ = true; };
+        a.data_dir = data_dir;
+        a.toolchain_dir = toolchain_dir;
+        a.status = status;
+        a.game_running = [this] { return runtime_ != nullptr; };
+        a.start_game = [this] { game_built(); };
+        if (!ui::initialize()) {
+            std::fprintf(stderr, "the menu is unavailable\n");
+            ui::host::shutdown();
+            return;
+        }
+        ui_ready_ = true;
+        ui::push_document(std::make_unique<ui::Overlay>(), true, true);
+        ui::push_document(std::make_unique<ui::MenuBar>(), false);
+        if (show_prelaunch) ui::push_document(std::make_unique<ui::Prelaunch>());
+    }
+
+    // A build from the start screen finished: the game can start.
+    void game_built() {
+        if (runtime_) return;
+        status = setup::check(data_dir);
+        ui::app().status = status;
+        if (status.state == setup::State::Ready) start_requested_ = true;
+    }
+
+public:
+    // Game thread: the start screen alone, with no game behind it yet (the ROM is chosen and the game built here). True
+    // when a game can start, false when the player quits.
+    bool run_start_screen(const std::filesystem::path& startup_rom = {}) {
+        start_requested_ = false;
+        presenter_.set_vsync(true);
+        if (!startup_rom.empty() && ui_ready_) ui::rom_setup::use_rom(startup_rom.string());
+        while (!quit_requested_ && !start_requested_) {
+            script_tick();
+            SDL_Event e;
+            while (SDL_PeepEvents(&e, 1, SDL_GETEVENT, SDL_EVENT_FIRST, SDL_EVENT_LAST) > 0) {
+                if (!handle_common_event(e)) quit_requested_ = true;
+                if (window_hotkey(e)) continue;
+                ui::handle_event(e);
+            }
+            if (!after_events()) break;
+            present_ui_only();
+            if (unpaced) SDL_Delay(8);
+        }
+        return start_requested_ && !quit_requested_;
+    }
+
+    bool quit_requested() const { return quit_requested_; }
+
+    // The start screen with a message on it (the game could not be started).
+    void show_error(const std::string& title, const std::string& message) {
+        if (!ui_ready_) return;
+        if (!ui::is_prelaunch_open()) ui::push_document(std::make_unique<ui::Prelaunch>());
+        ui::push_document(std::make_unique<ui::Modal>(ui::Modal::Props{
+            .title = title,
+            .bodyText = message,
+            .actions = {ui::ModalAction{.label = "Close", .onPressed = [](ui::Modal& modal) { modal.pop(); }}},
+            .onDismiss = [](ui::Modal& modal) { modal.pop(); },
+            .variant = "danger",
+            .icon = "error",
+        }));
+    }
+
+private:
     // "Report an issue": the menu closes, and a few frames later (so the picture is the game's, not the menu's) a
     // screenshot is taken and everything a bug report needs is zipped; the issue form opens, filled in, with the folder
     // holding the zip to attach to it.
@@ -557,17 +689,11 @@ private:
         if (!zip.empty()) report::reveal(zip);
     }
 
-    // Debugging: is a screenshot waiting for the menu to settle?
-    bool menu_shot_pending() const {
-        if (!menu_.is_open()) return false;
-        const auto pending = screenshots.lower_bound(menu_shot_from_);
-        return pending != screenshots.end() && pending->first <= frames_;
-    }
-
     // Puts edited settings into effect as they are changed (the game is running behind the menu).
     void apply_settings() {
         settings_dirty_ = true;
         if (settings.fullscreen != fullscreen_) set_fullscreen(settings.fullscreen);
+        ui::apply_scale();
         update_layout();
         sync_video();
         if (audio_) SDL_SetAudioStreamGain(audio_, settings.volume / 100.0f);
@@ -594,13 +720,13 @@ private:
         title_dirty_ = true;
     }
 
-    // Fixed hotkeys: F1 layout, F4 side screen position (main + side), F5 renderer, F6/F7 resolution down/up, F8
+    // Fixed hotkeys: F10 layout, F4 side screen position (main + side), F5 renderer, F6/F7 resolution down/up, F8
     // filter. Stepping the resolution past 1x or 16x returns to matching the window.
     void hotkey(SDL_Keycode key) {
         video::LayoutSettings& layout = settings.layout;
         const int scale = runtime_->video().scale;
         switch (key) {
-        case SDLK_F1: layout.layout = video::Layout((int(layout.layout) + 1) % 5); break;
+        case SDLK_F10: layout.layout = video::Layout((int(layout.layout) + 1) % 5); break;
         case SDLK_F4:
             if (layout.layout != video::Layout::MainSide) return;
             layout.side_align = video::Align((int(layout.side_align) + 1) % 3);
@@ -623,6 +749,7 @@ private:
 
     // Asks the runtime for new renderer settings when the settings or the window size call for them.
     void sync_video() {
+        if (!runtime_) return;  // (no game yet)
         const ntr::VideoSettings v = wanted_video();
         if (v.renderer == sent_video_.renderer && v.scale == sent_video_.scale &&
             v.better_polygons == sent_video_.better_polygons && v.hires_coordinates == sent_video_.hires_coordinates &&
@@ -638,6 +765,7 @@ private:
     // The title shows the video settings in use (a change applies at the end of the frame that made it).
     void update_title() {
         title_dirty_ = false;
+        if (!runtime_) return;
         const video::LayoutSettings& layout = settings.layout;
         const ntr::VideoSettings v = runtime_->video();
         std::string t = std::string(kTitle) + "  |  " + video::layout_name(layout.layout);
@@ -657,7 +785,7 @@ private:
                  (settings.pacing == Pacing::Variable ? " Hz (variable refresh)" : " Hz");
         else
             t += v.interpolate ? ", 60 fps 3D" : ", 30 fps 3D";
-        t += "  |  Esc settings";
+        t += "  |  F1 menu";
         main_thread::run([w = window_, t] { SDL_SetWindowTitle(w, t.c_str()); }, false);
     }
 
@@ -761,7 +889,7 @@ private:
     }
 
     void update_input() {
-        if (menu_.is_open()) input_hold_ = true;  // (the menu has the keys: the game gets nothing while it is open)
+        if (ui::any_document_visible()) input_hold_ = true;  // (the interface has the keys: the game gets nothing)
         const input::Bindings& c = settings.controls;
         const bool* k = SDL_GetKeyboardState(nullptr);
         const float dead = c.deadzone / 100.0f;
@@ -1024,7 +1152,6 @@ private:
 
     SDL_Window* window_ = nullptr;
     video::Presenter presenter_;
-    ui::Menu menu_;
     float pixel_ratio_ = 1;  // window pixels per window coordinate (high-DPI displays)
     SDL_Window* window2_ = nullptr;  // the second screen's window (Windows layout)
     float pixel_ratio2_ = 1;
@@ -1063,13 +1190,17 @@ private:
                                            ntr::KeyRight};
     static_assert(std::size(kDsBits) == input::kFirstAppAction);
     uint64_t script_quit_ = 0;                 // the frame a script's quit step ends the run (0 = none)
-    size_t menu_key_pos_ = std::string::npos;  // --menu-keys: the next key to press
     int report_countdown_ = 0;                 // frames until the screenshot for a problem report
     std::string report_shot_, report_stamp_;
-    int menu_frames_ = 0;                      // frames shown since the menu opened
-    bool menu_was_open_ = false;
+    bool ui_ready_ = false;                    // the interface is up
+    double ui_visible_at_ = -100;              // when something of it last was showing (seconds())
+    bool ui_was_open_ = false;                 // something of it was showing last frame
+    bool quit_requested_ = false;              // Quit, in the start screen or the menu
+    bool report_requested_ = false;            // Report an issue
+    bool settings_changed_ = false;            // the interface changed a setting
+    bool start_requested_ = false;             // the game was built: start it
+    std::string script_shot_;                  // --ui-script: save the next frame shown here
     std::atomic<bool> done_{false};            // the game thread has finished (the main thread may close the window)
-    uint64_t menu_shot_from_ = 0;              // screenshots before this frame were taken in the menu
     static constexpr uint64_t kMaxLogoSkipFrames = 900;  // the logos end around frame 564
 
 public:
@@ -1082,15 +1213,35 @@ public:
     InputRecorder recorder;          // testing: --record-input (writes nothing unless opened)
     bool read_only_save = false;     // testing: the game may save, but nothing is written to disk
     bool unpaced = false;            // testing: run as fast as possible
-    uint64_t menu_at_frame = 0;      // debugging: open the menu at this frame
+    bool show_prelaunch = false;     // the start screen is shown over the window
+    std::filesystem::path data_dir, toolchain_dir, ui_shot_dir;
+    setup::Status status;
     std::multimap<uint64_t, std::string> set_at;           // debugging: --set-at-frame: "key=value" settings
     std::multimap<uint64_t, std::pair<int, int>> resize_at;  // debugging: --resize-at-frame: window sizes
-    std::string menu_keys;           // debugging: and press these keys in it
     bool allow_flip_model = true;    // Windows: present through DXGI when possible
     double virtual_display_hz = 144; // testing: with --unpaced, the refresh rate display-rate 3D assumes
     bool perf = false;               // --perf: log hitches in frame pacing
-    ui::Menu& menu() { return menu_; }
 };
+
+// Reads the ROM and loads the recompiled game for it. False, with `error` set, if either cannot be used.
+bool load_game(const std::filesystem::path& rom_path, const std::filesystem::path& module_path,
+               const std::filesystem::path& save_path, ntr::RuntimeOptions& options, std::vector<uint8_t>& rom,
+               GameModule& module, std::string& error) {
+    rom = read_file(rom_path);
+    if (rom.empty()) {
+        error = "cannot read " + rom_path.string();
+        return false;
+    }
+    const ntr::KnownRom* known = ntr::find_known_rom(ntr::sha1(rom));
+    if (!known || !known->supported) {
+        error = rom_path.string() + " is not a supported dump (need the USA release, sha1 1df23d5a...)";
+        return false;
+    }
+    if (!save_path.empty() && std::filesystem::exists(save_path)) options.save_data = read_file(save_path);
+    const auto wifi_path = std::filesystem::path(save_path).replace_extension(".wfc");
+    if (!save_path.empty() && std::filesystem::exists(wifi_path)) options.wifi_settings = read_file(wifi_path);
+    return module.load(module_path, error);
+}
 
 bool parse_renderer(const std::string& s, ntr::Renderer& r) {
     if (s == "software" || s == "soft") r = ntr::Renderer::Software;
@@ -1139,27 +1290,52 @@ bool parse_filter(const std::string& s, video::Filter& f) {
 }  // namespace
 
 int main(int argc, char** argv) {
+    report::attach_parent_console();
     if (argc >= 2 && std::strcmp(argv[1], "--crash-dialog") == 0) return crash_report::run_dialog();
+    // A ROM on the command line is used as it is (testing, development); without one the game set up from the
+    // player's ROM is run (src/setup.hpp), after the setup wizard if it is needed.
+    const bool explicit_rom = argc >= 2 && argv[1][0] != '-';
+    const int first_option = explicit_rom ? 2 : 1;
     std::filesystem::path data_dir, save_path, settings_path;
-    if (char* pref = SDL_GetPrefPath("FFCCEOT-Recomp", "EchoesOfTime")) {
-        data_dir = pref;
-        save_path = data_dir / "saves" / "cfie.sav";
-        settings_path = data_dir / "settings.ini";
-        SDL_free(pref);
+    {
+        // --data-dir <folder> (testing) keeps everything in that folder; portable.txt next to the program keeps it in a
+        // data folder beside it.
+        const char* base = SDL_GetBasePath();
+        std::error_code ec;
+        std::filesystem::path given;
+        for (int i = first_option; i + 1 < argc; i++)
+            if (std::strcmp(argv[i], "--data-dir") == 0) given = argv[i + 1];
+        if (!given.empty()) {
+            data_dir = given;
+            std::filesystem::create_directories(data_dir, ec);
+        } else if (base && std::filesystem::exists(std::filesystem::path(base) / "portable.txt", ec)) {
+            data_dir = std::filesystem::path(base) / "data";
+            std::filesystem::create_directories(data_dir, ec);
+        } else if (char* pref = SDL_GetPrefPath("FFCCEOT-Recomp", "EchoesOfTime")) {
+            data_dir = pref;
+            SDL_free(pref);
+        }
+        if (!data_dir.empty()) {
+            save_path = data_dir / "saves" / "cfie.sav";
+            settings_path = data_dir / "settings.ini";
+        }
     }
     // Runs for testing (scripted, unpaced, with their own settings) neither keep a log nor show the crash dialog.
     bool testing = std::getenv("FFCC_NO_CRASH_DIALOG") != nullptr;
-    for (int i = 2; i < argc; i++) {
+    for (int i = first_option; i < argc; i++) {
         const std::string a = argv[i];
-        if (a == "--no-settings" || a == "--input-script" || a == "--unpaced" || a == "--exit-after-frames") testing = true;
+        if (a == "--no-settings" || a == "--input-script" || a == "--ui-script" || a == "--unpaced" ||
+            a == "--exit-after-frames" || a == "--help" || a == "-h")
+            testing = true;
     }
     report::set_data_dir(data_dir);
     if (!testing) report::start_log();
     crash_report::install(testing || data_dir.empty() ? std::filesystem::path{} : data_dir / "crashes", !testing);
-    if (argc < 2) {
+    if (argc >= 2 && (std::strcmp(argv[1], "--help") == 0 || std::strcmp(argv[1], "-h") == 0)) {
         std::fprintf(stderr,
-                     "usage: %s <your Echoes of Time (USA) dump.nds> [options]\n"
-                     "Settings are kept in settings.ini (Esc opens the settings menu); these options override them:\n"
+                     "usage: %s [your Echoes of Time (USA) dump.nds] [options]\n"
+                     "Without a dump, the game set up from your ROM runs (the start screen asks for the ROM the first time).\n"
+                     "Settings are kept in settings.ini (F1 or R+Start opens the menu); these options override them:\n"
                      "screens:\n"
                      "  --layout single|main-side|stacked|side   (default single)\n"
                      "  --side-align top|middle|bottom       main-side: the side screen's position (default bottom)\n"
@@ -1186,8 +1362,7 @@ int main(int argc, char** argv) {
                      "other:\n"
                      "  --no-skip-logos --trace-calls --trace-threads --trace-files --net-log --perf --fps-probe --gx-probe --gx-check\n"
                      "  --profile-functions <file> --dump-at-frame <n> --gx-dump-at-frame <n> --exit-after-frames <n>\n"
-                     "  --screenshot-at-frame <n> <file.png> --menu-at-frame <n> --menu-tab <name>\n"
-                     "  --menu-keys <key,key,...>\n"
+                     "  --screenshot-at-frame <n> <file.png>\n"
                      "  --no-flip-model                      Windows: present with a plain OpenGL swap\n"
                      "game:\n"
                      "  --no-fast-loading                    cartridge reads at the card's speed\n"
@@ -1196,6 +1371,13 @@ int main(int argc, char** argv) {
                      "online:\n"
                      "  --console-name <name>                the console's name other players see (default: this PC's)\n"
                      "  --online-server wiilink|kaeru|host|<DNS address>   Wi-Fi Connection server (default kaeru)\n"
+                     "start screen and setup:\n"
+                     "  --prelaunch                          show the start screen even with a ROM on the command line\n"
+                     "  --first-run                          offer the Welcome presets again\n"
+                     "  --setup-rom <file>                   the start screen starts with this ROM\n"
+                     "  --setup-only                         set up from --setup-rom without a window, then exit\n"
+                     "  --toolchain <dir>                    the compiler to build the game with (default: next to the program)\n"
+                     "  --data-dir <folder>                  keep the settings, the save and the game in this folder\n"
                      "testing:\n"
                      "  --input-script <file>                scripted input, screenshots and exit (see main.cpp)\n"
                      "  --record-input <file>                write the input of every frame as an input script\n"
@@ -1203,19 +1385,22 @@ int main(int argc, char** argv) {
                      "  --crash-at-frame <n>               crash (access violation) at frame n, to see the crash dialog\n"
                      "  --abort-at-frame <n>                 abort at frame n, likewise\n"
                      "  --report-at-frame <n>                make a problem report at frame n, as the menu's Report an issue does\n"
+                     "  --ui-script <file>                   drive the start screen and the menu (see src/ui/ui_script.hpp)\n"
+                     "  --ui-shots <folder>                  where the script's screenshots go (default: here)\n"
                      "  --save-file <file>                   use this save file instead of the usual one\n"
                      "  --read-only-save                     never write the save file\n"
                      "  --no-settings                        ignore settings.ini (neither read nor written)\n"
                      "  --unpaced                            run as fast as possible\n"
+                     "  --log-sounds                         log the id of every sound effect the game starts\n"
                      "  --display-hz <n>                     unpaced display-rate 3D: assume an n Hz display (144)\n",
                      argv[0]);
         return 2;
     }
-    const std::filesystem::path rom_path = argv[1];
+    std::filesystem::path rom_path = explicit_rom ? std::filesystem::path(argv[1]) : std::filesystem::path();
 
     // Testing options that decide which files are used come first: the other options override settings.ini.
     bool read_only_save = false, unpaced = false;
-    for (int i = 2; i < argc; i++) {
+    for (int i = first_option; i < argc; i++) {
         const std::string a = argv[i];
         if (a == "--no-settings") settings_path.clear();
         else if (a == "--save-file" && i + 1 < argc) save_path = argv[i + 1];
@@ -1226,17 +1411,19 @@ int main(int argc, char** argv) {
     if (!settings_path.empty()) load_settings(settings_path, settings);
 
     ntr::RuntimeOptions options;
-    uint64_t exit_after_frames = 0, menu_at_frame = 0, crash_at_frame = 0, abort_at_frame = 0, report_at_frame = 0;
+    uint64_t exit_after_frames = 0, crash_at_frame = 0, abort_at_frame = 0, report_at_frame = 0;
     std::multimap<uint64_t, std::string> set_at;
     std::multimap<uint64_t, std::pair<int, int>> resize_at;
     bool allow_flip_model = true;
     std::filesystem::path game_module_path = GameModule::default_path();
+    bool module_given = false, setup_only = false;
+    std::filesystem::path setup_rom, toolchain_dir, ui_script_path, ui_shot_dir = ".";
+    bool force_prelaunch = false, first_run = false;
     double virtual_display_hz = 144;
     std::map<uint64_t, std::string> screenshots;
     std::vector<ScriptStep> script;
     std::filesystem::path record_path;
-    std::string menu_tab, menu_keys;
-    for (int i = 2; i < argc; i++) {
+    for (int i = first_option; i < argc; i++) {
         const std::string a = argv[i];
         const bool has_value = i + 1 < argc;
         if (a == "--trace-calls")
@@ -1319,12 +1506,31 @@ int main(int argc, char** argv) {
             record_path = argv[++i];
         } else if (a == "--game-module" && has_value) {
             game_module_path = argv[++i];
+            module_given = true;
+        } else if (a == "--prelaunch") {
+            force_prelaunch = true;
+        } else if (a == "--first-run") {
+            first_run = true;
+        } else if (a == "--setup-only") {
+            setup_only = true;
+        } else if (a == "--ui-script" && has_value) {
+            ui_script_path = argv[++i];
+        } else if (a == "--ui-shots" && has_value) {
+            ui_shot_dir = argv[++i];
+            std::error_code ignored;
+            std::filesystem::create_directories(ui_shot_dir, ignored);
+        } else if (a == "--data-dir" && has_value) {
+            ++i;  // (read above)
+        } else if (a == "--setup-rom" && has_value) {
+            setup_rom = argv[++i];
+        } else if (a == "--toolchain" && has_value) {
+            toolchain_dir = argv[++i];
         } else if (a == "--save-file" && has_value)
             ++i;
         else if (a == "--no-settings" || a == "--read-only-save" || a == "--unpaced")
             ;
-        else if (a == "--menu-at-frame" && has_value)
-            menu_at_frame = std::strtoull(argv[++i], nullptr, 10);
+        else if (a == "--log-sounds")
+            cfie::log_sounds = true;
         else if (a == "--set-at-frame" && i + 2 < argc) {
             const uint64_t f = std::strtoull(argv[++i], nullptr, 10);
             set_at.emplace(f, argv[++i]);
@@ -1336,11 +1542,7 @@ int main(int argc, char** argv) {
                 return 2;
             }
             resize_at.emplace(f, std::make_pair(w, h));
-        } else if (a == "--menu-tab" && has_value)
-            menu_tab = argv[++i];
-        else if (a == "--menu-keys" && has_value)
-            menu_keys = argv[++i];
-        else if (a == "--layout" && has_value && parse_layout(argv[i + 1], settings.layout.layout))
+        } else if (a == "--layout" && has_value && parse_layout(argv[i + 1], settings.layout.layout))
             ++i;
         else if (a == "--side-align" && has_value && parse_align(argv[i + 1], settings.layout.side_align))
             ++i;
@@ -1380,28 +1582,69 @@ int main(int argc, char** argv) {
             std::fprintf(stderr, "ignoring unknown or incomplete option %s\n", a.c_str());
     }
 
-    std::vector<uint8_t> rom = read_file(rom_path);
-    if (rom.empty()) {
-        std::fprintf(stderr, "cannot read %s\n", rom_path.string().c_str());
-        return 1;
+    // Which game runs: the ROM on the command line as it is, or the game set up from the player's ROM -- which the start
+    // screen sets up, in the window, when there is none or it is out of date.
+    setup::Status status;
+    if (!explicit_rom) {
+        if (data_dir.empty()) {
+            std::fprintf(stderr, "no folder to keep the game in\n");
+            return 1;
+        }
+        status = setup::check(data_dir);
+        if (setup_only) {
+            // No window: setup from the command line (testing).
+            setup::Request request{data_dir, setup_rom, toolchain_dir};
+            setup::Callbacks callbacks;
+            callbacks.progress = [](float f, const std::string& step) {
+                std::fprintf(stderr, "[%3d%%] %s\n", int(f * 100), step.c_str());
+            };
+            const setup::Result result = setup::run(request, callbacks);
+            if (!result.ok) std::fprintf(stderr, "setup failed: %s\n", result.error.c_str());
+            return result.ok ? 0 : 1;
+        }
     }
-    const ntr::KnownRom* known = ntr::find_known_rom(ntr::sha1(rom));
-    if (!known || !known->supported) {
-        std::fprintf(stderr, "%s is not a supported dump (need the USA release, sha1 1df23d5a...)\n",
-                     rom_path.string().c_str());
-        return 1;
+    if (!ui_script_path.empty()) {
+        std::string error;
+        if (!ui::script::load(ui_script_path, error)) {
+            std::fprintf(stderr, "%s\n", error.c_str());
+            return 2;
+        }
+        ui::set_file_dialog_enabled(false);  // (the script chooses files itself)
     }
-    if (!save_path.empty() && std::filesystem::exists(save_path)) options.save_data = read_file(save_path);
-    const auto wifi_path = std::filesystem::path(save_path).replace_extension(".wfc");
-    if (!save_path.empty() && std::filesystem::exists(wifi_path)) options.wifi_settings = read_file(wifi_path);
+    // A run without settings of its own (testing) does not offer the Welcome presets, unless asked to.
+    if (first_run) settings.preset_chosen = false;
+    else if (testing) settings.preset_chosen = true;
 
-    GameModule game_module;
-    if (std::string error; !game_module.load(game_module_path, error)) {
-        std::fprintf(stderr, "%s\n", error.c_str());
-        return 1;
-    }
-
+    struct Game {
+        SdlHost& host;
+        const std::filesystem::path& save_path;
+        bool fullscreen;
+        ntr::RuntimeOptions& options;
+        std::vector<uint8_t> rom;
+        GameModule module;
+        bool loaded = false;
+        bool explicit_rom = false, module_given = false;
+        std::filesystem::path rom_path, module_path;
+        std::filesystem::path startup_rom;
+        int rc = 1;
+    };
     SdlHost host;
+    Game game{host, save_path, settings.fullscreen, options};
+    game.explicit_rom = explicit_rom;
+    game.module_given = module_given;
+    game.rom_path = rom_path;
+    game.module_path = game_module_path;
+    game.startup_rom = setup_rom;
+    if (explicit_rom) {
+        // (Before the window: a ROM that cannot be used is reported at once.)
+        std::string error;
+        if (!load_game(rom_path, game_module_path, save_path, options, game.rom, game.module, error)) {
+            std::fprintf(stderr, "%s\n", error.c_str());
+            return 1;
+        }
+        game.loaded = true;
+    }
+
     host.settings = settings;
     host.settings_path = settings_path;
     host.exit_after_frames = exit_after_frames;
@@ -1418,45 +1661,59 @@ int main(int argc, char** argv) {
     host.unpaced = unpaced;
     host.virtual_display_hz = virtual_display_hz;
     host.perf = options.perf;
-    host.menu_at_frame = menu_at_frame;
     host.set_at = set_at;
     host.resize_at = resize_at;
-    host.menu_keys = menu_keys;
     host.allow_flip_model = allow_flip_model;
-    const bool fullscreen = settings.fullscreen;
+    host.data_dir = data_dir;
+    host.toolchain_dir = toolchain_dir;
+    host.status = status;
+    host.ui_shot_dir = ui_shot_dir;
+    // The start screen is shown on every launch (Dusklight's prelaunch), unless the settings skip it and a game is ready
+    // to run, or a ROM was given on the command line.
+    host.show_prelaunch = force_prelaunch || (!explicit_rom && !(host.settings.skip_prelaunch && status.state == setup::State::Ready));
+    game.fullscreen = host.settings.fullscreen;
     host.settings.fullscreen = false;  // the window starts windowed; set_fullscreen below records the state
     if (!host.open_window()) return 1;
 
     // The game runs on a thread of its own (see SdlHost::open_window); this one keeps the window's events flowing.
     // The stack is made generous: the main thread's is what the game was written against.
-    struct Game {
-        SdlHost& host;
-        const std::filesystem::path& save_path;
-        const std::string& menu_tab;
-        bool fullscreen;
-        ntr::RuntimeOptions& options;
-        std::vector<uint8_t>& rom;
-        const ntr::GameCode& code;
-        int rc = 1;
-    } game{host, save_path, menu_tab, fullscreen, options, rom, game_module.code()};
     const auto run_game = [](void* p) -> int {
         Game& g = *static_cast<Game*>(p);
         SdlHost& host = g.host;
         if (host.init_graphics(g.save_path)) {
-            if (!g.menu_tab.empty()) host.menu().set_tab(g.menu_tab.c_str());
             if (g.fullscreen) host.set_fullscreen(true);
-            g.options.video = host.wanted_video();  // the GL context is current: melonDS's GL renderers can start
-            g.options.fast_cart = host.settings.fast_loading;
-            g.options.cpu_speed = host.settings.cpu_speed;
-            online_dns(host.settings.online_server, g.options.online_dns);
-            g.options.console_name = resolved_console_name(host.settings);
-            cfie::online_buffer = host.settings.online_buffer;
-            cfie::fast_saving = host.settings.fast_saving;
+            g.rc = 0;
+            bool quit = false;
+            // Until a game is loaded: the start screen, where the ROM is chosen and the game built when need be.
+            while (!g.loaded && !quit) {
+                if (host.status.state == setup::State::Ready) {
+                    std::string error;
+                    if (load_game(host.status.rom, g.module_given ? g.module_path : host.status.module, g.save_path,
+                                  g.options, g.rom, g.module, error)) {
+                        g.loaded = true;
+                        break;
+                    }
+                    std::fprintf(stderr, "%s\n", error.c_str());
+                    host.show_error("The game could not be started", error);
+                }
+                if (!host.run_start_screen(g.startup_rom)) quit = true;
+                g.startup_rom.clear();
+            }
+            if (g.loaded && !quit) {
+                g.options.video = host.wanted_video();  // the GL context is current: melonDS's GL renderers can start
+                g.options.fast_cart = host.settings.fast_loading;
+                g.options.cpu_speed = host.settings.cpu_speed;
+                online_dns(host.settings.online_server, g.options.online_dns);
+                g.options.console_name = resolved_console_name(host.settings);
+                cfie::online_buffer = host.settings.online_buffer;
+                cfie::fast_saving = host.settings.fast_saving;
 
-            auto runtime = ntr::Runtime::create(std::move(g.rom), g.code, host, std::move(g.options));
-            host.attach(runtime.get());
-            g.rc = runtime->run();
-            runtime.reset();  // writes the exit reports (interpreter coverage, function profile); frees the GL renderer
+                auto runtime = ntr::Runtime::create(std::move(g.rom), g.module.code(), host, std::move(g.options));
+                host.attach(runtime.get());
+                g.rc = runtime->run();
+                host.detach();
+                runtime.reset();  // writes the exit reports (interpreter coverage, function profile); frees the GL renderer
+            }
             host.shutdown_graphics();
         }
         host.finish();
@@ -1475,5 +1732,6 @@ int main(int argc, char** argv) {
     }
     host.pump_until_done();
     SDL_WaitThread(thread, nullptr);
+    if (ui::script::timed_out()) return 3;
     return game.rc;
 }

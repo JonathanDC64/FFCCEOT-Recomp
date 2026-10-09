@@ -1,0 +1,332 @@
+body {
+    display: flex;
+    width: 100%;
+    height: 100%;
+    padding: 64dp;
+    font-family: var(--font-family-body);
+    font-weight: normal;
+    font-style: normal;
+    font-size: var(--font-size-base);
+    color: var(--color-text);
+}
+
+window {
+    display: flex;
+    flex-flow: column;
+    position: relative;
+    height: 100%;
+    width: 100%;
+    max-width: 1088dp;
+    max-height: 768dp;
+    margin: auto;
+    border-radius: var(--radius-window);
+    overflow: hidden;
+    border-width: 2dp;
+    border-color: var(--color-border);
+    backdrop-filter: blur(5dp);
+    box-shadow: 0 0 25dp 5dp;
+    background-color: rgba(var(--color-surface-rgb), 90%);
+    filter: opacity(0);
+    transform: scale(0.9);
+    transform-origin: center;
+    transition: filter transform 0.2s cubic-in-out;
+}
+
+window.small {
+    height: auto;
+    width: auto;
+}
+
+window.modal {
+    max-width: 640dp;
+}
+
+@media (max-height: 896dp) {
+    window.modal {
+        max-height: 100%;
+    }
+}
+
+window[open] {
+    filter: opacity(1);
+    transform: scale(1);
+}
+
+@media (max-height: 640dp) {
+    body {
+        padding: var(--space-lg);
+    }
+    window {
+        box-shadow: none;
+    }
+}
+
+@media (max-width: 768dp) {
+    body {
+        padding: var(--space-lg);
+    }
+    window.modal {
+        width: 100%;
+        max-width: 100%;
+    }
+}
+
+window tab-bar {
+    flex: 0 0 var(--toolbar-height);
+    height: var(--toolbar-height);
+    background-color: rgba(var(--color-neutral-rgb), 10%);
+    font-family: var(--font-family-heading);
+    font-weight: bold;
+    font-size: var(--font-size-xl);
+    border-bottom-width: 2dp;
+    border-bottom-color: var(--color-border);
+}
+
+window tab-bar tab {
+    opacity: 0.25;
+}
+
+window content {
+    display: flex;
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+}
+
+window content pane {
+    display: flex;
+    flex-flow: column;
+    flex: 1 1 0;
+    min-width: 0;
+    min-height: 0;
+    padding: var(--space-xl);
+    gap: var(--space-sm);
+    overflow: hidden auto;
+    font-size: var(--font-size-2xl);
+}
+
+window content pane:not(:last-of-type) {
+    border-right-width: 1dp;
+    border-right-color: var(--color-border);
+}
+
+window content pane > * {
+    flex: 0 0 auto;
+}
+
+window content pane:last-of-type > div {
+    line-height: 1.625;
+}
+
+scrollbarhorizontal {
+    height: 0;
+}
+
+scrollbarhorizontal sliderarrowdec,
+scrollbarhorizontal sliderarrowinc {
+    width: 0;
+    height: 0;
+}
+
+scrollbarhorizontal slidertrack,
+scrollbarhorizontal sliderbar {
+    width: 0;
+    height: 0;
+}
+
+section-heading {
+    font-family: var(--font-family-heading);
+    font-weight: bold;
+    text-transform: uppercase;
+    font-size: var(--font-size-3xl);
+    opacity: 0.25;
+}
+
+section-heading:not(:first-of-type) {
+    padding-top: var(--space-md);
+}
+
+button.modal-btn {
+    flex: 1 1 0;
+    text-align: center;
+}
+
+modal-actions icon {
+    margin-right: var(--space-xs);
+}
+
+window progress {
+    margin: 6dp 0 var(--space-2xs) 0;
+}
+
+preset-grid {
+    display: flex;
+    flex-direction: row;
+    gap: 20dp;
+    flex: 0 1 auto;
+    align-items: flex-start;
+    width: 100%;
+}
+
+preset-option {
+    display: flex;
+    flex-flow: column;
+    gap: var(--space-md);
+    flex: 1 1 0;
+}
+
+preset-description {
+    display: block;
+    font-size: var(--font-size-md);
+    text-align: center;
+}
+
+modal-dialog {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    padding: var(--space-xl);
+    gap: 20dp;
+    flex: 0 1 auto;
+    min-height: 0;
+    width: 100%;
+    overflow: hidden;
+    text-align: left;
+}
+
+window.modal.danger {
+    border: 2dp var(--color-danger-border);
+}
+
+modal-header {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    flex: 0 0 auto;
+    gap: var(--space-lg);
+}
+
+modal-header icon {
+    font-size: var(--font-size-4xl);
+    color: var(--color-border);
+}
+
+modal-title {
+    display: block;
+    font-family: var(--font-family-heading);
+    font-weight: bold;
+    text-transform: uppercase;
+    font-size: var(--font-size-xl);
+    color: var(--color-border);
+    flex: 1 1 auto;
+}
+
+window.modal.danger modal-title,
+window.modal.danger modal-header icon {
+    color: var(--color-danger-heading);
+}
+
+modal-body {
+    display: block;
+    width: 100%;
+    flex: 0 0 auto;
+    min-width: 0;
+    font-size: var(--font-size-2xl);
+    color: var(--color-white);
+    font-weight: normal;
+}
+
+modal-body modal-tip {
+    font-size: var(--font-size-sm);
+    color: var(--color-border);
+}
+
+modal-content {
+    display: none;
+    width: 100%;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
+}
+
+modal-content.active {
+    display: flex;
+    flex-direction: column;
+}
+
+modal-content pane {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-height: 0;
+    width: 100%;
+    gap: var(--space-sm);
+    overflow: hidden auto;
+}
+
+modal-content pane > * {
+    flex: 0 0 auto;
+}
+
+verification-progress {
+    display: flex;
+    flex-direction: column;
+    gap: 10dp;
+    width: 100%;
+}
+
+verification-progress file-path {
+    font-size: var(--font-size-lg);
+    color: var(--color-white);
+}
+
+verification-progress progress {
+    height: 8dp;
+    margin: var(--space-2xs) 0 0 0;
+}
+
+modal-actions {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    align-items: stretch;
+    gap: var(--space-md);
+    width: 100%;
+    flex: 0 0 auto;
+    padding-top: var(--space-xs);
+}
+
+modal-actions.vertical {
+    flex-direction: column;
+    align-items: stretch;
+}
+
+modal-actions.vertical button.modal-btn {
+    flex: 0 0 auto;
+    width: 100%;
+}
+
+@media (max-height: 640dp) {
+    modal-dialog {
+        padding: var(--space-lg);
+        gap: var(--space-md);
+    }
+
+    modal-body {
+        font-size: var(--font-size-lg);
+    }
+}
+
+@media (max-width: 640dp) {
+    modal-actions {
+        flex-direction: column;
+    }
+
+    modal-actions button.modal-btn {
+        flex: 0 0 auto;
+        width: 100%;
+    }
+}

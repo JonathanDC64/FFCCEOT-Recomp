@@ -27,6 +27,14 @@ static void test_sha1() {
     CHECK(sha1_hex(million.c_str()) == "34aa973cd4c4daa4f61eeb2bdbad27316534016f");
 }
 
+static void test_crc32() {
+    const auto crc = [](const char* s) {
+        return ntr::crc32_hex(ntr::crc32({reinterpret_cast<const uint8_t*>(s), std::strlen(s)}));
+    };
+    CHECK(crc("") == "00000000");
+    CHECK(crc("123456789") == "cbf43926");  // the standard check value
+}
+
 static void test_blz() {
     // Region = uncompressed prefix "XY" + compressed stream + footer. The stream is read backwards:
     // flag byte 0x08 = four literals (D, C, B, A) then one reference (len 18, disp 4).
@@ -45,6 +53,7 @@ static void test_blz() {
 
 int main() {
     test_sha1();
+    test_crc32();
     test_blz();
     if (failures) {
         std::fprintf(stderr, "%d failure(s)\n", failures);

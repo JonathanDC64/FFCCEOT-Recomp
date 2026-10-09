@@ -1,0 +1,76 @@
+/* The theme: the only file that sets the colours and fonts (the rest of the UI is Dusklight's, CC0, unchanged).
+   Final Fantasy look: deep crystal blue surfaces, gold trim and accents, crystal-blue highlights. */
+body {
+    --font-family-body: Alegreya Sans;
+    --font-family-heading: Cinzel;
+    --font-family-monospace: Noto Mono;
+    --font-family-icons: Material Symbols Rounded;
+    --font-family-display: Cinzel;
+
+    --font-size-3xs: 11dp;
+    --font-size-2xs: 12dp;
+    --font-size-xs: 13dp;
+    --font-size-sm: 14dp;
+    --font-size-base: 15dp;
+    --font-size-md: 16dp;
+    --font-size-lg: 17dp;
+    --font-size-xl: 18dp;
+    --font-size-2xl: 20dp;
+    --font-size-3xl: 22dp;
+    --font-size-4xl: 24dp;
+    --font-size-5xl: 28dp;
+    --font-size-6xl: 32dp;
+
+    --space-2xs: 2dp;
+    --space-xs: 4dp;
+    --space-sm: 8dp;
+    --space-md: 12dp;
+    --space-lg: 16dp;
+    --space-xl: 24dp;
+    --space-2xl: 32dp;
+
+    --radius-small: 4dp;
+    --radius-control: 7dp;
+    --radius-panel: 8dp;
+    --radius-window: 14dp;
+
+    --toolbar-height: 64dp;
+    --toolbar-hidden-offset: -64dp;
+
+    --color-text-rgb: 233, 227, 210;
+    --color-text: rgb(var(--color-text-rgb));
+    --color-accent-rgb: 230, 199, 127;
+    --color-accent: rgb(var(--color-accent-rgb));
+    --color-border-rgb: 200, 167, 100;
+    --color-border: rgb(var(--color-border-rgb));
+    --color-surface-rgb: 11, 20, 48;
+    --color-interactive-rgb: 127, 208, 255;
+    --color-control-rgb: 6, 12, 30;
+    --color-neutral-rgb: 217, 217, 217;
+    --color-neutral: rgb(var(--color-neutral-rgb));
+    --color-white-rgb: 255, 255, 255;
+    --color-white: rgb(var(--color-white-rgb));
+    --color-black-rgb: 0, 0, 0;
+    --color-black: rgb(var(--color-black-rgb));
+
+    --color-success-rgb: 68, 204, 85;
+    --color-success: rgb(var(--color-success-rgb));
+    --color-info-rgb: 127, 208, 255;
+    --color-info: rgb(var(--color-info-rgb));
+    --color-warning-rgb: 255, 168, 38;
+    --color-warning: rgb(var(--color-warning-rgb));
+    --color-error-rgb: 204, 68, 68;
+    --color-error: rgb(var(--color-error-rgb));
+
+    --color-danger-border: #852221;
+    --color-danger-heading: #B3261E;
+
+    --button-color: var(--color-text);
+    --button-background: rgba(var(--color-control-rgb), 20%);
+    --button-background-hover: rgba(var(--color-interactive-rgb), 20%);
+    --button-background-selected: rgba(var(--color-interactive-rgb), 40%);
+    --button-background-active: rgba(var(--color-interactive-rgb), 40%);
+
+    --toast-border-color: var(--color-border);
+    --toast-heading-color: var(--color-border);
+}

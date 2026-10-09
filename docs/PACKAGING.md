@@ -6,7 +6,7 @@ or open questions. Nothing here is implemented yet.
 ## 1. Goal
 
 A release download that contains **no game code and no game data**: only our own runtime, UI, the recompiler and a way to
-build the game. The player gives it their own ROM once, in a setup wizard, and everything the game needs is generated
+build the game. The player gives it their own ROM once, on the start screen, and everything the game needs is generated
 from it and cached. Later launches go straight to the game. An update that does not change the generated code does not
 ask for setup again.
 
@@ -21,7 +21,7 @@ game code and can never be published ([LEGAL.md](LEGAL.md)). The release flow ha
 | Compile step | *Decided:* bundle clang (plus lld) and compile the generated C on the player's PC at `/O1`. Game performance comes before setup time and download size, so libtcc is dropped (§4). |
 | ROM | *Decided:* setup copies the player's ROM into the data folder, so a moved or deleted original does not break the game. |
 | Executable | *Decided:* one `ffcc` executable: the recompiler is linked into it (no separate `ntr-recomp` to confuse players). |
-| Wizard | *Decided:* in the existing RmlUi window, settings-menu style, fully controller-navigable. |
+| Setup UI | *Decided:* the start screen of the game window (a port of Dusklight's), fully controller-navigable. |
 | ROM check | *Decided:* USA (CFIE) dump only, SHA-1 verified, with clear messages for other regions, bad dumps and archives. |
 | Regeneration | *Decided:* automatic, with a progress screen, when a new release changes the generated game. The old build is kept until the new one succeeds. |
 | Updates | *Decided:* check GitHub Releases on launch (option, **on by default**), show a banner with the release notes and a download button. No self-replacing of binaries. |
@@ -34,7 +34,7 @@ game code and can never be published ([LEGAL.md](LEGAL.md)). The release flow ha
 ```
 release download (no game code)          player's data folder
 ├── ffcc(.exe)  host: window, runtime,   ├── settings.ini, saves/, logs/, crashes/, reports/
-│               melonDS, UI, wizard      └── game/<key>/
+│               melonDS, UI, setup     └── game/<key>/
 │               + recompiler               ├── manifest.json, rom/cfie.nds (copy)
 ├── compiler    clang + lld                  └── cfie_game.dll | .so   (generated, never shipped)
 └── headers + host import library
@@ -53,16 +53,24 @@ release download (no game code)          player's data folder
 - **Failure handling.** Setup runs in a worker thread with progress, cancel, a disk-space check and a log that goes
   into the problem report. A failed rebuild leaves the previous cache in use.
 
-### The wizard
+### The start screen
 
-1. Welcome and the legal line (the app contains no game data; bring your own ROM; unofficial).
-2. Pick the ROM: a file dialog on desktop, drag-and-drop onto the window, and an in-app file browser that works with a
-   gamepad (Steam Deck's Game Mode has a poor native picker).
-3. Verify: SHA-1 against a table in the exe. Messages for: not a DS ROM, wrong region (named), modified/bad dump, archive
-   (we do not unpack), unreadable. A link to an external hash checker.
-4. Generate and compile with a progress bar and an expandable log.
-5. Done: start the game. The same screen is reachable from Settings → Game ("Run setup again") and re-runs on its own
-   when the manifest no longer matches, asking for the ROM only if the remembered path is gone.
+There is no separate wizard window. The program opens its game window first and shows Dusklight's start screen in it
+(see ARCHITECTURE.md §7): the game's title, then *Play*, *Settings* and *Quit* (*Select ROM* in place of *Play* until a
+game is set up).
+
+1. *Select ROM*: the system's file dialog, or a file dropped on the window. (Still to do: an in-app file browser that
+   works with a gamepad; Steam Deck's Game Mode has a poor native picker.)
+2. Verify: SHA-1 (and CRC-32, the checksum dump databases list) against a table in the exe. A rejected file gets a
+   window with the expected dump and the player's hashes side by side, named reasons (not a DS ROM, wrong region, modified
+   or bad dump, archive (we do not unpack), unreadable) and *Choose another*.
+3. Generate and compile with a progress bar and *Cancel*; a failure offers *Report*, *Retry* and *Close*.
+4. The game boots behind the start screen, and *Play* hides it. The first run then shows the Welcome presets (Original or
+   Enhanced), which write `settings.ini`; every other setting is in *Settings*, whose *Game files* tab (shown on the start
+   screen) re-picks the ROM, rebuilds, and shows the data folder and the compiler.
+5. When the manifest no longer matches (an update changed how the game is built) the start screen rebuilds on its own
+   from the kept copy, asking for the ROM only if that is gone. *Skip the main menu at start* (Settings → Interface)
+   goes straight into the game once it is set up.
 
 ### Update check
 
@@ -124,7 +132,7 @@ Researched from READMEs, release pages and workflows; items we could not confirm
   It says plainly that it contains no Nintendo assets and names its one official site.
 - **Zelda 64: Recompiled** (GPL-3.0): ROM picked in the main menu and read in place, no extraction step; manual updates;
   releases for Windows, macOS, Linux x64/ARM64 and a Flatpak zip. Steam Deck: extract and "Add to Steam" in desktop mode.
-- **UnleashedRecomp** (GPL-3.0): the closest to our wizard: an in-app installer that checks every input file by hash,
+- **UnleashedRecomp** (GPL-3.0): the closest to our setup: an in-app installer that checks every input file by hash,
   rejects archives and modified files, and records an install as "present" by key files. `portable.txt` forces local
   storage. Updates are copy-over, saves untouched. Steam Deck: do the install in desktop mode.
 - **Ship of Harkinian / Starship** (extraction to `.o2r` archives): ROM verified by SHA-1 (or a hash table), extracted on
@@ -155,7 +163,7 @@ the same steps so a release can be made while Actions are off. The workflow neve
 Several pieces are Windows-only today and need ports or fallbacks before a Linux release: the crash handler (a vectored
 exception filter, `dbghelp`), the problem-report system information (registry, DXGI), the DXGI presenter (a GL path
 already exists), the `portable.txt`/data-folder logic, the file dialog, and opening a URL or a folder. Game Mode needs
-gamepad-only operation of the wizard and the update banner.
+gamepad-only operation of the start screen and the update banner.
 
 ## 8. Open questions
 
@@ -166,12 +174,14 @@ gamepad-only operation of the wizard and the update banner.
 
 ## 9. Work breakdown
 
-1. Split the generated code into a loadable game module and run the game from it (no behaviour change).
-2. The clang/lld bundle and the compile step (`/O1`), with the toolchain trimmed to what the generated code needs.
-3. Cache manifest, generator version and the regeneration rules.
-4. Wizard UI (ROM picker with gamepad browser, verification, progress), and "Run setup again".
+1. Split the generated code into a loadable game module and run the game from it (no behaviour change). *Done.*
+2. The compile step (`/O1`, clang and lld, in parallel), the cache manifest, the generator id and the regeneration rules,
+   in `game/src/setup.cpp`. *Done;* it still looks for the toolchain next to the program or on PATH, and trimming and
+   bundling it is part of step 7.
+3. Setup UI: verification, native picker and drag-and-drop, progress, cancel, failure with a report button, rebuild
+   from the kept copy. *Done* (`game/src/ui/prelaunch.cpp`, `game/src/ui/rom_setup.cpp`). Still to do: an in-app file browser for a
+   gamepad-only Steam Deck session, and "Run setup again" in the settings menu.
 5. Update check and banner.
 6. Linux ports (§7).
 7. Packaging script and release workflow; NOTICE/licence audit; README and FAQ wording.
-8. Settings UI polish that the wizard depends on: scrollable pages with a draggable scrollbar and dropdowns that work
-   with a controller.
+8. Settings UI polish: *Done* with the port of Dusklight's UI (scrollable panes, option lists that work with a controller).

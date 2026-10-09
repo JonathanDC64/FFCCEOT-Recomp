@@ -1,91 +1,106 @@
-# Recompiled game code (dev mode). Generated from the user's own ROM at build time; never committed.
-if(NOT FFCC_ROM)
-  message(STATUS "FFCC_ROM not set: skipping recompiled game code (pass -DFFCC_ROM=<your dump.nds>)")
-  return()
-endif()
-
 set(FFCC_GAME_CONFIG ${CMAKE_CURRENT_SOURCE_DIR}/config/cfie)
-set(FFCC_GEN_DIR ${CMAKE_BINARY_DIR}/recomp_generated)
-set(FFCC_GEN_SHARDS 64)
 
-set(FFCC_GEN_SOURCES ${FFCC_GEN_DIR}/func_table.c)
-math(EXPR _last "${FFCC_GEN_SHARDS} - 1")
-foreach(i RANGE ${_last})
-  string(LENGTH "${i}" _len)
-  if(_len EQUAL 1)
-    set(i "00${i}")
-  elseif(_len EQUAL 2)
-    set(i "0${i}")
+# Development: the game built from your ROM at build time (cfie_game, next to the executable). It is generated from the
+# user's own ROM and never committed. Without FFCC_ROM nothing of the game is built, which is what a release is: the
+# program then sets the game up from the player's ROM when it first runs (src/setup.cpp).
+if(FFCC_ROM)
+  set(FFCC_GEN_DIR ${CMAKE_BINARY_DIR}/recomp_generated)
+  set(FFCC_GEN_SHARDS 64)
+
+  set(FFCC_GEN_SOURCES ${FFCC_GEN_DIR}/func_table.c)
+  math(EXPR _last "${FFCC_GEN_SHARDS} - 1")
+  foreach(i RANGE ${_last})
+    string(LENGTH "${i}" _len)
+    if(_len EQUAL 1)
+      set(i "00${i}")
+    elseif(_len EQUAL 2)
+      set(i "0${i}")
+    endif()
+    list(APPEND FFCC_GEN_SOURCES ${FFCC_GEN_DIR}/funcs_${i}.c)
+  endforeach()
+
+  add_custom_command(
+    OUTPUT ${FFCC_GEN_SOURCES} ${FFCC_GEN_DIR}/funcs.h
+    COMMAND ntr-recomp --rom "${FFCC_ROM}" --config "${FFCC_GAME_CONFIG}" --out "${FFCC_GEN_DIR}"
+            --report "${CMAKE_BINARY_DIR}/recomp_report.txt"
+    DEPENDS ntr-recomp ${FFCC_GAME_CONFIG}/functions.txt ${FFCC_GAME_CONFIG}/hooks.txt ${FFCC_GAME_CONFIG}/regions.txt "${FFCC_ROM}"
+    COMMENT "Recompiling game code from your ROM"
+    VERBATIM)
+
+  # The recompiled game is a shared library of its own, loaded by the executable (src/game_module.cpp). It is built
+  # freestanding: the runtime's services come in through a table when it is loaded (ntr/recomp.h), so it links
+  # against nothing. That is also how setup will build it on the player's PC, from the generated sources alone.
+  add_library(cfie_game MODULE ${FFCC_GEN_SOURCES})
+  target_include_directories(cfie_game PRIVATE ${FFCC_GEN_DIR} ${CMAKE_SOURCE_DIR}/runtime/include)
+  target_compile_definitions(cfie_game PRIVATE NTR_GAME_MODULE=1)
+  set_target_properties(cfie_game PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+    LIBRARY_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+    C_VISIBILITY_PRESET hidden)
+  set(FFCC_GAME_OPT "" CACHE STRING "Optimization flag for the recompiled game code (default /O1 or -O1; /Od /O2 or -O0 -O2 for benchmarks)")
+  if(MSVC)
+    if(NOT FFCC_GAME_OPT)
+      set(FFCC_GAME_OPT /O1)
+    endif()
+    target_compile_options(cfie_game PRIVATE /w /GS- /Zl ${FFCC_GAME_OPT})
+    target_link_options(cfie_game PRIVATE /NODEFAULTLIB /NOENTRY)
+  else()
+    if(NOT FFCC_GAME_OPT)
+      set(FFCC_GAME_OPT -O1)
+    endif()
+    target_compile_options(cfie_game PRIVATE -w -ffreestanding -fno-stack-protector ${FFCC_GAME_OPT})
+    target_link_options(cfie_game PRIVATE -nostdlib)
   endif()
-  list(APPEND FFCC_GEN_SOURCES ${FFCC_GEN_DIR}/funcs_${i}.c)
-endforeach()
-
-add_custom_command(
-  OUTPUT ${FFCC_GEN_SOURCES} ${FFCC_GEN_DIR}/funcs.h
-  COMMAND ntr-recomp --rom "${FFCC_ROM}" --config "${FFCC_GAME_CONFIG}" --out "${FFCC_GEN_DIR}"
-          --report "${CMAKE_BINARY_DIR}/recomp_report.txt"
-  DEPENDS ntr-recomp ${FFCC_GAME_CONFIG}/functions.txt ${FFCC_GAME_CONFIG}/hooks.txt ${FFCC_GAME_CONFIG}/regions.txt "${FFCC_ROM}"
-  COMMENT "Recompiling game code from your ROM"
-  VERBATIM)
-
-# The recompiled game is a shared library of its own, loaded by the executable (src/game_module.cpp). It is built
-# freestanding: the runtime's services come in through a table when it is loaded (ntr/recomp.h), so it links
-# against nothing. That is also how setup will build it on the player's PC, from the generated sources alone.
-add_library(cfie_game MODULE ${FFCC_GEN_SOURCES})
-target_include_directories(cfie_game PRIVATE ${FFCC_GEN_DIR} ${CMAKE_SOURCE_DIR}/runtime/include)
-target_compile_definitions(cfie_game PRIVATE NTR_GAME_MODULE=1)
-set_target_properties(cfie_game PROPERTIES
-  RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-  LIBRARY_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-  C_VISIBILITY_PRESET hidden)
-set(FFCC_GAME_OPT "" CACHE STRING "Optimization flag for the recompiled game code (default /O1 or -O1; /Od /O2 or -O0 -O2 for benchmarks)")
-if(MSVC)
-  if(NOT FFCC_GAME_OPT)
-    set(FFCC_GAME_OPT /O1)
+  option(FFCC_TRACE_ENTRY "Record every recompiled function entry (slow; for debugging crashes)" OFF)
+  if(FFCC_TRACE_ENTRY)
+    target_compile_definitions(cfie_game PRIVATE NTR_TRACE_ENTRY)
   endif()
-  target_compile_options(cfie_game PRIVATE /w /GS- /Zl ${FFCC_GAME_OPT})
-  target_link_options(cfie_game PRIVATE /NODEFAULTLIB /NOENTRY)
 else()
-  if(NOT FFCC_GAME_OPT)
-    set(FFCC_GAME_OPT -O1)
-  endif()
-  target_compile_options(cfie_game PRIVATE -w -ffreestanding -fno-stack-protector ${FFCC_GAME_OPT})
-  target_link_options(cfie_game PRIVATE -nostdlib)
-endif()
-option(FFCC_TRACE_ENTRY "Record every recompiled function entry (slow; for debugging crashes)" OFF)
-if(FFCC_TRACE_ENTRY)
-  target_compile_definitions(cfie_game PRIVATE NTR_TRACE_ENTRY)
+  message(STATUS "FFCC_ROM not set: not building the game module here (the program sets the game up from a ROM when it runs)")
 endif()
 
-# Settings menu documents and fonts, compiled into the executable.
+# The interface's styles, fonts and backdrop, compiled into the executable (game/ui/res, after Dusklight's res/).
 set(FFCC_UI_DIR ${CMAKE_CURRENT_SOURCE_DIR}/ui)
+file(GLOB FFCC_UI_STYLES CONFIGURE_DEPENDS ${FFCC_UI_DIR}/res/rml/*.rcss)
 set(FFCC_UI_FILES
-  ${FFCC_UI_DIR}/menu.rml
-  ${FFCC_UI_DIR}/menu.rcss
-  ${FFCC_UI_DIR}/crash.rml
-  ${FFCC_UI_DIR}/crash.rcss
-  ${FFCC_UI_DIR}/images/chevron.tga
-  ${FFCC_UI_DIR}/fonts/Cinzel.ttf
-  ${FFCC_UI_DIR}/fonts/AlegreyaSans-Regular.ttf
-  ${FFCC_UI_DIR}/fonts/AlegreyaSans-Bold.ttf)
+  ${FFCC_UI_STYLES}
+  ${FFCC_UI_DIR}/res/fonts/Cinzel.ttf
+  ${FFCC_UI_DIR}/res/fonts/AlegreyaSans-Regular.ttf
+  ${FFCC_UI_DIR}/res/fonts/AlegreyaSans-Bold.ttf
+  ${FFCC_UI_DIR}/res/fonts/MaterialSymbolsRounded-Regular.ttf
+  ${FFCC_UI_DIR}/res/prelaunch-bg.png
+  # What setup needs to build the game on the player's PC (src/setup.cpp): the game's configuration (addresses only) and
+  # the header the generated code includes. They are named relative to game/ui, hence the ../ paths.
+  ${FFCC_GAME_CONFIG}/functions.txt
+  ${FFCC_GAME_CONFIG}/hooks.txt
+  ${FFCC_GAME_CONFIG}/regions.txt
+  ${CMAKE_SOURCE_DIR}/runtime/include/ntr/recomp.h)
 set(FFCC_UI_ASSETS ${CMAKE_CURRENT_BINARY_DIR}/ui_assets.cpp)
 add_custom_command(
   OUTPUT ${FFCC_UI_ASSETS}
   COMMAND ${CMAKE_COMMAND} -D BASE_DIR=${FFCC_UI_DIR} -D OUTPUT=${FFCC_UI_ASSETS} "-DFILES=${FFCC_UI_FILES}"
           -P ${CMAKE_SOURCE_DIR}/cmake/EmbedFiles.cmake
   DEPENDS ${FFCC_UI_FILES} ${CMAKE_SOURCE_DIR}/cmake/EmbedFiles.cmake
-  COMMENT "Embedding the settings menu"
+  COMMENT "Embedding the interface's styles, fonts and backdrop"
   VERBATIM)
 
+# The interface: a port of Dusklight's UI (src/ui).
+file(GLOB FFCC_UI_SOURCES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/src/ui/*.cpp)
+
 # The game executable: takes the user's ROM on the command line.
-add_executable(ffcc src/main.cpp src/game_module.cpp src/crash_report.cpp src/crash_dialog.cpp src/report.cpp src/video.cpp src/cfie_hooks.cpp src/settings.cpp src/input.cpp src/ui.cpp ${FFCC_UI_ASSETS})
+add_executable(ffcc src/main.cpp src/game_module.cpp src/process.cpp src/setup.cpp src/crash_report.cpp src/crash_dialog.cpp src/report.cpp src/video.cpp src/cfie_hooks.cpp src/settings.cpp src/input.cpp ${FFCC_UI_SOURCES} ${FFCC_UI_ASSETS})
 target_include_directories(ffcc PRIVATE src)
-add_dependencies(ffcc cfie_game)  # (built together, next to the executable)
-target_link_libraries(ffcc PRIVATE ntr_runtime ntr_common SDL3::SDL3-static rmlui_backend)
+if(FFCC_ROM)
+  add_dependencies(ffcc cfie_game)  # (built together, next to the executable)
+endif()
+target_link_libraries(ffcc PRIVATE ntr_recomp ntr_runtime ntr_common SDL3::SDL3-static rmlui_backend)
 if(WIN32)
   # Flip-model presentation: OpenGL drawn into a Direct3D 11 swapchain.
   target_sources(ffcc PRIVATE src/flip_present.cpp)
   target_link_libraries(ffcc PRIVATE d3d11 dxgi opengl32 dbghelp user32 advapi32 shell32)
+  # A windowed program: started from the desktop it has no console window behind it. Started from a terminal it
+  # attaches to that terminal (report::attach_parent_console), so command line output still shows.
+  target_link_options(ffcc PRIVATE /SUBSYSTEM:WINDOWS /ENTRY:mainCRTStartup)
 endif()
 
 # The version in problem reports.

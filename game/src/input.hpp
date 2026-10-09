@@ -13,7 +13,7 @@ enum class Action {
     // DS buttons
     A, B, X, Y, L, R, Start, Select, Up, Down, Left, Right,
     // App actions (pressed once, not held)
-    OtherScreen, SwapScreens, Fullscreen,
+    OtherScreen, SwapScreens, Fullscreen, OpenMenu,
     Count
 };
 constexpr int kActionCount = int(Action::Count);
@@ -55,6 +55,12 @@ bool pad_from_string(const std::string& s, PadInput& out);
 // connected gamepad (A/B/X/Y, Cross/Circle/Square/Triangle, LB/L1/L, ...).
 std::string key_label(SDL_Scancode sc);
 std::string pad_label(const PadInput& p, SDL_GamepadType type);
+
+// Binds `a` to a key (or a pad input), as the settings menu does. An input another action already has changes places
+// with it: that action gets what `a` had, so no input does two things. SDL_SCANCODE_UNKNOWN (or an empty PadInput)
+// unbinds `a`.
+void assign_key(Bindings& b, Action a, SDL_Scancode sc);
+void assign_pad(Bindings& b, Action a, const PadInput& p);
 
 // Whether a pad input is held, with `deadzone` (0-1) for stick axes.
 bool pad_held(SDL_Gamepad* pad, const PadInput& p, float deadzone);

@@ -38,6 +38,11 @@ struct Settings {
     int rate_cap = 0;           // with Pacing::Variable: frames per second to present (0 = the display's refresh rate)
     // Audio
     int volume = 100;  // percent
+    bool menu_sounds = true;  // the game's own sounds for the menus
+    // Interface
+    int ui_scale = 0;           // the menus' size in percent (50-200), 0 = the display's
+    bool skip_prelaunch = false;  // start straight into the game when it is set up
+    bool preset_chosen = false;   // the Welcome window has been answered (it shows on the first run)
     // Game
     bool skip_logos = true;
     bool fast_loading = true;  // cartridge reads without the card's delays

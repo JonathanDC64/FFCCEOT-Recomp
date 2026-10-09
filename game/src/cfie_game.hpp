@@ -33,6 +33,14 @@ struct Stick {
 };
 extern Stick stick;
 
+// Menu sounds: asks the game to play its sound effect `id` (its own number for it, as the game's menus pass it). The
+// effect starts at the game's next sound update, on the game's own thread; it is dropped if the game doesn't get there
+// within a third of a second. Safe to call from any thread.
+void queue_sound(uint16_t id);
+
+// Logs the id of every sound effect the game starts (to stderr), to learn the numbers (--log-sounds).
+extern bool log_sounds;
+
 // The hooks of game/config/cfie/hooks.txt by name, for the game module (null for a name that is not one).
 void* find_hook(const char* name);
 

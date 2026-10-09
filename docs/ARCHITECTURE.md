@@ -464,17 +464,46 @@ with the connected controller's names via `SDL_GetGamepadButtonLabelForType`. Th
 - Glyph-aware button prompts (Xbox / PlayStation / Switch / keyboard) in our UI. Swapping in-game prompt textures is an optional later feature.
 
 ## 7. UI shell
-Modelled on Dusklight but simpler, with a Final Fantasy crystal look. All art is our own.
+A port of [Dusklight](https://github.com/TwilitRealm/dusklight)'s UI (CC0, `src/dusk/ui` and `res/rml`): the same
+framework, the same layout, sizes, animations, input and flow. Only three things differ: the colours (a deep crystal
+blue and gold, tokens in `game/ui/res/rml/theme.rcss`), the fonts (Cinzel and Alegreya Sans) and the settings, which are
+ours. The backdrop of the start screen is our own art (`tools/gen_prelaunch_art.py`); no game or Dusklight art is used.
 
-**Today:** an in-game settings menu (`game/src/ui.cpp`, documents in `game/ui/`) built on RmlUi 6.3 with its SDL3
-platform and GL3 renderer backends, drawing into the same OpenGL context as the game (which is why that context is at
-least 3.3). Esc, Guide or Back + Start opens it, drawn over every frame the presenter shows (`Presenter::overlay`): the game keeps
-running behind it, with neutral input and the sound on, because a paused console drops out of an online game. Tabs:
-Display, Graphics, Audio, Game, Controls (a key list for now). Every setting applies at once. The menu edits a `Settings` struct (`game/src/settings.cpp`) saved as `key = value` lines in
-`settings.ini` in the user data folder (simple enough that TOML can wait). The documents, fonts (OFL) and images are
-embedded in the executable by `cmake/EmbedFiles.cmake`. Keyboard and gamepad navigation are our own (a `focused` class
-on `.nav` rows) rather than RmlUi's spatial navigation, so left/right can change a value. The SDL_GPU render interface
-below comes with the flip-model presentation work (§5.5).
+**What it is.** RmlUi 6.3 with its GL3 renderer, drawing into the game's own OpenGL context (so that context is at least
+3.3), over every frame the presenter shows (`Presenter::overlay`). `game/src/ui/host.cpp` is the small layer that
+Dusklight gets from its aurora library: the RmlUi context, its renderer and system interface, the embedded files
+(`cmake/EmbedFiles.cmake`), the scale (the display's, times the *UI scale* setting) and the window. The rest of
+`game/src/ui/` is Dusklight's code with `dusk::ui` renamed to `ui`: a stack of documents (`Document`; windows, modals,
+the menu bar, the overlay), components (`Pane`, `TabBar`, `SelectButton`, `BoolButton`, `NumberButton`, ...), the
+navigation commands every device maps onto (`ui.cpp`: keyboard, gamepad with South to confirm and East to cancel, mouse),
+and the stylesheets. `settings_window.cpp` and `controls_window.cpp` hold our settings pages, `prelaunch.cpp` the start
+screen, `preset.cpp` the Welcome window, `menu_bar.cpp` the strip that slides down in game, `sound.cpp` the menu sounds.
+The game keeps running behind every window, with neutral input and the sound on, because a paused console drops out of
+an online game. Every setting applies at once and is saved as `key = value` lines in `settings.ini` in the user data
+folder.
+
+**Flow** (`run_start_screen` and `SdlHost` in `game/src/main.cpp`). The window opens first, then the start screen:
+*Play*, *Settings*, *Quit* (and *Select ROM* until a game is set up). With a game set up the game boots behind the start
+screen, as Dusklight does with a disc, and *Play* hides it. The first run shows the Welcome presets (Original,
+Enhanced) once the game is up. In game, **F1**, **R + Start** or the bindable *Open menu* action open the menu strip
+(Settings, Report an issue, Quit). `--prelaunch` shows the start screen even with a ROM on the command line; the
+*Skip the main menu at start* setting skips it when the game is set up.
+
+**Window.** **Alt+Enter** switches fullscreen anywhere (`SdlHost::window_hotkey`, before the UI sees the key; F11 does the
+same while playing). The window's X button and the *Quit* entries of the start screen and the menu strip all open the same
+confirmation (`ui::request_quit_confirm`); only a script's `quit` and a crash dialog close without asking. A number setting
+has a slider in the right pane (`ui/slider.cpp`) besides the typed value: dragging applies each value, and the settings file
+is written once on release.
+
+**Menu sounds** are the game's own: `ui::play_sound` queues one of the game's sound effect ids (1001 confirm, 1002
+cancel, 1004 cursor, 1006 page, 1041 title start; found with `--log-sounds`), and a hook at the sound manager's update
+(`cfie_sound_update`, `0x02076A94`, run once per pass of the game's main loop on its own thread) starts each through the
+game's own helper. They are silent while no game runs and with *Menu sounds* off.
+
+**Testing the UI.** `--ui-script <file>` (`game/src/ui/ui_script.hpp`) drives the UI with the events a player would send
+(keys, gamepad buttons, mouse, text, a chosen file) and saves screenshots (`--ui-shots <dir>`); `--data-dir` gives it a
+scratch data folder. The `ui_smoke` test runs the start screen and the settings tabs and fails on any `ui:` warning.
+`python tools/ui_shots.py` takes the screenshots of every scenario at 1280x720, 1920x1080 and 960x540.
 
 **Threads.** The game runs on a thread of its own (`main()` starts it; 16 MB of stack); the main thread owns the window
 and does nothing but pump SDL events. Windows runs a modal loop in the window's thread while it is dragged or resized,
@@ -485,18 +514,32 @@ fullscreen, text input) to the main thread with `main_thread::run` (`game/src/ma
 for something per frame: during a drag the main thread serves it only when the drag ends. At exit the game thread
 shuts down OpenGL, and the main thread then destroys the window.
 
+**Setup.** The release program contains no game. With no ROM on the command line, `main()` asks
+`setup::check()` (`game/src/setup.cpp`) about `<data>/game/manifest.ini`: if it names a module built for this program
+(same ABI version and the same generator id, a hash of the game configuration, the module header and the recompiler
+revision) and the ROM copy is there, the game starts from them. Otherwise the start screen offers *Select ROM*
+(`game/src/ui/rom_setup.cpp`): the system file dialog (or a file dropped on the window) and a check of the file
+(`setup::verify_rom`, with a message for an archive, another game, another region or a bad dump, showing the expected and
+the actual hashes), then a build window with progress and *Cancel*. `setup::run()` does the work on a thread: it
+verifies the ROM by SHA-1, copies it to `<data>/game/cfie.nds`, runs the recompiler in-process (`ntr_recomp` is linked
+into the program; the game's configuration and the module header are embedded in it), compiles the generated C in
+parallel with the bundled clang (`<program>/toolchain/bin`, or a clang on PATH while developing) and links with lld, then
+writes the manifest and removes older builds. When it finishes the game boots behind the start screen. An update that
+only needs a rebuild uses the kept copy and asks for nothing. A failure keeps the log for a problem report; a cancel
+kills the compilers. `ffcc --setup-only --setup-rom <file>` does it without a window.
+
 **Crashes and problem reports.** A crash in the game's own code (access violation and the like) or an abort (the
 runtime's fatal errors) is caught by `game/src/crash_report.cpp`: a vectored handler sees the fault first, but only the
 unhandled-exception filter and the SIGABRT handler end the run, because first-chance faults can be ones the program
 recovers from. They write `crash-<time>.txt` (a symbolized stack), a minidump and the command line into
 `<data>/crashes`, then start a second process of the same exe (`--crash-dialog`), so the dialog needs nothing from the
-crashed one. The dialog (`crash_dialog.cpp`, `game/ui/crash.rml`) is an RmlUi window in the settings menu's style, with
-its own SDL window and GL context. It offers *Restart game* (relaunches the saved command line once the crashed process
+crashed one. The dialog (`crash_dialog.cpp`) is a UI modal (`ui::Modal`, the same one the start screen uses) in a window of its own
+with its own GL context. It offers *Restart game* (relaunches the saved command line once the crashed process
 has ended), *Report issue*, *Show details* (the top of the stack) and *Close*. Reporting (`game/src/report.cpp`) zips
 the crash text, the system information (OS, CPU, RAM, GPUs and drivers, monitors), `settings.ini` and the log's start and
 end (`<data>/logs/ffcc.log`, a tee of stdout and stderr) into `<data>/reports`, opens the repository's new-issue form
 with the title and a body filled in (the encoded URL stays under about 6.5 KB), and opens the folder with the zip to be
-dragged into the issue. The settings menu's *Report an issue* button does the same without a crash, adding a screenshot
+dragged into the issue. The menu strip's *Report an issue* tab does the same without a crash, adding a screenshot
 of the game taken a few frames after the menu closes. The user's name, profile folder and computer name are redacted
 from everything. The minidump is not in the zip, since it can hold game data. `--crash-at-frame`, `--abort-at-frame`
 and `--report-at-frame` exercise these paths. Runs for testing keep no log and show no dialog.

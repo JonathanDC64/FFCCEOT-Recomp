@@ -15,7 +15,7 @@ const ActionInfo kActions[kActionCount] = {
     {"l", "L"},           {"r", "R"},         {"start", "Start"},   {"select", "Select"},
     {"up", "Up"},         {"down", "Down"},   {"left", "Left"},     {"right", "Right"},
     {"other_screen", "Show other screen"},    {"swap_screens", "Swap screens"},
-    {"fullscreen", "Fullscreen"},
+    {"fullscreen", "Fullscreen"},         {"open_menu", "Open menu"},
 };
 
 // Settings-file names of the gamepad buttons, by position (SDL's own names call the bottom button "a").
@@ -75,7 +75,24 @@ Bindings Bindings::defaults() {
     bind(Action::OtherScreen, SDL_SCANCODE_F3, PadInput::button(SDL_GAMEPAD_BUTTON_RIGHT_STICK));
     bind(Action::SwapScreens, SDL_SCANCODE_F2, PadInput::button(SDL_GAMEPAD_BUTTON_LEFT_STICK));
     bind(Action::Fullscreen, SDL_SCANCODE_F11, {});
+    bind(Action::OpenMenu, SDL_SCANCODE_F1, {});
     return b;
+}
+
+void assign_key(Bindings& b, Action a, SDL_Scancode sc) {
+    const SDL_Scancode old = b.key[int(a)];
+    if (sc != SDL_SCANCODE_UNKNOWN)
+        for (int i = 0; i < kActionCount; i++)
+            if (i != int(a) && b.key[i] == sc) b.key[i] = old;
+    b.key[int(a)] = sc;
+}
+
+void assign_pad(Bindings& b, Action a, const PadInput& p) {
+    const PadInput old = b.pad[int(a)];
+    if (p.kind != PadInput::Kind::None)
+        for (int i = 0; i < kActionCount; i++)
+            if (i != int(a) && b.pad[i] == p) b.pad[i] = old;
+    b.pad[int(a)] = p;
 }
 
 std::string key_to_string(SDL_Scancode sc) {

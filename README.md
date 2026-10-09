@@ -37,8 +37,15 @@ cmake --build --preset release
 build/release/game/ffcc.exe "path/to/your/dump.nds"
 ```
 
-The recompiler runs at build time and writes the generated C to `build/` (never committed). Without `FFCC_ROM`, only
-the tools, recompiler and runtime are built.
+The recompiler runs at build time and writes the generated C to `build/` (never committed), and the game is built from it
+as `cfie_game.dll` next to `ffcc.exe`. Without `FFCC_ROM`, only the program itself is built, which is what a release is:
+it contains no game. Run it with no ROM on the command line and the start screen asks for yours the first time (choose
+the file or drop it on the window), builds the game from it in
+about a minute and keeps a copy of the ROM and the built game in the data folder. Later runs start straight away, and
+an update that changes how the game is built rebuilds it by itself from that copy. `--prelaunch` shows the start screen even with a ROM on the command line,
+`--toolchain <dir>` names the compiler to build with (the program has no console window of its own: started from a
+terminal it prints there, but the terminal does not wait for it), and a `portable.txt` next to the program keeps everything in a
+`data` folder beside it.
 
 Controls (defaults): arrows, X = A, Z = B, S = X, A = Y, Q = L, W = R, Enter = Start, Right Shift = Select, mouse = touch
 screen, Esc = settings menu. Gamepads use the Nintendo button positions (DS A is the right face button, B the bottom one),
@@ -86,7 +93,7 @@ as fast as possible.
 - [docs/RESEARCH.md](docs/RESEARCH.md): the DS recomp landscape, prior art, and our analysis of the game
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): how the recompiler, runtime, renderer, UI and networking fit together
 - [docs/ROADMAP.md](docs/ROADMAP.md): milestones
-- [docs/PACKAGING.md](docs/PACKAGING.md): the setup wizard, releases and updates (design)
+- [docs/PACKAGING.md](docs/PACKAGING.md): the start screen and ROM setup, releases and updates (design)
 - [docs/LEGAL.md](docs/LEGAL.md): what may and may not be committed
 
 ## Contributing
@@ -97,12 +104,36 @@ Before your first commit, install the copyright guard:
 python tools/check_no_game_data.py --install-hook
 ```
 
-## Acknowledgements and prior art
+## Credits
 
-[ndsrecomp](https://github.com/RetroPortingToolKit/ndsrecomp), [N64Recomp](https://github.com/N64Recomp/N64Recomp),
-[XenonRecomp](https://github.com/hedge-dev/XenonRecomp), [Dusklight](https://github.com/TwilitRealm/dusklight),
-[melonDS](https://github.com/melonDS-emu/melonDS), [ds-decomp](https://github.com/AetiasHax/ds-decomp),
-[WiiLink WFC](https://github.com/WiiLink24/wfc-server), and the TCRF contributors.
+This project stands on other people's work. Each component keeps its own licence; the full list with versions and what
+each is used for is in [third_party/README.md](third_party/README.md).
+
+**The user interface** is a port of [Dusklight](https://github.com/TwilitRealm/dusklight)'s (the PC port of Twilight
+Princess), which is released under CC0: its UI framework (`src/dusk/ui`) and stylesheets (`res/rml`) are the basis of
+`game/src/ui` and `game/ui/res/rml`, with our own colours, fonts and settings. How Dusklight embeds RmlUi
+([aurora](https://github.com/encounter/aurora)'s integration, MIT) is the model for our `ui/host.cpp`. Thank you to the
+Dusklight and aurora authors.
+
+**Libraries and code we build on**
+
+- [melonDS](https://github.com/melonDS-emu/melonDS) (GPL-3.0), the Nintendo DS hardware model, with the
+  [teakra](https://github.com/wwylele/teakra), [libslirp](https://gitlab.freedesktop.org/slirp/libslirp) and glad code
+  it bundles.
+- [SDL3](https://github.com/libsdl-org/SDL) (zlib): window, input, audio, file dialogs.
+- [RmlUi](https://github.com/mikke89/RmlUi) (MIT): the user interface.
+- [FreeType](https://freetype.org) (FreeType License): font rendering.
+- [LLVM clang and lld](https://llvm.org) (Apache-2.0 with LLVM exceptions): the compiler that builds the game on your PC.
+- Fonts: [Cinzel](https://github.com/NDISCOVER/Cinzel) and [Alegreya Sans](https://github.com/huertatipografica/Alegreya-Sans)
+  (SIL OFL 1.1), and the [Material Symbols Rounded](https://github.com/google/material-design-icons) icons (Apache-2.0).
+
+**Online play** uses the community's revival servers: Kaeru WFC (on [Wiimmfi](https://wiimmfi.de)) and
+[WiiLink WFC](https://github.com/WiiLink24/wfc-server).
+
+**Prior art and research**: [ndsrecomp](https://github.com/RetroPortingToolKit/ndsrecomp),
+[N64Recomp](https://github.com/N64Recomp/N64Recomp), [XenonRecomp](https://github.com/hedge-dev/XenonRecomp),
+[ds-decomp](https://github.com/AetiasHax/ds-decomp), [khdays-port](https://github.com/Yokimitsuro/khdays-port), and the
+[TCRF](https://tcrf.net) contributors for their notes on the game.
 
 ## Legal
 

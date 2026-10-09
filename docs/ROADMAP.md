@@ -102,10 +102,11 @@ Milestones are ordered by dependency. Each ends with a demonstrable result. Desi
 - [x] Analog movement online: played between two instances over the Wi-Fi Connection, and tested over local wireless
       (positions stay identical on both consoles, and a console without the marker keeps everyone on the D-pad)
 - [x] RmlUi integration (OpenGL for now), FF crystal theme (original styling, OFL fonts)
-- [x] In-game settings menu (display, graphics, audio, game, controls list), settings persistence (`settings.ini`)
+- [x] In-game menu and settings windows ported from Dusklight (F1 menu strip, tabs, controls window with rebinding), settings persistence (`settings.ini`)
 - [ ] Menu: more pages (online, QoL, mods, about), reset game, button glyphs; RmlUi on SDL_GPU
-- [ ] Launcher/installer flow: the setup wizard, see [PACKAGING.md](PACKAGING.md)
-- [ ] Menu controls: drag the scrollbar, dropdowns that work with a controller, and the like
+- [x] Start screen and setup: the ROM is verified, copied and built into the game on first run (and rebuilt when an update
+      changes the build), see [PACKAGING.md](PACKAGING.md)
+- [ ] Setup: an in-app file browser for gamepads, and "Run setup again" in the menu while a game runs
 - [ ] App icon: original artwork (no game assets) for the exe (Windows resource) and the window (`SDL_SetWindowIcon`)
 - [ ] ImGui dev tools (`--dev`)
 

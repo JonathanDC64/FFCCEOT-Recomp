@@ -1,5 +1,8 @@
 // Game-specific glue for hooks listed in game/config/cfie/hooks.txt.
 #include <algorithm>
+#include <atomic>
+#include <chrono>
+#include <cstdio>
 #include <cmath>
 #include <cstring>
 
@@ -14,6 +17,7 @@ bool fast_saving = true;
 AnalogMovement analog_movement = AnalogMovement::SinglePlayer;
 uint16_t aspect = 0x1555;
 Stick stick;
+bool log_sounds = false;
 }  // namespace cfie
 
 namespace {
@@ -31,7 +35,23 @@ constexpr uint32_t kMoveYaw = 0x02057220;                   // (character): the 
 constexpr uint32_t kSinCosTable = 0x020CD780;               // FX_SinCosTable_: sin, cos (4.12) per 16 angle units
 constexpr uint32_t kAnimationStep = 0x0206F1C8;             // (character): 1, or 1.5 and 0.5 under Haste and Slow
 constexpr uint32_t kRunAnimation = 0x52554E20;              // 'RUN ', at a character's +364 while it plays
+constexpr uint32_t kStartSound = 0x020B2B10;                // (_, id): the sound manager starts sound effect `id`
 constexpr uint32_t kBlankInputCall = 0x020ADF81;            // return address: a slot nobody's records came in for
+
+// Menu sounds: a small ring of requests from the frontend, started by cfie_sound_update.
+struct SoundRequest {
+    std::atomic<uint16_t> id{0};
+    std::atomic<int64_t> at{0};  // steady-clock milliseconds
+};
+constexpr uint32_t kSoundQueue = 16;
+constexpr int64_t kSoundMaxAgeMs = 300;
+SoundRequest sound_queue[kSoundQueue];
+std::atomic<uint32_t> sound_head{0}, sound_tail{0};
+
+int64_t now_ms() {
+    return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch())
+        .count();
+}
 
 // Analog movement: the stick each player slot's input records carry (see cfie_pack_input), the same on every console.
 struct SlotStick {
@@ -68,6 +88,40 @@ bool send_stick(NtrCpu* c) {
 }  // namespace
 
 extern "C" void cfie_os_irq_handler(NtrCpu* c) { ntr::nitro::irq_handler(c, kOsIrqTable, kOsIrqHandlerThreadSwitch); }
+
+namespace cfie {
+void queue_sound(uint16_t id) {
+    const uint32_t head = sound_head.load(std::memory_order_relaxed);
+    if (head - sound_tail.load(std::memory_order_acquire) >= kSoundQueue) return;  // full: this one is dropped
+    sound_queue[head % kSoundQueue].id.store(id, std::memory_order_relaxed);
+    sound_queue[head % kSoundQueue].at.store(now_ms(), std::memory_order_relaxed);
+    sound_head.store(head + 1, std::memory_order_release);
+}
+}  // namespace cfie
+
+// 0x02076A94 (sound manager): its update, once per pass of the main loop. Starts the queued menu sounds.
+extern "C" void cfie_sound_update(NtrCpu* c) {
+    uint32_t tail = sound_tail.load(std::memory_order_relaxed);
+    if (tail == sound_head.load(std::memory_order_acquire)) return;
+    const uint32_t r0 = c->r[0], r1 = c->r[1], r2 = c->r[2], r3 = c->r[3], lr = c->r[14];
+    const int64_t now = now_ms();
+    while (tail != sound_head.load(std::memory_order_acquire)) {
+        const SoundRequest& q = sound_queue[tail % kSoundQueue];
+        const uint16_t id = q.id.load(std::memory_order_relaxed);
+        const bool fresh = now - q.at.load(std::memory_order_relaxed) <= kSoundMaxAgeMs;
+        sound_tail.store(++tail, std::memory_order_release);
+        if (!fresh || id == 0) continue;
+        c->r[0] = 0;
+        c->r[1] = id;
+        ntr_call(c, kStartSound | 1);
+    }
+    c->r[0] = r0, c->r[1] = r1, c->r[2] = r2, c->r[3] = r3, c->r[14] = lr;
+}
+
+// 0x02076FD0: the sound manager starts a sound effect (r1 = the manager, r2 = its id).
+extern "C" void cfie_on_sound_start(NtrCpu* c) {
+    if (cfie::log_sounds) std::fprintf(stderr, "sound: start %u\n", c->r[2]);
+}
 
 // 0x0207713C: start background music (r1 = track id, 0 = stop).
 extern "C" void cfie_on_bgm_play(NtrCpu* c) {
@@ -238,6 +292,8 @@ void* cfie::find_hook(const char* name) {
     } kHooks[] = {
         {"cfie_os_irq_handler", reinterpret_cast<void*>(&cfie_os_irq_handler)},
         {"cfie_on_bgm_play", reinterpret_cast<void*>(&cfie_on_bgm_play)},
+        {"cfie_sound_update", reinterpret_cast<void*>(&cfie_sound_update)},
+        {"cfie_on_sound_start", reinterpret_cast<void*>(&cfie_on_sound_start)},
         {"cfie_pack_input", reinterpret_cast<void*>(&cfie_pack_input)},
         {"cfie_apply_input", reinterpret_cast<void*>(&cfie_apply_input)},
         {"cfie_analog_move", reinterpret_cast<void*>(&cfie_analog_move)},

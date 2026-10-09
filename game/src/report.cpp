@@ -369,6 +369,23 @@ DWORD WINAPI tee_thread(LPVOID pipe) {
 
 }  // namespace
 
+void attach_parent_console() {
+    auto valid = [](DWORD id) {
+        const HANDLE h = GetStdHandle(id);
+        return h && h != INVALID_HANDLE_VALUE;
+    };
+    // Redirected to a file or a pipe (tests, scripts): the handles are there already.
+    if (valid(STD_OUTPUT_HANDLE) && valid(STD_ERROR_HANDLE)) return;
+    if (!AttachConsole(ATTACH_PARENT_PROCESS)) return;  // started from the desktop: no console, and none wanted
+    FILE* f = nullptr;
+    if (!valid(STD_OUTPUT_HANDLE) && freopen_s(&f, "CONOUT$", "w", stdout) == 0)
+        SetStdHandle(STD_OUTPUT_HANDLE, reinterpret_cast<HANDLE>(_get_osfhandle(_fileno(stdout))));
+    if (!valid(STD_ERROR_HANDLE) && freopen_s(&f, "CONOUT$", "w", stderr) == 0)
+        SetStdHandle(STD_ERROR_HANDLE, reinterpret_cast<HANDLE>(_get_osfhandle(_fileno(stderr))));
+    if (!valid(STD_INPUT_HANDLE) && freopen_s(&f, "CONIN$", "r", stdin) == 0)
+        SetStdHandle(STD_INPUT_HANDLE, reinterpret_cast<HANDLE>(_get_osfhandle(_fileno(stdin))));
+}
+
 void start_log() {
     if (g_data_dir.empty()) return;
     std::error_code ec;
@@ -401,6 +418,7 @@ void start_log() {
     g_log_path = path;
 }
 #else
+void attach_parent_console() {}
 void start_log() {}
 #endif
 

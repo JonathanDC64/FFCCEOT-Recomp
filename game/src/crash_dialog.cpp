@@ -1,6 +1,5 @@
 #include "crash_dialog.hpp"
 
-#include <RmlUi/Core.h>
 #include <SDL3/SDL.h>
 
 #include <algorithm>
@@ -8,25 +7,11 @@
 #include <memory>
 
 #include "OpenGLSupport.h"  // melonDS: glad
-#include "RmlUi_Platform_SDL.h"
-#include "RmlUi_Renderer_GL3.h"
-#include "ui_support.hpp"
+#include "ui/host.hpp"
+#include "ui/modal.hpp"
+#include "ui/ui.hpp"
 
 namespace crash_dialog {
-
-namespace {
-
-constexpr int kButtons = 4;  // Restart game, Report on GitHub, Show details, Close
-
-struct State {
-    std::string what, details, message;
-    bool show_details = false;
-    bool reported = false;
-    int focus = 1;  // the button to press with Enter: reporting is what we want
-    bool done = false;
-};
-
-}  // namespace
 
 bool show(const Content& content, const Actions& actions) {
     if (!SDL_Init(SDL_INIT_VIDEO)) {
@@ -49,97 +34,72 @@ bool show(const Content& content, const Actions& actions) {
     SDL_GL_SetSwapInterval(1);
 
     bool ok = false;
-    {
-        State state;
-        state.what = content.what;
-        state.details = content.details;
-        auto render = std::make_unique<RenderInterface_GL3>();
-        ui::EmbeddedFiles files;
-        auto system = std::make_unique<ui::System>(window);
-        Rml::SetFileInterface(&files);
-        Rml::SetSystemInterface(system.get());
-        Rml::SetRenderInterface(render.get());
-        if (*render && Rml::Initialise()) {
-            ui::load_fonts();
+    if (ui::host::init(window) && ui::initialize()) {
+        bool done = false;
+        const auto dismiss = [&done](ui::Modal&) { done = true; };
+        ui::push_document(std::make_unique<ui::Modal>(ui::Modal::Props{
+            .title = "The game has crashed",
+            .bodyRml = "<b>" + ui::escape(content.what) +
+                       "</b><br/><br/>A report was saved on this PC. Reporting the problem opens a new issue on "
+                       "GitHub with the details filled in, and a zip to attach with the full stack, your game "
+                       "settings (settings.ini) and the game's recent messages. It has no save data or game "
+                       "files; nothing is sent until you submit the issue.",
+            .actions =
+                {
+                    ui::ModalAction{
+                        .label = "Restart game",
+                        .onPressed =
+                            [&](ui::Modal&) {
+                                if (actions.restart) actions.restart();
+                                done = true;
+                            },
+                    },
+                    ui::ModalAction{
+                        .label = "Report issue",
+                        .onPressed =
+                            [&](ui::Modal& modal) {
+                                if (actions.report) modal.set_body_text(actions.report());
+                            },
+                    },
+                    ui::ModalAction{
+                        .label = "Show details",
+                        .onPressed =
+                            [&](ui::Modal& modal) {
+                                modal.push(std::make_unique<ui::Modal>(ui::Modal::Props{
+                                    .title = "Details",
+                                    .bodyRml = ui::escape(content.details),
+                                    .actions = {ui::ModalAction{
+                                        .label = "Close", .onPressed = [](ui::Modal& details) { details.pop(); }}},
+                                    .onDismiss = [](ui::Modal& details) { details.pop(); },
+                                }));
+                            },
+                    },
+                    ui::ModalAction{.label = "Close", .onPressed = dismiss},
+                },
+            .onDismiss = dismiss,
+            .variant = "danger",
+            .icon = "error",
+        }));
+        ok = true;
+        while (!done) {
+            SDL_Event e;
+            if (!SDL_WaitEventTimeout(&e, 100)) e.type = 0;
+            do {
+                if (e.type == SDL_EVENT_QUIT || e.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED) done = true;
+                if (e.type != 0) ui::handle_event(e);
+            } while (SDL_PollEvent(&e));
             int w = 0, h = 0;
             SDL_GetWindowSizeInPixels(window, &w, &h);
-            Rml::Context* context = Rml::CreateContext("crash", {std::max(w, 1), std::max(h, 1)});
-            Rml::DataModelConstructor c = context->CreateDataModel("crash");
-            c.Bind("what", &state.what);
-            c.Bind("details", &state.details);
-            c.Bind("message", &state.message);
-            c.Bind("show_details", &state.show_details);
-            c.Bind("reported", &state.reported);
-            c.Bind("focus", &state.focus);
-            Rml::DataModelHandle model = c.GetModelHandle();
-            const auto act = [&](int button) {
-                switch (button) {
-                case 0:
-                    if (actions.restart) actions.restart();
-                    state.done = true;
-                    break;
-                case 1:
-                    if (actions.report) {
-                        state.message = actions.report();
-                        state.reported = true;
-                        model.DirtyVariable("message");
-                        model.DirtyVariable("reported");
-                    }
-                    break;
-                case 2:
-                    state.show_details = !state.show_details;
-                    model.DirtyVariable("show_details");
-                    break;
-                default: state.done = true; break;
-                }
-            };
-            c.BindEventCallback("restart", [&](Rml::DataModelHandle, Rml::Event&, const Rml::VariantList&) { act(0); });
-            c.BindEventCallback("report", [&](Rml::DataModelHandle, Rml::Event&, const Rml::VariantList&) { act(1); });
-            c.BindEventCallback("toggle_details", [&](Rml::DataModelHandle, Rml::Event&, const Rml::VariantList&) { act(2); });
-            c.BindEventCallback("close", [&](Rml::DataModelHandle, Rml::Event&, const Rml::VariantList&) { act(3); });
-            Rml::ElementDocument* document = context->LoadDocument("crash.rml");
-            if (document) {
-                document->Show();
-                ok = true;
-                while (!state.done) {
-                    SDL_Event e;
-                    if (!SDL_WaitEventTimeout(&e, 100)) e.type = 0;
-                    do {
-                        if (e.type == SDL_EVENT_QUIT || e.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED) state.done = true;
-                        if (e.type == SDL_EVENT_KEY_DOWN) {
-                            switch (e.key.key) {
-                            case SDLK_ESCAPE: state.done = true; break;
-                            case SDLK_LEFT:
-                            case SDLK_UP: state.focus = (state.focus + kButtons - 1) % kButtons; model.DirtyVariable("focus"); break;
-                            case SDLK_RIGHT:
-                            case SDLK_DOWN:
-                            case SDLK_TAB: state.focus = (state.focus + 1) % kButtons; model.DirtyVariable("focus"); break;
-                            case SDLK_RETURN:
-                            case SDLK_KP_ENTER:
-                            case SDLK_SPACE: act(state.focus); break;
-                            default: break;
-                            }
-                        } else if (e.type != 0) {
-                            RmlSDL::InputEventHandler(context, window, e);
-                        }
-                    } while (SDL_PollEvent(&e));
-                    SDL_GetWindowSizeInPixels(window, &w, &h);
-                    if (context->GetDimensions() != Rml::Vector2i{w, h}) context->SetDimensions({w, h});
-                    context->SetDensityIndependentPixelRatio(SDL_GetWindowPixelDensity(window));  // (the window is 900 x 640 points)
-                    context->Update();
-                    glViewport(0, 0, w, h);
-                    glClearColor(0.02f, 0.04f, 0.09f, 1.0f);
-                    glClear(GL_COLOR_BUFFER_BIT);
-                    render->SetViewport(w, h);
-                    render->BeginFrame();
-                    context->Render();
-                    render->EndFrame();
-                    SDL_GL_SwapWindow(window);
-                }
-            }
-            Rml::Shutdown();
+            ui::update();
+            glViewport(0, 0, w, h);
+            glClearColor(0.02f, 0.04f, 0.09f, 1.0f);
+            glClear(GL_COLOR_BUFFER_BIT);
+            ui::host::render(w, h);
+            SDL_GL_SwapWindow(window);
         }
+        ui::shutdown();
     }
+    ui::host::shutdown();
     SDL_GL_DestroyContext(gl);
     SDL_DestroyWindow(window);
     SDL_Quit();

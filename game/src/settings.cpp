@@ -115,6 +115,16 @@ const Field kFields[] = {
           }},
     Field{"audio.volume", [](const Settings& s) { return std::to_string(s.volume); },
           [](Settings& s, const std::string& v) { return parse_int(v, 0, 100, s.volume); }},
+    BOOL_FIELD("audio.menu_sounds", menu_sounds),
+    Field{"interface.ui_scale", [](const Settings& s) { return std::to_string(s.ui_scale); },
+          [](Settings& s, const std::string& v) {
+              int n;
+              if (!parse_int(v, 0, 200, n) || (n != 0 && n < 50)) return false;
+              s.ui_scale = n;
+              return true;
+          }},
+    BOOL_FIELD("interface.skip_prelaunch", skip_prelaunch),
+    BOOL_FIELD("interface.preset_chosen", preset_chosen),
     BOOL_FIELD("game.skip_logos", skip_logos),
     BOOL_FIELD("game.fast_loading", fast_loading),
     BOOL_FIELD("game.fast_saving", fast_saving),
