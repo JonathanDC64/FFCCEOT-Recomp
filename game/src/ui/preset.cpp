@@ -20,6 +20,7 @@ void applyPresetOriginal() {
     s.scale = 1;
     s.better_polygons = false;
     s.texture_smoothing = ntr::TextureSmoothing::Off;
+    s.stable_textures = false;
 }
 
 void applyPresetEnhanced() {
@@ -30,6 +31,9 @@ void applyPresetEnhanced() {
     s.aspect = Aspect::W16x9;
     s.hud_edges = true;
     s.filter = video::Filter::Linear;
+    s.display_rate = true;
+    s.stable_textures = true;
+    s.texture_smoothing = ntr::TextureSmoothing::Smooth;
 }
 
 }  // namespace
@@ -64,8 +68,8 @@ PresetWindow::PresetWindow() : WindowSmall("modal") {
         },
         {
             "Enhanced",
-            "Smooth 60 frames per second, a widescreen picture and a sharper image. "
-            "Our recommended way to play!",
+            "Smooth motion at your display's refresh rate, a widescreen picture, smoothed textures and a sharper image "
+            "(some of these are experimental). Our recommended way to play!",
             applyPresetEnhanced,
         },
     };

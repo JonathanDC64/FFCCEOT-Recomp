@@ -534,9 +534,8 @@ SettingsWindow::SettingsWindow(bool prelaunch) : mPrelaunch(prelaunch) {
             }),
             rightPane, [](Pane& pane) {
                 pane.clear();
-                pane.add_rml("The name other players see for you (up to 10 characters). Clear it to use this PC's "
-                             "name (" +
-                             escape(system_console_name()) + "). Takes effect the next time the game starts.");
+                pane.add_rml("The name other players see for you (up to 10 characters). Clear it to use \"FFCC\". "
+                             "Takes effect the next time the game starts.");
             });
         choice_row(
             leftPane, rightPane, "Wi-Fi Connection server", {"Kaeru WFC", "WiiLink WFC", "Custom"},

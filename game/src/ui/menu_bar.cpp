@@ -202,7 +202,7 @@ bool MenuBar::visible() const {
 }
 
 bool MenuBar::handle_nav_command(Rml::Event& event, NavCommand cmd) {
-    if (app().settings != nullptr && !app().settings->preset_chosen) {
+    if (app().settings != nullptr && preset_pending(*app().settings)) {
         return true;
     }
     if (cmd == NavCommand::Cancel && visible()) {

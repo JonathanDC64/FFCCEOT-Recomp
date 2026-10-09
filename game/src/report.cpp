@@ -7,6 +7,7 @@
 #include <cstring>
 #include <ctime>
 #include <fstream>
+#include <regex>
 #include <sstream>
 
 #ifdef _WIN32
@@ -215,6 +216,11 @@ std::string redact(std::string text) {
     std::string pc = env("COMPUTERNAME");
     if (pc.empty()) pc = env("HOSTNAME");
     replace_all(text, pc, "<pc>");
+    // The path of the ROM the player picked (their own folders), and the console name they typed.
+    static const std::regex rom_path(R"(([A-Za-z]:[\\/]|/)[^\r\n"<>|]*\.nds)", std::regex::icase);
+    text = std::regex_replace(text, rom_path, "<rom path>");
+    static const std::regex console_name(R"((^|\n)online\.console_name[^\n]*)");
+    text = std::regex_replace(text, console_name, "$1online.console_name = <removed>");
     return text;
 }
 

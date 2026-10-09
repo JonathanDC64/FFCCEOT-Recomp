@@ -82,7 +82,7 @@ scope: the reference projects either skip updating entirely or ship updaters tha
 ## 4. Compiler choice: measurements
 
 Measured on the real generated game code (about 29 MB of C in 66 files) with the project's clang, on a 16-thread
-Ryzen 7 9800X3D. The game code was rebuilt at four optimisation levels (clang-cl `/Od`, `/O1`, `/O2`, `/Os`). Each
+desktop CPU. The game code was rebuilt at four optimisation levels (clang-cl `/Od`, `/O1`, `/O2`, `/Os`). Each
 variant then ran the same 4000 frames unpaced from the title screen (save copy, default settings), twice.
 
 | Level | Compile, 16 threads | Run, 4000 frames unpaced |

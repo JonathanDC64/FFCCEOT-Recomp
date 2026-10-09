@@ -211,31 +211,9 @@ std::string sanitize_console_name(const std::string& name) {
     return out.find_first_not_of(' ') == std::string::npos ? std::string() : out;
 }
 
-std::string system_console_name() {
-    std::string name;
-#ifdef _WIN32
-    wchar_t w[MAX_COMPUTERNAME_LENGTH + 1];
-    DWORD n = MAX_COMPUTERNAME_LENGTH + 1;
-    if (GetComputerNameW(w, &n))
-        for (DWORD i = 0; i < n; i++) {  // (code points up to 0x7FF; the rest are dropped below)
-            const unsigned cp = w[i];
-            if (cp < 0x80) name += char(cp);
-            else if (cp < 0x800) { name += char(0xC0 | (cp >> 6)); name += char(0x80 | (cp & 0x3F)); }
-        }
-#else
-    char host[256];
-    if (gethostname(host, sizeof host) == 0) {
-        host[sizeof host - 1] = 0;
-        name = host;
-    }
-#endif
-    name = sanitize_console_name(name);
-    return name.empty() ? "FFCC" : name;
-}
-
 std::string resolved_console_name(const Settings& s) {
     const std::string n = sanitize_console_name(s.console_name);
-    return n.empty() ? system_console_name() : n;
+    return n.empty() ? "FFCC" : n;
 }
 
 bool online_dns(const std::string& server, std::array<uint8_t, 4>& dns) {

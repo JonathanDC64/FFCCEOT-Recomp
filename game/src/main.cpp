@@ -198,7 +198,7 @@ public:
         sync_video();
         update_title();
         // The first run offers the Welcome presets, once the game is up (as Dusklight does after it has started).
-        if (ui_ready_ && !settings.preset_chosen) ui::push_document(std::make_unique<ui::PresetWindow>());
+        if (ui_ready_ && preset_pending(settings)) ui::push_document(std::make_unique<ui::PresetWindow>());
     }
 
     // The game is gone (its window stays for the start screen).
@@ -513,9 +513,11 @@ private:
     // A build from the start screen finished: the game can start.
     void game_built() {
         if (runtime_) return;
+        const bool first_setup = status.state == setup::State::Missing;
         status = setup::check(data_dir);
         ui::app().status = status;
         if (status.state == setup::State::Ready) start_requested_ = true;
+        if (first_setup && status.state == setup::State::Ready) settings.preset_chosen = false;  // (the Welcome presets show once the game is up)
         load_icon();
     }
 
@@ -1750,7 +1752,7 @@ int main(int argc, char** argv) {
     }
     // A run without settings of its own (testing) does not offer the Welcome presets, unless asked to.
     if (first_run) settings.preset_chosen = false;
-    else if (testing) settings.preset_chosen = true;
+    else if (testing) settings.suppress_preset = true;  // (not saved: the real settings.ini keeps its own answer)
 
     struct Game {
         SdlHost& host;

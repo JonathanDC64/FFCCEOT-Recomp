@@ -71,6 +71,22 @@ void test_defaults_survive() {
     std::filesystem::remove(path);
 }
 
+void test_alpha_defaults() {
+    Settings s;
+    CHECK(resolved_console_name(s) == "FFCC");  // (never the PC's name: other players see it)
+    s.console_name = "Ana";
+    CHECK(resolved_console_name(s) == "Ana");
+    CHECK(preset_pending(s));  // (a first run offers the presets)
+    s.suppress_preset = true;  // (a test run does not, and never saves that)
+    CHECK(!preset_pending(s));
+    const auto path = std::filesystem::temp_directory_path() / "ffcc_test_preset.ini";
+    CHECK(save_settings(path, s));
+    Settings back;
+    CHECK(load_settings(path, back));
+    CHECK(!back.suppress_preset && !back.preset_chosen);
+    std::filesystem::remove(path);
+}
+
 void test_set_setting() {
     Settings s;
     CHECK(set_setting(s, "graphics.renderer", "compute"));  // (the compute renderer is switched off: OpenGL instead)
@@ -136,6 +152,7 @@ int main() {
     test_round_trip();
     test_defaults_survive();
     test_set_setting();
+    test_alpha_defaults();
     test_assign_key_swaps();
     test_assign_pad_swaps();
     if (failures) {

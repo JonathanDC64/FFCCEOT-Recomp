@@ -634,7 +634,7 @@ and `--report-at-frame` exercise these paths. Runs for testing keep no log and s
     custom DNS address. A change takes effect at the next start.
   - The console's name (`online.console_name`, the Network tab, `--console-name`): the nickname other players see, written
     into both copies of the firmware's user data at boot (`RuntimeOptions::console_name`; the DS keeps 10 characters, and
-    the menu accepts ASCII and Latin-1). Empty means this PC's computer name (`GetComputerNameW`), or "FFCC" if it has none.
+    the menu accepts ASCII and Latin-1). Empty means "FFCC" (never the PC's name, which other players would see; reports leave the name out).
   - WiiLink WFC fails this game since its April 2026 NAS refactor: the profanity check (`/pr`) decodes the words twice
     and answers one `prwords` character whatever the number of words, and the game wants one per word (error 33020).
   - The stats server's session key (`\sesskey\`) is larger than the game's `atoi` can hold, which leaves `errno` at

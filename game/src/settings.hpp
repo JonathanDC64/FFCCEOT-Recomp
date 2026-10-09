@@ -50,6 +50,7 @@ struct Settings {
     int ui_scale = 0;           // the menus' size in percent (50-200), 0 = the display's
     bool skip_prelaunch = false;  // start straight into the game when it is set up
     bool preset_chosen = false;   // the Welcome window has been answered (it shows on the first run)
+    bool suppress_preset = false;  // not saved: a test run offers no Welcome window (and leaves preset_chosen alone)
     // Game
     bool skip_logos = true;
     bool fast_loading = true;  // cartridge reads without the card's delays
@@ -70,12 +71,12 @@ bool save_settings(const std::filesystem::path& path, const Settings& s);
 // Sets one setting by its settings.ini key and value ("display.aspect", "21:9"). False if either is not valid.
 bool set_setting(Settings& s, const std::string& key, const std::string& value);
 
-// The name this PC goes by, as a console name: its computer name, cut to the DS's 10 characters ("FFCC" if it has none).
-std::string system_console_name();
 // A console name as the DS can show it: Latin characters only, at most 10 of them (UTF-8). Empty if nothing is left.
 std::string sanitize_console_name(const std::string& name);
-// The console name the game gets: the setting, or the PC's name if it is empty.
+// The console name the game gets: the setting, or "FFCC" if it is empty (other players see it: never the PC's name).
 std::string resolved_console_name(const Settings& s);
+// The Welcome presets are still to be answered (and this run is not a test run).
+inline bool preset_pending(const Settings& s) { return !s.preset_chosen && !s.suppress_preset; }
 
 // The DNS server for an online server setting: "wiilink" (WiiLink WFC), "kaeru" (Kaeru WFC, on Wiimmfi), "host" (the
 // host's own DNS, 0.0.0.0) or a DNS address such as "5.161.56.11". False if it is none of these.
