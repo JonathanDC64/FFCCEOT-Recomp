@@ -32,6 +32,11 @@ changed. `--smoke` runs the AppImage in a container with no compiler on its PATH
 `dist/smoke-linux.png`. The AppImage is about 210 MB (the LLVM libraries are most of it). When it runs from the read-only
 AppImage mount, `portable.txt` is looked for next to the `.AppImage` file.
 
+`.github/workflows/release.yml` runs the same two commands when a `v*` tag is pushed (a Windows job, a Linux job) and
+attaches both packages plus `SHA256SUMS.txt` to a **draft** pre-release: nothing becomes public until the owner publishes
+it. It is idle while Actions are off (quota back on 2026-11-01); until then run the commands by hand and upload the files
+to a draft release.
+
 Not done on Linux yet: the crash dialog (the log and system information in problem reports do work) and local wireless
 between instances (Windows only).
 
