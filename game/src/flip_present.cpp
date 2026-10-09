@@ -10,7 +10,7 @@
 #endif
 #include <windows.h>
 #include <d3d11.h>
-#include <dxgi1_3.h>
+#include <dxgi1_5.h>
 #include <wrl/client.h>
 
 #include <algorithm>
@@ -43,6 +43,7 @@ struct FlipPresenter::Impl {
     ComPtr<ID3D11DeviceContext> context;
     ComPtr<IDXGISwapChain1> swapchain;
     UINT swapchain_flags = 0;
+    bool tearing = false;       // the swapchain can show a frame at once, mid-refresh (variable refresh displays)
     HANDLE waitable = nullptr;  // signalled when the swapchain can take another frame (frame latency 1)
     HANDLE interop = nullptr;   // the D3D device opened for GL
 
@@ -150,6 +151,14 @@ bool FlipPresenter::init(void* hwnd, std::string& error) {
     sd.AlphaMode = DXGI_ALPHA_MODE_IGNORE;
     // The waitable object paces frames to the display's refresh when vsync is wanted (Windows 8.1+).
     sd.Flags = DXGI_SWAP_CHAIN_FLAG_FRAME_LATENCY_WAITABLE_OBJECT;
+    // Tearing allowed (Windows 10): a frame presented with DXGI_PRESENT_ALLOW_TEARING is shown at once, which is what a
+    // variable refresh rate display wants.
+    ComPtr<IDXGIFactory5> factory5;
+    BOOL tearing_ok = FALSE;
+    if (SUCCEEDED(factory.As(&factory5)) &&
+        SUCCEEDED(factory5->CheckFeatureSupport(DXGI_FEATURE_PRESENT_ALLOW_TEARING, &tearing_ok, sizeof(tearing_ok))) &&
+        tearing_ok)
+        sd.Flags |= DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING;
     HRESULT hr = factory->CreateSwapChainForHwnd(m.device.Get(), static_cast<HWND>(hwnd), &sd, nullptr, nullptr,
                                                  &m.swapchain);
     if (FAILED(hr)) {
@@ -163,6 +172,7 @@ bool FlipPresenter::init(void* hwnd, std::string& error) {
         return false;
     }
     m.swapchain_flags = sd.Flags;
+    m.tearing = (sd.Flags & DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING) != 0;
     ComPtr<IDXGISwapChain2> swapchain2;
     if (sd.Flags && SUCCEEDED(m.swapchain.As(&swapchain2))) {
         swapchain2->SetMaximumFrameLatency(1);
@@ -211,7 +221,9 @@ void FlipPresenter::wait() {
     if (m.waitable) WaitForSingleObjectEx(m.waitable, 100, TRUE);
 }
 
-void FlipPresenter::present(bool vsync) {
+bool FlipPresenter::tearing_supported() const { return impl_->tearing; }
+
+void FlipPresenter::present(bool vsync, bool tearing) {
     Impl& m = *impl_;
     if (!m.shared_object) return;
     // GL -> shared texture, flipping the rows.
@@ -225,7 +237,7 @@ void FlipPresenter::present(bool vsync) {
     // shows the latest frame at the next refresh without tearing. Sync interval 1: in step with the refresh.
     ComPtr<ID3D11Texture2D> back;
     if (SUCCEEDED(m.swapchain->GetBuffer(0, IID_PPV_ARGS(&back)))) m.context->CopyResource(back.Get(), m.shared_tex.Get());
-    m.swapchain->Present(vsync ? 1 : 0, 0);
+    m.swapchain->Present(vsync ? 1 : 0, !vsync && tearing && m.tearing ? DXGI_PRESENT_ALLOW_TEARING : 0);
 }
 
 }  // namespace video

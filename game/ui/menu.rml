@@ -120,6 +120,26 @@
                     <option value="2">Display refresh rate (interpolated)</option>
                 </select>
             </div>
+            <div class="row nav" data-if="frame_rate == 2 &amp;&amp; renderer != 0">
+                <span class="label">Frame pacing</span>
+                <select data-value="pacing">
+                    <option value="0">V-sync</option>
+                    <option value="1">Variable refresh (VRR)</option>
+                </select>
+            </div>
+            <div class="row nav" data-if="frame_rate == 2 &amp;&amp; renderer != 0 &amp;&amp; pacing == 1">
+                <span class="label">Frame rate limit</span>
+                <select data-value="rate_cap">
+                    <option value="0">Display refresh rate</option>
+                    <option value="1">60 fps</option>
+                    <option value="2">90 fps</option>
+                    <option value="3">120 fps</option>
+                    <option value="4">144 fps</option>
+                    <option value="5">165 fps</option>
+                    <option value="6">240 fps</option>
+                </select>
+            </div>
+            <p class="note" data-if="frame_rate == 2 &amp;&amp; renderer != 0 &amp;&amp; pacing == 1">V-sync shows frames in step with the display. Variable refresh presents each one the moment it is ready, on a timer of its own, with the lowest delay. It is meant for a display with G-Sync or FreeSync on (fullscreen shows it best); on any other display it can tear.</p>
             <div class="row nav">
                 <span class="label">Scaling filter</span>
                 <select data-value="filter">

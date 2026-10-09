@@ -339,7 +339,14 @@ refreshes pace the emulation instead, and every refresh gets its own frame.
   the expected 3-2-2-3-2 pattern, and the image change between consecutive frames stays within 4.3-5.6 (mean absolute
   difference, top screen), with no repeated frames or double steps.
 - **The software renderer** composites on the CPU line by line, so it stays at 60.
-- **Not yet:** VRR (presenting on a timer instead of vsync), and a low-latency option.
+- **Variable refresh** (Graphics → Frame pacing, `--pacing variable`, `--rate-cap <fps>`): for G-Sync and FreeSync
+  displays there are no refreshes to wait for. The frontend presents on a timer of its own (sleep, then spin for the last
+  half millisecond) at the display's refresh rate or a limit, each frame with the 3D blended for the moment it is
+  presented, and the flip-model swapchain presents with `DXGI_PRESENT_ALLOW_TEARING` (the swapchain is created with
+  `DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING` where the system supports it), so the frame reaches the display at once. Measured
+  with `--perf`: 143.9 presents per second at the 144 Hz display's rate, and 100.0 and 60.0 with limits of 100 and 60.
+  On a display without variable refresh it tears. A GL swap without vsync does the same.
+- **Not yet:** a low-latency mode that extrapolates (below).
 
 **Object tagging (deferred).** RT64 tags matrices with IDs so it can pair objects exactly between frames.
 - **What it would fix here: little.** Measured: 95% of scenes have exactly the same command sequence as the previous

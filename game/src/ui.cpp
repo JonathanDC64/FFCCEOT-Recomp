@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <array>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <string>
 #include <vector>
@@ -65,6 +66,7 @@ public:
 
 const char* const kTabs[] = {"display", "graphics", "audio", "game", "network", "controls"};
 constexpr int kTabCount = int(std::size(kTabs));
+constexpr int kRateCaps[] = {0, 60, 90, 120, 144, 165, 240};  // the menu's frame rate limits (0 = the display's)
 
 }  // namespace
 
@@ -77,6 +79,8 @@ struct State {
     int hud_size = 100;             // percent
     int renderer = 1, scale = 0, filter = 1;
     bool better_polygons = false, hires_coordinates = true;
+    int pacing = 0;      // with the display's refresh rate: 0 = vsync, 1 = variable refresh
+    int rate_cap = 0;    // with variable refresh: an index into kRateCaps
     int frame_rate = 1;  // 3D: 0 = the game's 30 fps, 1 = 60 fps, 2 = the display's refresh rate
     int volume = 100;
     bool skip_logos = true;
@@ -259,6 +263,10 @@ struct Menu::Impl {
         state.better_polygons = s.better_polygons;
         state.hires_coordinates = s.hires_coordinates;
         state.frame_rate = !s.interpolate ? 0 : s.display_rate ? 2 : 1;
+        state.pacing = int(s.pacing);
+        state.rate_cap = 0;
+        for (int i = 0; i < int(std::size(kRateCaps)); i++)
+            if (std::abs(kRateCaps[i] - s.rate_cap) < std::abs(kRateCaps[state.rate_cap] - s.rate_cap)) state.rate_cap = i;
         state.volume = s.volume;
         state.skip_logos = s.skip_logos;
         state.fast_loading = s.fast_loading;
@@ -294,6 +302,8 @@ struct Menu::Impl {
         s.hires_coordinates = state.hires_coordinates;
         s.interpolate = state.frame_rate != 0;
         s.display_rate = state.frame_rate == 2;
+        s.pacing = Pacing(std::clamp(state.pacing, 0, 1));
+        s.rate_cap = kRateCaps[std::clamp(state.rate_cap, 0, int(std::size(kRateCaps)) - 1)];
         s.volume = std::clamp(state.volume, 0, 100);
         s.skip_logos = state.skip_logos;
         s.fast_loading = state.fast_loading;
@@ -453,6 +463,8 @@ bool Menu::init(SDL_Window* window, Settings* settings, bool compute_available) 
     c.Bind("better_polygons", &s.better_polygons);
     c.Bind("hires_coordinates", &s.hires_coordinates);
     c.Bind("frame_rate", &s.frame_rate);
+    c.Bind("pacing", &s.pacing);
+    c.Bind("rate_cap", &s.rate_cap);
     c.Bind("volume", &s.volume);
     c.Bind("skip_logos", &s.skip_logos);
     c.Bind("fast_loading", &s.fast_loading);

@@ -68,7 +68,8 @@ Milestones are ordered by dependency. Each ends with a demonstrable result. Desi
       background scroll, menu/arrow bobs), menus appear in one frame, no 2D element tracks the 3D. General 2D
       interpolation not planned (would need sprite matching and sub-pixel compositing for little gain)
 - [x] Display-rate interpolation beyond 60 Hz (GL/compute: re-render 3D + re-composite between emulated frames; §5.3)
-- [ ] Display rate: VRR (timer-paced presents), low-latency option
+- [x] Display rate: variable refresh (timer-paced presents with tearing allowed, optional rate limit)
+- [ ] Display rate: a low-latency mode (extrapolation instead of interpolation)
 - [ ] A host-side hitch once per run: a cluster of late refreshes (about 14, 21, 21 and 50-60 ms) at a random frame,
       at any CPU speed, not from the game (`--perf` logs it). Suspected: Windows switching the window's presentation
       mode (DWM composition / independent flip) partway through

@@ -15,6 +15,10 @@ inline int aspect_extra(Aspect a) {
     return kExtra[int(a)];
 }
 
+// How frames are timed with 3D at the display's refresh rate: shown in step with the display (vsync), or presented on a
+// timer of the frontend's own, at once, for a variable refresh rate display (G-Sync, FreeSync).
+enum class Pacing { Vsync, Variable };
+
 struct Settings {
     // Display
     video::LayoutSettings layout;
@@ -30,6 +34,8 @@ struct Settings {
     bool hires_coordinates = true;
     bool interpolate = true;    // 3D at 60 fps (frame interpolation)
     bool display_rate = false;  // with interpolate: 3D at the display's refresh rate (OpenGL/compute renderers)
+    Pacing pacing = Pacing::Vsync;  // with display_rate
+    int rate_cap = 0;           // with Pacing::Variable: frames per second to present (0 = the display's refresh rate)
     // Audio
     int volume = 100;  // percent
     // Game

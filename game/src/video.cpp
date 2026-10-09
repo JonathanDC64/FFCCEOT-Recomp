@@ -342,7 +342,7 @@ void Presenter::swap(const char* screenshot) {
     if (screenshot) save_png(screenshot);
 #ifdef _WIN32
     if (flip_) {
-        flip_->present(vsync_);
+        flip_->present(vsync_, tearing_);
         return;
     }
 #endif
@@ -359,6 +359,13 @@ void Presenter::wait_for_refresh() {
 #ifdef _WIN32
     if (flip_ && vsync_) flip_->wait();
 #endif
+}
+
+bool Presenter::tearing_supported() const {
+#ifdef _WIN32
+    if (flip_) return flip_->tearing_supported();
+#endif
+    return true;  // (a GL swap without vsync tears by itself)
 }
 
 float Presenter::refresh_rate() const {

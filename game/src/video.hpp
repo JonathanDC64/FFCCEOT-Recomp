@@ -95,6 +95,10 @@ public:
     // at the following refresh. Off: frames show at once and the frontend paces them.
     void set_vsync(bool on);
     bool vsync() const { return vsync_; }
+    // Without vsync, frames are shown at the moment they are presented, tearing allowed (variable refresh rate
+    // displays). Needs a swapchain or driver that can; see tearing_supported().
+    void set_tearing(bool on) { tearing_ = on; }
+    bool tearing_supported() const;
     void wait_for_refresh();
     // The refresh rate of the display the window is on (Hz), or 0 if unknown.
     float refresh_rate() const;
@@ -115,6 +119,7 @@ private:
     unsigned target_ = 0;      // the framebuffer this frame is drawn into (0 = the window's own)
     bool gl43_ = false;
     bool vsync_ = false;
+    bool tearing_ = false;
     unsigned program_ = 0, vbo_ = 0, vao_ = 0, soft_tex_ = 0;
     int wide_extra_ = 0;
     int u_uv_x_ = -1;

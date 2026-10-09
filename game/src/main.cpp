@@ -573,7 +573,8 @@ private:
             t += " " + std::to_string(v.scale) + "x" + (settings.scale ? "" : " (auto)");
         t += std::string(", ") + video::filter_name(settings.filter) + " filter";
         if (v.display_rate)
-            t += ", 3D at " + std::to_string(int(std::lround(display_hz()))) + " Hz";
+            t += ", 3D at " + std::to_string(int(std::lround(settings.pacing == Pacing::Variable ? rate_hz() : display_hz()))) +
+                 (settings.pacing == Pacing::Variable ? " Hz (variable refresh)" : " Hz");
         else
             t += v.interpolate ? ", 60 fps 3D" : ", 30 fps 3D";
         t += "  |  Esc settings";
@@ -758,6 +759,8 @@ private:
     // one, so runs are repeatable; a screenshot then saves every frame shown for that emulated frame (name, name-1,
     // name-2, ...).
     void present_display_rate(const ntr::Frame& frame, const char* shot_path) {
+        if (settings.pacing == Pacing::Variable && !unpaced) return present_variable_rate(frame, shot_path);
+        presenter_.set_tearing(false);
         const double period = 1.0 / display_hz();
         presenter_.set_vsync(!unpaced);
         if (!unpaced && seconds() > emu_time_ + 0.1) {  // started, paused or fell behind
@@ -795,6 +798,72 @@ private:
                 note_refresh(seconds(), period);  // the swap returned at the refresh
         }
         emu_time_ = frame_end;
+    }
+
+    // Variable refresh rate: no refreshes to wait for. Frames are presented at once, on a timer, rate_hz() times a second
+    // (tearing allowed, so a G-Sync or FreeSync display refreshes when the frame arrives), each with the 3D blended for
+    // the moment it is presented. A frame shows the instant it is ready: the lowest delay there is.
+    void present_variable_rate(const ntr::Frame& frame, const char* shot_path) {
+        const double period = 1.0 / rate_hz();
+        presenter_.set_vsync(false);
+        presenter_.set_tearing(presenter_.tearing_supported());
+        if (seconds() > emu_time_ + 0.1) {  // started, paused or fell behind
+            if (perf && emu_time_ > 0)
+                std::fprintf(stderr, "perf: frame %llu: %.1f ms behind, resynced\n", (unsigned long long)frames_,
+                             (seconds() - emu_time_) * 1000.0);
+            emu_time_ = next_present_ = seconds();
+        }
+        const double frame_end = emu_time_ + kFrameSeconds;
+        for (int k = 0; next_present_ < frame_end; k++) {
+            wait_until(next_present_);
+            const double now = seconds();
+            if (perf && now > next_present_ + 0.5 * period)
+                std::fprintf(stderr, "perf: frame %llu: presented %.1f ms late\n", (unsigned long long)frames_,
+                             (now - next_present_) * 1000.0);
+            const unsigned between = runtime_->render_between(std::clamp((now - emu_time_) / kFrameSeconds, 0.0, 1.0));
+            ntr::Frame f = frame;
+            if (between) f.gl_texture = between;
+            std::string path;
+            if (shot_path) {
+                path = shot_path;
+                if (k > 0) {
+                    const size_t dot = path.rfind('.');
+                    path.insert(dot == std::string::npos ? path.size() : dot, "-" + std::to_string(k));
+                }
+            }
+            presenter_.present(&f, settings.filter, shot_path ? path.c_str() : nullptr);
+            if (perf) note_presents(now);
+            next_present_ += period;
+            if (next_present_ < seconds() - 0.05) next_present_ = seconds();  // fell behind: resync
+        }
+        emu_time_ = frame_end;
+    }
+
+    // --perf: the presents per second with variable refresh, every two seconds.
+    void note_presents(double now) {
+        if (now - present_count_from_ >= 2.0) {
+            if (present_count_from_ > 0)
+                std::fprintf(stderr, "perf: frame %llu: %.1f presents per second (variable refresh)\n", (unsigned long long)frames_,
+                             present_count_ / (now - present_count_from_));
+            present_count_from_ = now;
+            present_count_ = 0;
+        }
+        present_count_++;
+    }
+
+    // The frames per second presented with variable refresh: the limit, or the display's refresh rate.
+    double rate_hz() const { return settings.rate_cap > 0 ? settings.rate_cap : display_hz(); }
+
+    // Sleeps until `t` (seconds()), spinning for the last half millisecond.
+    static void wait_until(double t) {
+        for (;;) {
+            const double left = t - seconds();
+            if (left <= 0) return;
+            if (left > 0.0015)
+                SDL_DelayPrecise(Uint64((left - 0.0005) * 1e9));
+            else
+                std::this_thread::yield();
+        }
     }
 
     // A display refresh at `t`. With --perf, a refresh that came more than a refresh late (a frame shown twice, or
@@ -851,6 +920,9 @@ private:
     double virtual_clock_ = 0;     // display-rate 3D with --unpaced: the virtual display's time
     bool refresh_waited_ = false;  // display-rate 3D: waited for a refresh not yet drawn for
     double last_refresh_ = 0;      // display-rate 3D: when that refresh was (seconds)
+    double present_count_from_ = 0;  // --perf: when the count of presents started
+    int present_count_ = 0;
+    double next_present_ = 0;      // variable refresh: when the next frame is to be presented (seconds)
     std::filesystem::path save_path_;
     std::vector<uint8_t> save_;
     bool save_dirty_ = false;
@@ -965,6 +1037,8 @@ int main(int argc, char** argv) {
                      "  --widescreen / --no-widescreen       same as --aspect 16:9 / 4:3\n"
                      "  --set-at-frame <n> <key>=<value>     debugging: change a setting (settings.ini key) at frame n\n"
                      "  --resize-at-frame <n> <w>x<h>        debugging: resize the window at frame n\n"
+                     "  --pacing vsync|variable              display-rate 3D: in step with the display, or timed by us for G-Sync / FreeSync\n"
+                     "  --rate-cap <fps>                     variable refresh: the frames per second to present (default: the display's rate)\n"
                      "  --hud-edges                          wider than 4:3: the HUD at the edges of the picture\n"
                      "  --hud-scale 50..200                  the HUD's size in percent (opengl)\n"
                      "other:\n"
@@ -1144,6 +1218,10 @@ int main(int argc, char** argv) {
             settings.interpolate = false;
         else if (a == "--display-rate")
             settings.interpolate = settings.display_rate = true;
+        else if (a == "--pacing" && has_value && (std::string(argv[i + 1]) == "vsync" || std::string(argv[i + 1]) == "variable"))
+            settings.pacing = std::string(argv[++i]) == "variable" ? Pacing::Variable : Pacing::Vsync;
+        else if (a == "--rate-cap" && has_value)
+            settings.rate_cap = std::max(30, std::atoi(argv[++i]));
         else if (a == "--no-display-rate")
             settings.display_rate = false;
         else

@@ -49,6 +49,7 @@ bool parse_enum(const std::string& v, const char* const (&names)[N], E& out) {
 
 const char* const kLayouts[] = {"single", "main-side", "stacked", "side"};
 const char* const kAspects[] = {"4:3", "16:9", "16:10", "21:9", "32:9"};
+const char* const kPacings[] = {"vsync", "variable"};
 const char* const kAligns[] = {"top", "middle", "bottom"};
 const char* const kRenderers[] = {"software", "opengl", "compute"};
 const char* const kFilters[] = {"nearest", "linear", "sharp"};
@@ -97,6 +98,13 @@ const Field kFields[] = {
     BOOL_FIELD("graphics.hires_coordinates", hires_coordinates),
     BOOL_FIELD("graphics.interpolate", interpolate),
     BOOL_FIELD("graphics.display_rate", display_rate),
+    ENUM_FIELD("graphics.pacing", pacing, kPacings),
+    Field{"graphics.rate_cap", [](const Settings& s) { return std::to_string(s.rate_cap); },
+          [](Settings& s, const std::string& v) {
+              if (!parse_int(v, 0, 1000, s.rate_cap)) return false;
+              if (s.rate_cap != 0) s.rate_cap = std::max(s.rate_cap, 30);
+              return true;
+          }},
     Field{"audio.volume", [](const Settings& s) { return std::to_string(s.volume); },
           [](Settings& s, const std::string& v) { return parse_int(v, 0, 100, s.volume); }},
     BOOL_FIELD("game.skip_logos", skip_logos),
