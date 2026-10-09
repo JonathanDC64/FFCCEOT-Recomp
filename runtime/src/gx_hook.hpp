@@ -19,6 +19,8 @@ extern int FfccWideExtra;
 // The HUD (engine A's sprite clusters at the screen's side edges): moved to the edges of the wide picture when
 // FfccHudEdges, and scaled by FfccHudScale percent about the screen's corner.
 extern int FfccHudEdges, FfccHudScale;
+// Stable texture mapping: quads with texture coordinates no perspective transform fits are cut into a grid.
+extern int FfccStableUV;
 // NDSCart.cpp: cartridge transfers without gaps, at 4 cycles a word.
 extern bool FfccFastCart;
 }  // namespace melonDS

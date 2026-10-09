@@ -42,6 +42,8 @@ struct VideoSettings {
     int scale = 1;                   // internal resolution multiplier for the GL renderers (1-16)
     bool better_polygons = false;    // OpenGL: split quads better (fewer seams in upscaled 3D)
     bool hires_coordinates = true;   // Compute: keep sub-pixel vertex positions when upscaling
+    bool stable_textures = false;    // all renderers: cut quads whose texture coordinates no perspective transform fits
+                                     // into a grid, so the texture stays on the surface (the DS bends it by the view)
     bool threaded = true;            // Software: render 3D on a worker thread
     bool interpolate = false;        // 3D at 60 fps: blend the game's 30 Hz scenes (one frame of latency)
     bool display_rate = false;       // with interpolate and a GL renderer: blend for each displayed frame instead,

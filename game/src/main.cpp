@@ -179,6 +179,7 @@ public:
         if (v.renderer == ntr::Renderer::Software) v.scale = 1;  // native only
         v.better_polygons = settings.better_polygons;
         v.hires_coordinates = settings.hires_coordinates;
+        v.stable_textures = settings.stable_textures;
         v.interpolate = settings.interpolate;
         v.wide_extra = aspect_extra(settings.aspect);
         v.hud_edges = settings.hud_edges;
@@ -695,6 +696,7 @@ private:
         const ntr::VideoSettings v = wanted_video();
         if (v.renderer == sent_video_.renderer && v.scale == sent_video_.scale &&
             v.better_polygons == sent_video_.better_polygons && v.hires_coordinates == sent_video_.hires_coordinates &&
+            v.stable_textures == sent_video_.stable_textures &&
             v.interpolate == sent_video_.interpolate && v.display_rate == sent_video_.display_rate &&
             v.wide_extra == sent_video_.wide_extra && v.hud_edges == sent_video_.hud_edges &&
             v.hud_scale == sent_video_.hud_scale)
@@ -1329,6 +1331,7 @@ int main(int argc, char** argv) {
                      "  --scale auto|1..16                   internal resolution for opengl/compute (default auto)\n"
                      "  --filter nearest|linear|sharp        scaling to the window (default linear)\n"
                      "  --better-polygons                    opengl: better quad splitting\n"
+                     "  --stable-textures                    keep warping ground textures on the surface (differs from the DS)\n"
                      "  --no-hires-coordinates               compute: snap vertices to the DS pixel grid\n"
                      "  --no-interpolate                     3D at the game's 30 fps (default: interpolated to 60)\n"
                      "  --display-rate                       3D interpolated to the display's refresh rate (vsync)\n"
@@ -1577,6 +1580,8 @@ int main(int argc, char** argv) {
             settings.layout.second_screen = false;
         else if (a == "--better-polygons")
             settings.better_polygons = true;
+        else if (a == "--stable-textures")
+            settings.stable_textures = true;
         else if (a == "--no-hires-coordinates")
             settings.hires_coordinates = false;
         else if (a == "--interpolate")

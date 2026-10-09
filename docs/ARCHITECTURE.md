@@ -379,6 +379,19 @@ refreshes pace the emulation instead, and every refresh gets its own frame.
 - Interpolating master brightness fades (the only 2D change worth blending: measured, other 2D motion is 1 px steps).
 - A low-latency mode that extrapolates instead.
 
+### 5.3a Stable textures
+Some ground tiles of the game are quads whose texture coordinates no perspective transform can fit (a tile whose
+corners carry (0,0) (0,128) (64,128) (64,64) texels, say). Every rasteriser then bends the texture its own way (the DS
+walks edges and spans, the OpenGL renderer splits the quad into triangles, the compute and software renderers follow
+the DS) and the bend changes with the view, so the texture swims as the camera moves: stock melonDS shows it too.
+The setting "Stable textures" (`graphics.stable_textures`, `--stable-textures`, off by default: it differs from the
+console) cuts such a quad into a small grid before clipping, with the corners of the pieces blended bilinearly in clip
+space and in texture space, which keeps the texture on the surface for every renderer. The outline stays the original
+four corners (the neighbouring tiles share those edges; pieces along them would leave cracks) and only opaque textured
+quads in perspective scenes are touched, within a budget that leaves room in polygon and vertex RAM (a scene that runs
+out of it loses its last polygons, which are usually characters). The code is `third_party/ffcc_stable_uv.inc`,
+spliced into the start of `GPU3D::SubmitPolygon` at configure time.
+
 ### 5.4 Screen layouts
 **Today** (`game/src/video.cpp`): single screen (default; the top screen as large as fits, the other as a framed
 picture-in-picture in the bottom-right corner that can be hidden and takes mouse touches), main + side (the main

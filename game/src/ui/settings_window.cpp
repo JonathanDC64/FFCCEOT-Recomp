@@ -412,6 +412,10 @@ SettingsWindow::SettingsWindow(bool prelaunch) : mPrelaunch(prelaunch) {
         bool_row(leftPane, rightPane, "Better polygons", SETTING(better_polygons),
             "Splits quads into triangles in a way that avoids visible seams on some surfaces. OpenGL renderer only.",
             notOpenGL);
+        bool_row(leftPane, rightPane, "Stable textures", SETTING(stable_textures),
+            "Some ground tiles in the game have textures that cannot be mapped flat, so they seem to swim as you "
+            "move (the DS does this too). This cuts them into small pieces so the texture stays on the ground. "
+            "Differs from the original console.");
         bool_row(leftPane, rightPane, "High-precision vertices", SETTING(hires_coordinates),
             "Keeps vertex positions at full precision instead of snapping them to the DS's pixel grid. Compute "
             "renderer only.",

@@ -58,6 +58,11 @@ Milestones are ordered by dependency. Each ends with a demonstrable result. Desi
 - [x] Two windows layout: the other screen in a window of its own (touchable)
 - [ ] More layout options: PiP position/size/opacity settings, automatic swap/pop-up from game hooks, remembering the second window's place and size
 - [x] Widescreen 16:9 (OpenGL renderer): projection hook, wide 3D and engine A 2D compositor, HUD position and size, fades
+- [x] Stable textures (optional): ground quads whose texture coordinates no perspective transform fits are cut into a grid,
+      so the texture stops swimming with the camera (every renderer; §5.3a)
+- [ ] Texture smoothing (optional, off by default): bilinear filtering of the game's textures inside the OpenGL renderer
+      (the 3D shader reads integer texels, so it needs a four-tap blend by hand, the DS repeat/mirror/clamp modes in the
+      shader, and care with see-through texels); the compute renderer needs its own version later
 - [x] Widescreen aspect ratios: 16:9, 16:10, 21:9, 32:9 (Display → Aspect ratio, `--aspect`)
 - [ ] Widescreen: the compute renderer, a culling hook for pop-in at the sides, dialog/menu scaling
 - [x] Measure the frame rate (`--fps-probe`): 3D at 30 Hz, top screen only, no display capture

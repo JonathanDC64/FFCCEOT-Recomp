@@ -57,6 +57,17 @@ ffcc_patch(gpu3d_src GPU3D.cpp "vtx->FinalPosition[0] = posX & 0x1FF;"
   "vtx->FinalPosition[0] = posX & (FfccWideExtra ? 0x7FF : 0x1FF); // ffcc patch")
 ffcc_patch(gpu3d_src GPU3D.cpp "vtx->HiresPosition[0] = posX & 0x1FFF;"
   "vtx->HiresPosition[0] = posX & (FfccWideExtra ? 0x7FFF : 0x1FFF); // ffcc patch")
+# Stable texture mapping: quads whose texture coordinates no perspective transform can fit are cut into a grid (the code
+# is in ffcc_stable_uv.inc, which is spliced into the start of SubmitPolygon).
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/ffcc_stable_uv.inc)
+file(READ ${CMAKE_CURRENT_SOURCE_DIR}/ffcc_stable_uv.inc ffcc_stable_uv_body)
+string(REPLACE "\r\n" "\n" ffcc_stable_uv_body "${ffcc_stable_uv_body}")
+ffcc_patch(gpu3d_src GPU3D.cpp "void GPU3D::SubmitPolygon() noexcept\n{\n"
+  "void GPU3D::SubmitPolygon() noexcept\n{\n${ffcc_stable_uv_body}")
+ffcc_patch(gpu3d_src GPU3D.cpp "#include <algorithm>\n"
+  "#include <algorithm>\n#include <cmath>\n")
+ffcc_patch(gpu3d_src GPU3D.cpp "bool FfccGxReplaying = false;\n"
+  "bool FfccGxReplaying = false;\nint FfccStableUV = 0; // ffcc patch\nstatic bool ffcc_subdividing = false;\nstatic int ffcc_subdivided = 0;\n#define FFCC_UV_GRID 4\n")
 ffcc_write_patched(gpu3d_src ${CMAKE_CURRENT_BINARY_DIR}/melonds_patched/GPU3D.cpp)
 
 # GPU3D_OpenGL.cpp: with FfccWideExtra set, the 3D texture is (256 + 2 * extra) pixels wide (a widescreen picture; the

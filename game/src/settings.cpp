@@ -104,6 +104,7 @@ const Field kFields[] = {
     ENUM_FIELD("graphics.filter", filter, kFilters),
     BOOL_FIELD("graphics.better_polygons", better_polygons),
     BOOL_FIELD("graphics.hires_coordinates", hires_coordinates),
+    BOOL_FIELD("graphics.stable_textures", stable_textures),
     BOOL_FIELD("graphics.interpolate", interpolate),
     BOOL_FIELD("graphics.display_rate", display_rate),
     ENUM_FIELD("graphics.pacing", pacing, kPacings),
