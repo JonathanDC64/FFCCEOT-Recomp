@@ -1,6 +1,6 @@
 # Packaging, setup and releases
 
-Status: **mostly built.** Setup (§3, §9 steps 1-3 and 8) works, and `tools/package.py` builds the Windows package (§6).
+Status: **mostly built.** Setup (§3, §9 steps 1-3 and 8) works, and `tools/package.py` builds the Windows zip and the Linux AppImage (§0, §6).
 Decisions marked *decided* came out of a Q&A with the project owner; the rest are proposals or open questions.
 
 ## 0. Making a package
@@ -15,6 +15,25 @@ nothing), builds the program, runs the tests, takes **clang, lld-link and clang'
 given with `--llvm-dir`, or the official archive downloaded once into `build/pkgcache` and checked against a pinned
 SHA-256), adds the licences (`NOTICE.md`, `licenses/`), scans the result for game data (ROM or save files, a built game
 module, generated code) and writes `dist/FFCCEOT-Recomp-<version>-windows-x64.zip`. Releases are published by hand, as drafts.
+
+```
+python tools/package.py linux [--version 0.1.0-alpha]
+python tools/package.py linux --smoke "<path of your ROM>"
+```
+
+The Linux package is built in Docker (needs only Docker; `tools/docker/linux.Dockerfile`): Ubuntu 22.04, so the program
+needs glibc 2.35 or newer (Steam Deck included), with libstdc++ 13 from the toolchain PPA for C++20 `<format>` (linked
+statically, so players do not need it) and the same pinned LLVM 22.1.8. The image builds `ffcc` with `-DFFCC_PACKAGE=ON`,
+runs the tests under Xvfb, assembles the AppDir (`usr/bin/ffcc`, `usr/bin/toolchain` with clang, lld and their shared
+libraries and clang's headers, licences, icon, `AppRun`), scans it for game data and runs the pinned `appimagetool` with the
+pinned type2 runtime. The build folder lives in a Docker volume (`ffcc-linux-build-cache`), so later runs only rebuild what
+changed. `--smoke` runs the AppImage in a container with no compiler on its PATH: it sets the game up from your ROM
+(mounted read-only, never copied into an image) with the bundled toolchain, boots it under Xvfb and saves
+`dist/smoke-linux.png`. The AppImage is about 210 MB (the LLVM libraries are most of it). When it runs from the read-only
+AppImage mount, `portable.txt` is looked for next to the `.AppImage` file.
+
+Not done on Linux yet: the crash dialog (the log and system information in problem reports do work) and local wireless
+between instances (Windows only).
 
 ## 1. Goal
 

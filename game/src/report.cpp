@@ -9,6 +9,7 @@
 #include <fstream>
 #include <regex>
 #include <sstream>
+#include <thread>
 
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
@@ -20,6 +21,9 @@
 #include <io.h>
 #include <shellapi.h>
 #include <share.h>
+#else
+#include <sys/utsname.h>
+#include <unistd.h>
 #endif
 
 #ifndef FFCC_VERSION
@@ -291,7 +295,33 @@ std::string system_info() {
             reinterpret_cast<LPARAM>(&m));
     }
 #else
-    o << "OS: not Windows\n";
+    {
+        // The text after `sep` on the first line of `file` that starts with `key` ("PRETTY_NAME=", "model name").
+        const auto field = [](const char* file, const char* key, char sep) -> std::string {
+            std::ifstream f(file);
+            std::string line;
+            while (std::getline(f, line)) {
+                if (line.rfind(key, 0) != 0) continue;
+                const size_t at = line.find(sep);
+                if (at == std::string::npos) continue;
+                std::string v = line.substr(at + 1);
+                v.erase(0, v.find_first_not_of(" \t\"'"));
+                v.erase(v.find_last_not_of(" \t\"'\r") + 1);
+                return v;
+            }
+            return {};
+        };
+        std::string os = field("/etc/os-release", "PRETTY_NAME", '=');
+        utsname u{};
+        if (uname(&u) == 0) os += std::string(os.empty() ? "" : ", ") + u.sysname + " " + u.release;
+        o << "OS: " << (os.empty() ? "Linux" : os) << "\n";
+        if (std::getenv("APPIMAGE")) o << "Package: AppImage\n";
+        o << "CPU: " << field("/proc/cpuinfo", "model name", ':') << " (" << std::thread::hardware_concurrency()
+          << " threads)\n";
+        const std::string mem = field("/proc/meminfo", "MemTotal", ':');
+        if (!mem.empty()) o << "Memory: " << (std::strtoull(mem.c_str(), nullptr, 10) >> 10) << " MB\n";
+        // (the graphics card and driver are in the log: the program prints them when it opens its window)
+    }
 #endif
     return o.str();
 }
@@ -424,8 +454,56 @@ void start_log() {
     g_log_path = path;
 }
 #else
-void attach_parent_console() {}
-void start_log() {}
+namespace {
+
+int g_console_fd = -1;  // where the output was going
+FILE* g_log_file = nullptr;
+
+void tee_thread(int pipe_fd) {
+    char buf[4096];
+    for (ssize_t n; (n = read(pipe_fd, buf, sizeof buf)) > 0;) {
+        for (ssize_t done = 0; done < n;) {
+            const ssize_t w = write(g_console_fd, buf + done, size_t(n - done));
+            if (w <= 0) break;
+            done += w;
+        }
+        if (g_log_file) {
+            std::fwrite(buf, 1, size_t(n), g_log_file);
+            std::fflush(g_log_file);
+        }
+    }
+}
+
+}  // namespace
+
+void attach_parent_console() {}  // (a terminal is the console already)
+
+void start_log() {
+    if (g_data_dir.empty()) return;
+    std::error_code ec;
+    const auto dir = g_data_dir / "logs";
+    std::filesystem::create_directories(dir, ec);
+    const auto path = dir / "ffcc.log";
+    std::filesystem::rename(path, dir / "ffcc.prev.log", ec);
+    g_log_file = std::fopen(path.string().c_str(), "wb");
+    if (!g_log_file) return;
+    int fds[2];
+    if (pipe(fds) != 0) {
+        std::fclose(g_log_file);
+        g_log_file = nullptr;
+        return;
+    }
+    g_console_fd = dup(2);
+    std::fflush(stdout);
+    std::fflush(stderr);
+    dup2(fds[1], 1);
+    dup2(fds[1], 2);
+    close(fds[1]);
+    std::setvbuf(stdout, nullptr, _IOLBF, 4096);
+    std::setvbuf(stderr, nullptr, _IONBF, 0);
+    std::thread(tee_thread, fds[0]).detach();
+    g_log_path = path;
+}
 #endif
 
 }  // namespace report

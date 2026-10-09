@@ -103,6 +103,11 @@ if(FFCC_ROM)
   add_dependencies(ffcc cfie_game)  # (built together, next to the executable)
 endif()
 target_link_libraries(ffcc PRIVATE ntr_recomp ntr_runtime ntr_common SDL3::SDL3-static rmlui_backend)
+if(NOT MSVC)
+  # melonDS calls the Platform:: functions that ntr_runtime defines, and ntr_runtime calls melonDS: GNU ld reads each static
+  # library once, so those libraries are rescanned until nothing is left undefined (link.exe does not care about the order).
+  target_link_libraries(ffcc PRIVATE "$<LINK_GROUP:RESCAN,ntr_runtime,melonds_core,melonds_net>")
+endif()
 if(WIN32)
   # Flip-model presentation: OpenGL drawn into a Direct3D 11 swapchain.
   target_sources(ffcc PRIVATE src/flip_present.cpp)

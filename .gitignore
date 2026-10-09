@@ -68,3 +68,4 @@ Thumbs.db
 /scenarios/
 dist/
 build_pkg.log
+smoke_linux.log

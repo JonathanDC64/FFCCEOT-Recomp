@@ -26,6 +26,7 @@ if(FFCC_PACKAGE)
     add_link_options(/Brepro "/PDBALTPATH:%_PDB%")
   else()
     add_compile_options("-ffile-prefix-map=${CMAKE_SOURCE_DIR}=." "-ffile-prefix-map=${CMAKE_BINARY_DIR}=.build")
+    add_link_options(-static-libstdc++ -static-libgcc)  # (the package runs on systems with other versions of them)
   endif()
 endif()
 

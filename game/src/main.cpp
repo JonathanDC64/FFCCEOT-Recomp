@@ -1382,7 +1382,11 @@ int main(int argc, char** argv) {
     {
         // --data-dir <folder> (testing) keeps everything in that folder; portable.txt next to the program keeps it in a
         // data folder beside it.
-        const char* base = SDL_GetBasePath();
+        const char* base_path = SDL_GetBasePath();
+        // (an AppImage runs from a read-only mount: "next to the program" is next to the .AppImage file)
+        std::string appimage_dir;
+        if (const char* appimage = std::getenv("APPIMAGE")) appimage_dir = std::filesystem::path(appimage).parent_path().string();
+        const char* base = appimage_dir.empty() ? base_path : appimage_dir.c_str();
         std::error_code ec;
         std::filesystem::path given;
         for (int i = first_option; i + 1 < argc; i++)

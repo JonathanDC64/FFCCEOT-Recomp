@@ -257,8 +257,133 @@ def package_windows(args):
     print(f"\n{out} ({out.stat().st_size / 1e6:.1f} MB)")
 
 
+IMAGE = "ffcc-linux-build"
+DESKTOP = """[Desktop Entry]
+Type=Application
+Name=FFCC Echoes of Time (PC port)
+Comment=Final Fantasy Crystal Chronicles: Echoes of Time, built from your own copy of the game
+Exec=ffcc
+Icon=ffcc
+Categories=Game;
+Terminal=false
+"""
+APPRUN = """#!/bin/sh
+HERE="$(dirname "$(readlink -f "$0")")"
+exec "$HERE/usr/bin/ffcc" "$@"
+"""
+
+
+def ico_png(ico: Path) -> bytes:
+    """The largest picture of an .ico (they are PNGs)."""
+    import struct
+    data = ico.read_bytes()
+    count = struct.unpack("<H", data[4:6])[0]
+    best = (0, b"")
+    for i in range(count):
+        w, _h, _c, _r, _planes, _bpp, size, off = struct.unpack("<BBBBHHII", data[6 + 16 * i:22 + 16 * i])
+        if (w or 256) > best[0] and data[off:off + 4] == b"\x89PNG":
+            best = (w or 256, data[off:off + size])
+    if not best[1]:
+        sys.exit("no PNG picture in the icon")
+    return best[1]
+
+
+def docker_prepare():
+    name, digest, _inner = LLVM_ARCHIVES["linux"]
+    run(["docker", "build", "-t", IMAGE, "-f", ROOT / "tools" / "docker" / "linux.Dockerfile",
+         "--build-arg", f"LLVM_URL={LLVM_RELEASE}{name}", "--build-arg", f"LLVM_SHA256={digest}", ROOT / "tools" / "docker"])
+
+
 def package_linux(args):
-    sys.exit("the Linux package is built by tools/docker/build-linux.sh (see docs/PACKAGING.md)")
+    """On the host: runs this script inside the build image. In the image (FFCC_IN_DOCKER): builds and packages."""
+    version = args.version or version_from_git()
+    if not os.environ.get("FFCC_IN_DOCKER"):
+        docker_prepare()
+        if args.smoke:
+            return smoke_linux(args, version)
+        run(["docker", "run", "--rm", "-v", f"{ROOT}:/src", "-v", f"{IMAGE}-cache:/build", IMAGE, "python3", "/src/tools/package.py", "linux",
+             "--version", version] + (["--no-build"] if args.no_build else []))
+        return
+
+    build_dir = Path("/build/pkg-linux")  # (inside the container: a bind-mounted folder is slow)
+    if not args.no_build:
+        run(["git", "config", "--global", "--add", "safe.directory", "*"])
+        run(["cmake", "--preset", "linux-release", "-S", "/src", "-B", build_dir, "-DFFCC_PACKAGE=ON", "-DFFCC_ROM="], cwd="/src")
+        run(["cmake", "--build", build_dir], cwd="/src")
+        env = dict(os.environ, LIBGL_ALWAYS_SOFTWARE="1")
+        run(["xvfb-run", "-a", "-s", "-screen 0 1280x720x24", "ctest", "--test-dir", build_dir, "--output-on-failure"], cwd="/src", env=env)
+    exe = build_dir / "game" / "ffcc"
+    if not exe.exists():
+        sys.exit(f"{exe} was not built")
+    llvm = Path("/opt/llvm")
+    check_llvm(llvm, "linux")
+
+    name = f"FFCCEOT-Recomp-{version}-x86_64"
+    appdir = Path("/build") / "AppDir"
+    shutil.rmtree(appdir, ignore_errors=True)
+    bin_dir = appdir / "usr" / "bin"
+    bin_dir.mkdir(parents=True)
+    shutil.copy2(exe, bin_dir / "ffcc")
+    # The compiler: the binaries (clang-22 and lld, with their usual names as links), their shared libraries and clang's headers.
+    tc = bin_dir / "toolchain"
+    (tc / "bin").mkdir(parents=True)
+    (tc / "lib").mkdir()
+    for real in ("clang-" + LLVM_MAJOR, "lld"):
+        shutil.copy2(llvm / "bin" / real, tc / "bin" / real)
+    os.symlink("clang-" + LLVM_MAJOR, tc / "bin" / "clang")
+    os.symlink("lld", tc / "bin" / "ld.lld")
+    for lib in sorted((llvm / "lib").glob("libLLVM*.so*")) + sorted((llvm / "lib").glob("libclang-cpp*.so*")):
+        if lib.is_symlink():
+            os.symlink(os.readlink(lib), tc / "lib" / lib.name)
+        else:
+            shutil.copy2(lib, tc / "lib" / lib.name)
+    inc = llvm / "lib" / "clang" / LLVM_MAJOR / "include"
+    shutil.copytree(inc, tc / "lib" / "clang" / LLVM_MAJOR / "include")
+    # (the binaries find the libraries next to them through their $ORIGIN/../lib run path: checked below)
+    for real in ("clang-" + LLVM_MAJOR, "lld"):
+        out = subprocess.run(["ldd", str(tc / "bin" / real)], capture_output=True, text=True).stdout
+        if "not found" in out:
+            sys.exit(f"{real} needs a library that is not in the package:\n{out}")
+    docs = appdir / "usr" / "share" / "doc" / "ffcc"
+    docs.mkdir(parents=True)
+    copy_licenses(build_dir, docs)
+    shutil.copy2(llvm / "LICENSE.TXT", docs / "licenses" / "LLVM-Apache-2.0-with-LLVM-exception.txt")
+    (appdir / "ffcc.desktop").write_text(DESKTOP, encoding="utf-8")
+    (appdir / "ffcc.png").write_bytes(ico_png(ROOT / "game" / "res" / "ffcc.ico"))
+    apprun = appdir / "AppRun"
+    apprun.write_text(APPRUN, encoding="utf-8")
+    apprun.chmod(0o755)
+    scan(appdir)
+    out = ROOT / "dist" / f"{name}.AppImage"
+    out.parent.mkdir(exist_ok=True)
+    if out.exists():
+        out.unlink()
+    run(["/opt/appimagetool", "--appimage-extract-and-run", "--no-appstream", "--runtime-file", "/opt/runtime-x86_64", appdir, out],
+        env=dict(os.environ, ARCH="x86_64"))
+    print(f"\n{out} ({out.stat().st_size / 1e6:.1f} MB)")
+
+
+def smoke_linux(args, version):
+    """Sets the game up from a ROM with the package's own compiler and boots it, in a container without LLVM on its PATH."""
+    if not args.smoke or not Path(args.smoke).is_file():
+        sys.exit("--smoke needs the path of your ROM (it is mounted read-only, never copied into an image)")
+    rom = Path(args.smoke).resolve()
+    appimage = ROOT / "dist" / f"FFCCEOT-Recomp-{version}-x86_64.AppImage"
+    if not appimage.exists():
+        sys.exit(f"{appimage} does not exist: run `package.py linux` first")
+    script = (
+        "set -e; export PATH=/usr/bin:/bin; export LIBGL_ALWAYS_SOFTWARE=1; cd /tmp; "
+        f"cp /src/dist/{appimage.name} /tmp/ffcc.AppImage; chmod +x /tmp/ffcc.AppImage; "
+        "! command -v clang; "
+        "/tmp/ffcc.AppImage --appimage-extract-and-run --data-dir /tmp/data --setup-rom /rom/game.nds --setup-only; "
+        "ls -la /tmp/data/game; "
+        "printf '900 shot smoke.png\\n910 quit\\n' > /tmp/smoke.txt; "
+        "xvfb-run -a -s '-screen 0 1280x720x24' /tmp/ffcc.AppImage --appimage-extract-and-run --data-dir /tmp/data "
+        "--first-run --unpaced --input-script /tmp/smoke.txt; "
+        "cp /tmp/smoke.png /src/dist/smoke-linux.png; echo SMOKE OK"
+    )
+    run(["docker", "run", "--rm", "-v", f"{ROOT}:/src", "-v", f"{rom}:/rom/game.nds:ro", IMAGE, "bash", "-c", script])
+    print(f"\nboot screenshot: {ROOT / 'dist' / 'smoke-linux.png'}")
 
 
 def main():
@@ -267,6 +392,7 @@ def main():
     ap.add_argument("--version", help=f"default: the git tag, or {DEFAULT_VERSION}")
     ap.add_argument("--llvm-dir", help=f"an installed LLVM {LLVM_VERSION} to take the compiler from (default: download it)")
     ap.add_argument("--no-build", action="store_true", help="package the last build in build/pkg-<target>")
+    ap.add_argument("--smoke", metavar="ROM", help="linux: instead of packaging, set up and boot the last AppImage from this ROM in a container")
     args = ap.parse_args()
     if args.target == "windows":
         if platform.system() != "Windows":
