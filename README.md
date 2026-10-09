@@ -2,7 +2,8 @@
 
 A static recompilation of **Final Fantasy Crystal Chronicles: Echoes of Time** (Nintendo DS, 2009) into a native PC application.
 
-> **Status: planning (M0 complete).** Nothing is playable yet. See the [roadmap](docs/ROADMAP.md).
+> **Status: alpha.** The game boots and plays from the title screen into the field, with sound, saves and online play.
+> Expect rough edges: see [Alpha notes](#alpha-notes) and the [roadmap](docs/ROADMAP.md).
 
 ## Goals
 
@@ -24,6 +25,22 @@ checks it, and builds everything it needs locally.
 | USA | CFIE | `Final Fantasy Crystal Chronicles - Echoes of Time (USA) (En,Fr,Es).nds` | `1df23d5a3a655bdd587c360b581202931d0f66e1` |
 
 Other regions are planned later.
+
+## Alpha notes
+
+This is an early build. It has been played through the opening areas, not the whole game, so expect bugs; please
+report them from the in-game menu (*Report an issue* zips the details with personal paths removed) or on the issue tracker.
+
+- **Plug and play.** Unzip (Windows) or make the AppImage executable (Linux), start the program and choose your own
+  ROM. It is checked, copied into the program's data folder and built into a native game module on your PC with the
+  compiler that ships in the package. Nothing else has to be installed.
+- **Experimental features** carry a warning icon in the settings menu: widescreen and HUD placement, 3D at 60 fps and at
+  your display's refresh rate, frame pacing, stable and smoothed textures, analog movement in multiplayer, and
+  everything online (Wi-Fi Connection through a revival server). They work, but have had less testing.
+- The program is **unsigned**, so Windows SmartScreen or your antivirus may warn about it the first time (and about the
+  game module it builds). Extract it to a folder you can write to (not Program Files).
+- Saves and settings live in `%APPDATA%\FFCCEOT-Recomp\EchoesOfTime` (Linux: `~/.local/share/FFCCEOT-Recomp/EchoesOfTime`);
+  put a file named `portable.txt` next to the program to keep them in a `data` folder beside it instead.
 
 ## Building (development)
 

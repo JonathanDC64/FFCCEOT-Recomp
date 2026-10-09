@@ -67,21 +67,27 @@ SelectButton& SelectButton::on_pressed(SelectButtonCallback callback) {
     return *this;
 }
 
+void SelectButton::set_icon(const Rml::String& icon) {
+    if (mProps.icon == icon) {
+        return;
+    }
+    Rml::StringList iconClasses;
+    Rml::StringUtilities::ExpandString(iconClasses, mIconElem->GetClassNames(), ' ', true);
+    for (const auto& className : iconClasses) {
+        mIconElem->SetClass(className, false);
+    }
+    if (!icon.empty()) {
+        mIconElem->SetClass(icon, true);
+    }
+    mRoot->SetClass("has-icon", !icon.empty());
+    mProps.icon = icon;
+}
+
 void SelectButton::update_props(Props props) {
     if (mProps.key != props.key) {
         set_text_content(mKeyElem, props.key);
     }
-    if (mProps.icon != props.icon) {
-        Rml::StringList iconClasses;
-        Rml::StringUtilities::ExpandString(iconClasses, mIconElem->GetClassNames(), ' ', true);
-        for (const auto& className : iconClasses) {
-            mIconElem->SetClass(className, false);
-        }
-        if (!props.icon.empty()) {
-            mIconElem->SetClass(props.icon, true);
-        }
-        mRoot->SetClass("has-icon", !props.icon.empty());
-    }
+    set_icon(props.icon);
     set_value_label(props.value);
     set_modified(props.modified);
     mProps = std::move(props);

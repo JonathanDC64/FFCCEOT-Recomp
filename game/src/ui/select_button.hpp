@@ -25,6 +25,7 @@ public:
     virtual bool modified() const;
     void set_modified(bool value);
     void set_key(const Rml::String& key);
+    void set_icon(const Rml::String& icon);  // an icon class ("warning", "error"), or empty for none
     void set_value_label(const Rml::String& value);
     SelectButton& on_pressed(SelectButtonCallback callback);
 

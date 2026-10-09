@@ -66,11 +66,34 @@ std::string path_text(const fs::path& path) {
     return {text.begin(), text.end()};
 }
 
+// Features that are still being proven (alpha): their row carries the warning icon and a note heads their help.
+bool is_experimental(const Rml::String& key) {
+    static const char* const kRows[] = {"Aspect ratio", "HUD position", "HUD size", "3D frame rate", "Frame pacing",
+                                        "Frame rate limit", "Stable textures", "Texture smoothing", "Analog movement",
+                                        "Console name", "Wi-Fi Connection server", "DNS server address", "Input buffer"};
+    return std::find(std::begin(kRows), std::end(kRows), key) != std::end(kRows);
+}
+
+Rml::String with_note(const Rml::String& key, Rml::String help) {
+    if (!is_experimental(key)) {
+        return help;
+    }
+    return "<status-badge class=\"warning\">Experimental: works, but is less tested than the rest.</status-badge><br/>" + help;
+}
+
+SelectButton& mark(SelectButton& button, const Rml::String& key) {
+    if (is_experimental(key)) {
+        button.set_icon("warning");
+    }
+    return button;
+}
+
 template <typename Ref>
 SelectButton& bool_row(Pane& leftPane, Pane& rightPane, Rml::String key, Ref ref, Rml::String helpText,
     std::function<bool()> isDisabled = {}) {
+    helpText = with_note(key, std::move(helpText));
     auto& button = leftPane.add_child<BoolButton>(BoolButton::Props{
-        .key = std::move(key),
+        .key = key,
         .getValue = [ref] { return bool(ref(cfg())); },
         .setValue =
             [ref](bool value) {
@@ -87,12 +110,13 @@ SelectButton& bool_row(Pane& leftPane, Pane& rightPane, Rml::String key, Ref ref
         pane.clear();
         pane.add_rml(helpText);
     });
-    return button;
+    return mark(button, key);
 }
 
 SelectButton& number_row(Pane& leftPane, Pane& rightPane, Rml::String key, std::function<int()> get,
     std::function<void(int)> set, std::function<bool()> isModified, Rml::String helpText, int min, int max,
     int step, Rml::String suffix = "%", std::function<bool()> isDisabled = {}) {
+    helpText = with_note(key, std::move(helpText));
     auto getter = get;
     auto setter = [set, min, max](int value) { set(std::clamp(value, min, max)); };
     auto disabledFn = isDisabled;
@@ -131,7 +155,7 @@ SelectButton& number_row(Pane& leftPane, Pane& rightPane, Rml::String key, std::
             });
             pane.add_rml(helpText);
         });
-    return button;
+    return mark(button, key);
 }
 
 template <typename Ref>
@@ -147,8 +171,9 @@ SelectButton& number_row(Pane& leftPane, Pane& rightPane, Rml::String key, Ref r
 SelectButton& choice_row(Pane& leftPane, Pane& rightPane, Rml::String key, std::vector<Rml::String> labels,
     std::function<int()> get, std::function<void(int)> set, std::function<bool()> isModified, Rml::String helpText,
     std::function<bool()> isDisabled = {}) {
+    helpText = with_note(key, std::move(helpText));
     auto& button = leftPane.add_select_button({
-        .key = std::move(key),
+        .key = key,
         .getValue =
             [labels, get] {
                 const int index = get();
@@ -175,7 +200,7 @@ SelectButton& choice_row(Pane& leftPane, Pane& rightPane, Rml::String key, std::
                 pane.add_rml("<br/>" + helpText);
             }
         });
-    return button;
+    return mark(button, key);
 }
 
 // A choice among the values of an enum (or an int setting): `values` and `labels` line up.
@@ -521,7 +546,7 @@ SettingsWindow::SettingsWindow(bool prelaunch) : mPrelaunch(prelaunch) {
         auto& rightPane = add_child<Pane>(content, Pane::Type::Uncontrolled);
 
         leftPane.register_control(
-            leftPane.add_child<StringButton>(StringButton::Props{
+            mark(leftPane.add_child<StringButton>(StringButton::Props{
                 .key = "Console name",
                 .getValue = [] { return Rml::String(resolved_console_name(cfg())); },
                 .setValue =
@@ -531,11 +556,11 @@ SettingsWindow::SettingsWindow(bool prelaunch) : mPrelaunch(prelaunch) {
                     },
                 .isModified = [] { return !cfg().console_name.empty(); },
                 .maxLength = 10,
-            }),
+            }), "Console name"),
             rightPane, [](Pane& pane) {
                 pane.clear();
-                pane.add_rml("The name other players see for you (up to 10 characters). Clear it to use \"FFCC\". "
-                             "Takes effect the next time the game starts.");
+                pane.add_rml(with_note("Console name", "The name other players see for you (up to 10 characters). Clear it to use \"FFCC\". "
+                             "Takes effect the next time the game starts."));
             });
         choice_row(
             leftPane, rightPane, "Wi-Fi Connection server", {"Kaeru WFC", "WiiLink WFC", "Custom"},
@@ -553,7 +578,7 @@ SettingsWindow::SettingsWindow(bool prelaunch) : mPrelaunch(prelaunch) {
             "The game's Wi-Fi Connection goes through a revival server, found through its DNS server. Takes effect "
             "the next time the game starts.");
         leftPane.register_control(
-            leftPane.add_child<StringButton>(StringButton::Props{
+            mark(leftPane.add_child<StringButton>(StringButton::Props{
                 .key = "DNS server address",
                 .getValue = [] { return custom_dns_of(cfg()); },
                 .setValue =
@@ -567,11 +592,11 @@ SettingsWindow::SettingsWindow(bool prelaunch) : mPrelaunch(prelaunch) {
                 .isDisabled = [] { return online_server_of(cfg()) != 2; },
                 .isModified = [] { return online_server_of(cfg()) == 2; },
                 .maxLength = 15,
-            }),
+            }), "DNS server address"),
             rightPane, [](Pane& pane) {
                 pane.clear();
-                pane.add_rml("The address of the revival server's DNS (digits and dots). Used when the server is set "
-                             "to Custom.");
+                pane.add_rml(with_note("DNS server address", "The address of the revival server's DNS (digits and dots). Used when the server is set "
+                             "to Custom."));
             });
         enum_row(
             leftPane, rightPane, "Input buffer", SETTING(online_buffer), {0, 1, 2}, {"Low delay", "Medium", "Original"},
