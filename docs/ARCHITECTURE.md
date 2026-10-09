@@ -476,6 +476,22 @@ fullscreen, text input) to the main thread with `main_thread::run` (`game/src/ma
 for something per frame: during a drag the main thread serves it only when the drag ends. At exit the game thread
 shuts down OpenGL, and the main thread then destroys the window.
 
+**Crashes and problem reports.** A crash in the game's own code (access violation and the like) or an abort (the
+runtime's fatal errors) is caught by `game/src/crash_report.cpp`: a vectored handler sees the fault first, but only the
+unhandled-exception filter and the SIGABRT handler end the run, because first-chance faults can be ones the program
+recovers from. They write `crash-<time>.txt` (a symbolized stack), a minidump and the command line into
+`<data>/crashes`, then start a second process of the same exe (`--crash-dialog`), so the dialog needs nothing from the
+crashed one. The dialog (`crash_dialog.cpp`, `game/ui/crash.rml`) is an RmlUi window in the settings menu's style, with
+its own SDL window and GL context. It offers *Restart game* (relaunches the saved command line once the crashed process
+has ended), *Report issue*, *Show details* (the top of the stack) and *Close*. Reporting (`game/src/report.cpp`) zips
+the crash text, the system information (OS, CPU, RAM, GPUs and drivers, monitors), `settings.ini` and the log's start and
+end (`<data>/logs/ffcc.log`, a tee of stdout and stderr) into `<data>/reports`, opens the repository's new-issue form
+with the title and a body filled in (the encoded URL stays under about 6.5 KB), and opens the folder with the zip to be
+dragged into the issue. The settings menu's *Report an issue* button does the same without a crash, adding a screenshot
+of the game taken a few frames after the menu closes. The user's name, profile folder and computer name are redacted
+from everything. The minidump is not in the zip, since it can hold game data. `--crash-at-frame`, `--abort-at-frame`
+and `--report-at-frame` exercise these paths. Runs for testing keep no log and show no dialog.
+
 **Plan:**
 - **RmlUi** (HTML/CSS) renders through an SDL_GPU render interface and is fully controller-navigable.
   - **Launcher/Installer**: select ROM → verify (SHA-1 against known dumps, clear errors for wrong region/bad dump/not a ROM) →

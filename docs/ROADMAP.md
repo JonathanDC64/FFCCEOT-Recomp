@@ -136,7 +136,9 @@ Milestones are ordered by dependency. Each ends with a demonstrable result. Desi
 **Result: a public pre-release.**
 - [ ] QoL features ([ARCHITECTURE.md §9](ARCHITECTURE.md#9-quality-of-life-backlog-initial))
 - [ ] Release mode: bundled libtcc install-time recompilation, caching, benchmarks
-- [ ] Packaging (Windows first, then Linux/Steam Deck, macOS), crash reporting, updater (optional)
+- [x] Crash dialog (restart, report, details) and a *Report an issue* button in the menu: a zip with the stack, system
+      information, settings, log and a screenshot, and a filled-in GitHub issue form
+- [ ] Packaging (Windows first, then Linux/Steam Deck, macOS), updater (optional)
 - [ ] Release workflow: pushing a `v*` tag builds the game-code-free packages (runtime, recompiler, libtcc; the
       game is recompiled from the user's ROM on first run) and publishes a GitHub Release. Until then CI only builds,
       because a built `ffcc.exe` contains recompiled game code and must never be published

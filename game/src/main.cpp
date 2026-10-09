@@ -25,6 +25,7 @@
 
 #include "cfie_game.hpp"
 #include "crash_report.hpp"
+#include "report.hpp"
 #include "input.hpp"
 #include "main_thread.hpp"
 #include "ntr/rom.hpp"
@@ -312,6 +313,12 @@ public:
         if (runtime_->video().wide_extra != presenter_.wide_extra()) update_layout();  // (the layout follows what is in use)
         ++frames_;
         if (exit_after_frames && frames_ >= exit_after_frames && !menu_shot_pending()) return false;
+        if (crash_at_frame && frames_ == crash_at_frame) *static_cast<volatile int*>(nullptr) = 1;  // (--crash-at-frame)
+        if (abort_at_frame && frames_ == abort_at_frame) {
+            std::fprintf(stderr, "fatal: test abort (--abort-at-frame)\n");
+            std::abort();
+        }
+        if (report_at_frame && frames_ == report_at_frame) begin_report();  // (--report-at-frame)
         for (auto [it, end] = set_at.equal_range(frames_); it != end; ++it) {
             const size_t eq = it->second.find('=');
             if (eq != std::string::npos && set_setting(settings, it->second.substr(0, eq), it->second.substr(eq + 1)))
@@ -346,6 +353,11 @@ public:
             const auto shot = screenshots.find(frames_);
             if (shot != screenshots.end()) shot_path = shot->second.c_str();
         }
+        bool report_shot = false;
+        if (report_countdown_ > 0 && !menu_.is_open() && --report_countdown_ == 0) {
+            shot_path = report_shot_.c_str();  // (the game itself, a few frames after the menu closed)
+            report_shot = true;
+        }
         if (runtime_->video().display_rate) {
             present_display_rate(frame, shot_path);
         } else {
@@ -353,6 +365,7 @@ public:
             presenter_.present(&frame, settings.filter, shot_path);
         }
         if (++frames_since_save_ > 120) flush_save();
+        if (report_shot) finish_report();
         if (menu_shot) {
             menu_shot_from_ = frames_ + 1;
             if (exit_after_frames && frames_ >= exit_after_frames) return false;
@@ -425,6 +438,11 @@ private:
             }
         }
         if (menu_.quit_requested) return false;
+        if (menu_.report_requested) {
+            menu_.report_requested = false;
+            menu_.close();
+            begin_report();
+        }
         if (menu_.changed) {
             menu_.changed = false;
             apply_settings();
@@ -488,6 +506,54 @@ private:
             settings_dirty_ = false;
         }
         input_hold_ = true;  // the button or key that closed the menu is not game input either
+    }
+
+    // "Report an issue": the menu closes, and a few frames later (so the picture is the game's, not the menu's) a
+    // screenshot is taken and everything a bug report needs is zipped; the issue form opens, filled in, with the folder
+    // holding the zip to attach to it.
+    void begin_report() {
+        const auto dir = report::data_dir() / "reports";
+        std::error_code ec;
+        std::filesystem::create_directories(dir, ec);
+        report_stamp_ = report::timestamp();
+        report_shot_ = (dir / ("issue-" + report_stamp_ + ".png")).string();
+        report_countdown_ = 4;
+    }
+
+    void finish_report() {
+        std::vector<report::File> files;
+        if (auto png = report::read_file(report_shot_); !png.empty()) files.push_back({"screenshot.png", std::move(png)});
+        std::error_code ec;
+        std::filesystem::remove(report_shot_, ec);
+        const std::string system = report::system_info();
+        files.push_back({"system.txt", report::bytes(report::redact(system))});
+        std::string game = "frames emulated: " + std::to_string(frames_) + "\ndisplay rate: " +
+                           std::to_string(int(std::lround(display_hz()))) + " Hz\n";
+        if (window2_) game += "second window: open\n";
+        files.push_back({"game.txt", report::bytes(game)});
+        {  // the settings in use (this run's options included), without the player's console name
+            const auto temp = report::data_dir() / "reports" / "settings-in-use.ini";
+            Settings used = settings;
+            used.console_name.clear();
+            std::string text;
+            if (save_settings(temp, used)) {
+                const auto b = report::read_file(temp);
+                text.assign(b.begin(), b.end());
+            }
+            std::filesystem::remove(temp, ec);
+            files.push_back({"settings.ini", report::bytes(report::redact(text))});
+        }
+        if (!report::log_path().empty())
+            files.push_back({"ffcc.log", report::bytes(report::redact(report::read_lines(report::log_path(), 80, 600)))});
+        const auto zip = report::write_bundle("issue-" + report_stamp_, files);
+        std::string body = "## What happened\n(Please describe the problem and what you were doing.)\n\n## What you expected\n\n"
+                           "## System\n```\n" + report::redact(system) + game + "```\n\n## Attachments\n";
+        body += zip.empty() ? "(The report files could not be saved.)\n"
+                            : "Drag `" + zip.filename().string() + "` (its folder is open) into this issue: it has a "
+                              "screenshot, the settings and the game's recent messages.\n";
+        std::fprintf(stderr, "report: %s\n", zip.empty() ? "could not be saved" : zip.string().c_str());
+        report::open_url(report::issue_url("", body));
+        if (!zip.empty()) report::reveal(zip);
     }
 
     // Debugging: is a screenshot waiting for the menu to settle?
@@ -997,6 +1063,8 @@ private:
     static_assert(std::size(kDsBits) == input::kFirstAppAction);
     uint64_t script_quit_ = 0;                 // the frame a script's quit step ends the run (0 = none)
     size_t menu_key_pos_ = std::string::npos;  // --menu-keys: the next key to press
+    int report_countdown_ = 0;                 // frames until the screenshot for a problem report
+    std::string report_shot_, report_stamp_;
     int menu_frames_ = 0;                      // frames shown since the menu opened
     bool menu_was_open_ = false;
     std::atomic<bool> done_{false};            // the game thread has finished (the main thread may close the window)
@@ -1007,6 +1075,7 @@ public:
     Settings settings;
     std::filesystem::path settings_path;
     uint64_t exit_after_frames = 0;  // 0 = run until the window closes
+    uint64_t crash_at_frame = 0, abort_at_frame = 0, report_at_frame = 0;  // testing the crash dialog and the report
     std::map<uint64_t, std::string> screenshots;  // debugging: save the window at these frames
     std::vector<ScriptStep> script;  // testing: scripted input, in frame order
     InputRecorder recorder;          // testing: --record-input (writes nothing unless opened)
@@ -1069,7 +1138,23 @@ bool parse_filter(const std::string& s, video::Filter& f) {
 }  // namespace
 
 int main(int argc, char** argv) {
-    crash_report::install();
+    if (argc >= 2 && std::strcmp(argv[1], "--crash-dialog") == 0) return crash_report::run_dialog();
+    std::filesystem::path data_dir, save_path, settings_path;
+    if (char* pref = SDL_GetPrefPath("FFCCEOT-Recomp", "EchoesOfTime")) {
+        data_dir = pref;
+        save_path = data_dir / "saves" / "cfie.sav";
+        settings_path = data_dir / "settings.ini";
+        SDL_free(pref);
+    }
+    // Runs for testing (scripted, unpaced, with their own settings) neither keep a log nor show the crash dialog.
+    bool testing = std::getenv("FFCC_NO_CRASH_DIALOG") != nullptr;
+    for (int i = 2; i < argc; i++) {
+        const std::string a = argv[i];
+        if (a == "--no-settings" || a == "--input-script" || a == "--unpaced" || a == "--exit-after-frames") testing = true;
+    }
+    report::set_data_dir(data_dir);
+    if (!testing) report::start_log();
+    crash_report::install(testing || data_dir.empty() ? std::filesystem::path{} : data_dir / "crashes", !testing);
     if (argc < 2) {
         std::fprintf(stderr,
                      "usage: %s <your Echoes of Time (USA) dump.nds> [options]\n"
@@ -1113,6 +1198,9 @@ int main(int argc, char** argv) {
                      "testing:\n"
                      "  --input-script <file>                scripted input, screenshots and exit (see main.cpp)\n"
                      "  --record-input <file>                write the input of every frame as an input script\n"
+                     "  --crash-at-frame <n>                 crash (access violation) at frame n, to see the crash dialog\n"
+                     "  --abort-at-frame <n>                 abort at frame n, likewise\n"
+                     "  --report-at-frame <n>                make a problem report at frame n, as the menu's Report an issue does\n"
                      "  --save-file <file>                   use this save file instead of the usual one\n"
                      "  --read-only-save                     never write the save file\n"
                      "  --no-settings                        ignore settings.ini (neither read nor written)\n"
@@ -1123,12 +1211,6 @@ int main(int argc, char** argv) {
     }
     const std::filesystem::path rom_path = argv[1];
 
-    std::filesystem::path save_path, settings_path;
-    if (char* pref = SDL_GetPrefPath("FFCCEOT-Recomp", "EchoesOfTime")) {
-        save_path = std::filesystem::path(pref) / "saves" / "cfie.sav";
-        settings_path = std::filesystem::path(pref) / "settings.ini";
-        SDL_free(pref);
-    }
     // Testing options that decide which files are used come first: the other options override settings.ini.
     bool read_only_save = false, unpaced = false;
     for (int i = 2; i < argc; i++) {
@@ -1142,7 +1224,7 @@ int main(int argc, char** argv) {
     if (!settings_path.empty()) load_settings(settings_path, settings);
 
     ntr::RuntimeOptions options;
-    uint64_t exit_after_frames = 0, menu_at_frame = 0;
+    uint64_t exit_after_frames = 0, menu_at_frame = 0, crash_at_frame = 0, abort_at_frame = 0, report_at_frame = 0;
     std::multimap<uint64_t, std::string> set_at;
     std::multimap<uint64_t, std::pair<int, int>> resize_at;
     bool allow_flip_model = true;
@@ -1208,6 +1290,12 @@ int main(int argc, char** argv) {
             options.dump_at_frame = std::strtoull(argv[++i], nullptr, 10);
         else if (a == "--exit-after-frames" && has_value)
             exit_after_frames = std::strtoull(argv[++i], nullptr, 10);
+        else if (a == "--crash-at-frame" && has_value)
+            crash_at_frame = std::strtoull(argv[++i], nullptr, 10);
+        else if (a == "--abort-at-frame" && has_value)
+            abort_at_frame = std::strtoull(argv[++i], nullptr, 10);
+        else if (a == "--report-at-frame" && has_value)
+            report_at_frame = std::strtoull(argv[++i], nullptr, 10);
         else if (a == "--display-hz" && has_value)
             virtual_display_hz = std::clamp(std::atof(argv[++i]), 30.0, 1000.0);
         else if (a == "--renderer" && has_value && parse_renderer(argv[i + 1], settings.renderer))
@@ -1306,6 +1394,9 @@ int main(int argc, char** argv) {
     host.settings = settings;
     host.settings_path = settings_path;
     host.exit_after_frames = exit_after_frames;
+    host.crash_at_frame = crash_at_frame;
+    host.abort_at_frame = abort_at_frame;
+    host.report_at_frame = report_at_frame;
     host.screenshots = screenshots;
     host.script = std::move(script);
     if (!record_path.empty() && !host.recorder.open(record_path)) {

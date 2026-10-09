@@ -34,6 +34,7 @@ public:
     // Set when the menu changed a setting (the host applies it and clears the flag), or asked to quit.
     bool changed = false;
     bool quit_requested = false;
+    bool report_requested = false;  // "Report an issue"
 
 private:
     struct Impl;

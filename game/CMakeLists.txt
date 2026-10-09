@@ -46,6 +46,8 @@ set(FFCC_UI_DIR ${CMAKE_CURRENT_SOURCE_DIR}/ui)
 set(FFCC_UI_FILES
   ${FFCC_UI_DIR}/menu.rml
   ${FFCC_UI_DIR}/menu.rcss
+  ${FFCC_UI_DIR}/crash.rml
+  ${FFCC_UI_DIR}/crash.rcss
   ${FFCC_UI_DIR}/images/chevron.tga
   ${FFCC_UI_DIR}/fonts/Cinzel.ttf
   ${FFCC_UI_DIR}/fonts/AlegreyaSans-Regular.ttf
@@ -60,11 +62,21 @@ add_custom_command(
   VERBATIM)
 
 # The game executable: takes the user's ROM on the command line.
-add_executable(ffcc src/main.cpp src/crash_report.cpp src/video.cpp src/cfie_hooks.cpp src/settings.cpp src/input.cpp src/ui.cpp ${FFCC_UI_ASSETS})
+add_executable(ffcc src/main.cpp src/crash_report.cpp src/crash_dialog.cpp src/report.cpp src/video.cpp src/cfie_hooks.cpp src/settings.cpp src/input.cpp src/ui.cpp ${FFCC_UI_ASSETS})
 target_include_directories(ffcc PRIVATE src)
 target_link_libraries(ffcc PRIVATE ffcc_game_code ntr_runtime ntr_common SDL3::SDL3-static rmlui_backend)
 if(WIN32)
   # Flip-model presentation: OpenGL drawn into a Direct3D 11 swapchain.
   target_sources(ffcc PRIVATE src/flip_present.cpp)
-  target_link_libraries(ffcc PRIVATE d3d11 dxgi opengl32 dbghelp)
+  target_link_libraries(ffcc PRIVATE d3d11 dxgi opengl32 dbghelp user32 advapi32 shell32)
 endif()
+
+# The version in problem reports.
+find_package(Git QUIET)
+set(FFCC_GIT_REV "")
+if(GIT_FOUND)
+  execute_process(COMMAND ${GIT_EXECUTABLE} describe --always --dirty
+                  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR} OUTPUT_VARIABLE FFCC_GIT_REV OUTPUT_STRIP_TRAILING_WHITESPACE
+                  ERROR_QUIET)
+endif()
+target_compile_definitions(ffcc PRIVATE FFCC_VERSION="${PROJECT_VERSION}" FFCC_GIT_REV="${FFCC_GIT_REV}")

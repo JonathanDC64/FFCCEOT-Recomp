@@ -1,0 +1,56 @@
+/* The crash dialog: the settings menu's panel with a few additions. */
+
+#panel.crash {
+    height: 350dp;
+    margin-top: -175dp;
+}
+#panel.crash.expanded {
+    height: 540dp;
+    margin-top: -270dp;
+}
+
+h2 {
+    display: block;
+    font-family: "Cinzel";
+    font-weight: bold;
+    font-size: 26dp;
+    color: #ff9a8a;
+    text-align: center;
+    margin: 6dp 0 10dp 0;
+}
+
+.what {
+    display: block;
+    text-align: center;
+    font-size: 21dp;
+    color: #f4e6bf;
+    margin: 4dp 20dp 10dp 20dp;
+}
+
+.note.centered { text-align: center; }
+.note.done { color: #a8e6b0; }
+
+#details {
+    display: block;
+    height: 150dp;
+    margin: 12dp 14dp 0 14dp;
+    padding: 8dp 12dp;
+    overflow-y: auto;
+    background-color: #00000050;
+    border: 1dp #c8a76480;
+    border-radius: 6dp;
+}
+#details p {
+    display: block;
+    font-size: 14dp;
+    color: #aab6cf;
+    white-space: pre;
+}
+
+#panel.crash #footer { margin-top: 16dp; }
+#panel.crash .button {
+    width: 158dp;
+    margin: 0 5dp;
+    font-size: 16dp;
+    white-space: nowrap;
+}

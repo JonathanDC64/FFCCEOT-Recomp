@@ -272,6 +272,7 @@
 
     <div id="footer">
         <span class="button nav" data-event-click="resume">Resume</span>
+        <span class="button nav" data-event-click="report">Report an issue</span>
         <span class="button nav" data-event-click="quit">Quit game</span>
     </div>
     <p id="hint">Up/Down choose · Left/Right change · Q/E or L/R switch tabs · Esc resume</p>
