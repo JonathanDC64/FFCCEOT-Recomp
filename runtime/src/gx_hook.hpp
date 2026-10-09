@@ -21,6 +21,8 @@ extern int FfccWideExtra;
 extern int FfccHudEdges, FfccHudScale;
 // Stable texture mapping: quads with texture coordinates no perspective transform fits are cut into a grid.
 extern int FfccStableUV;
+// GPU3D_OpenGL.cpp: texture smoothing in the 3D shader (0 off, 1 smooth, 2 sharp).
+extern int FfccSmoothTex;
 // NDSCart.cpp: cartridge transfers without gaps, at 4 cycles a word.
 extern bool FfccFastCart;
 }  // namespace melonDS

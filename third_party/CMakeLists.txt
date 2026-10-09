@@ -67,7 +67,7 @@ ffcc_patch(gpu3d_src GPU3D.cpp "void GPU3D::SubmitPolygon() noexcept\n{\n"
 ffcc_patch(gpu3d_src GPU3D.cpp "#include <algorithm>\n"
   "#include <algorithm>\n#include <cmath>\n")
 ffcc_patch(gpu3d_src GPU3D.cpp "bool FfccGxReplaying = false;\n"
-  "bool FfccGxReplaying = false;\nint FfccStableUV = 0; // ffcc patch\nstatic bool ffcc_subdividing = false;\nstatic int ffcc_subdivided = 0;\n#define FFCC_UV_GRID 4\n")
+  "bool FfccGxReplaying = false;\nint FfccStableUV = 0; // ffcc patch\nint FfccSmoothTex = 0; // ffcc patch\nstatic bool ffcc_subdividing = false;\nstatic int ffcc_subdivided = 0;\n#define FFCC_UV_GRID 4\n")
 ffcc_write_patched(gpu3d_src ${CMAKE_CURRENT_BINARY_DIR}/melonds_patched/GPU3D.cpp)
 
 # GPU3D_OpenGL.cpp: with FfccWideExtra set, the 3D texture is (256 + 2 * extra) pixels wide (a widescreen picture; the
@@ -83,6 +83,23 @@ ffcc_patch(gpu3d_gl_src GPU3D_OpenGL.cpp "namespace melonDS
 " "namespace melonDS
 {
 extern int FfccWideExtra; // ffcc patch
+extern int FfccSmoothTex; // ffcc patch
+")
+# Texture smoothing: the setting goes to the 3D shader as the uSmoothTex uniform, set each time the render shader is used.
+ffcc_patch(gpu3d_gl_src GPU3D_OpenGL.cpp "    if (CurShaderID == flags) return;
+    glUseProgram(RenderShader[flags]);
+    CurShaderID = flags;
+
+    RenderModeULoc = glGetUniformLocation(RenderShader[flags], \"uRenderMode\");
+"
+"    if (CurShaderID != flags)
+    {
+        glUseProgram(RenderShader[flags]);
+        CurShaderID = flags;
+
+        RenderModeULoc = glGetUniformLocation(RenderShader[flags], \"uRenderMode\");
+    }
+    glUniform1i(glGetUniformLocation(RenderShader[flags], \"uSmoothTex\"), FfccSmoothTex); // ffcc patch
 ")
 ffcc_write_patched(gpu3d_gl_src ${CMAKE_CURRENT_BINARY_DIR}/melonds_patched/GPU3D_OpenGL.cpp)
 
@@ -224,11 +241,21 @@ ffcc_patch(shader_CaptureFS CaptureFS.glsl "    if (uDstMode == 0)\n    {\n     
   "    // (engine A's picture and the 3D are wide: the capture is of the middle 256 pixels)\n    coordA.x = (coordA.x * 256.0 + uExtra) / (256.0 + 2.0 * uExtra);\n\n    if (uDstMode == 0)\n    {\n        // source A only\n")
 ffcc_write_patched(shader_CaptureFS ${CMAKE_CURRENT_BINARY_DIR}/melonds_patched/OpenGL_shaders/CaptureFS.glsl)
 
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/ffcc_smooth_tex.glsl)
+file(READ ${CMAKE_CURRENT_SOURCE_DIR}/ffcc_smooth_tex.glsl ffcc_smooth_tex_body)
+string(REPLACE "\r\n" "\n" ffcc_smooth_tex_body "${ffcc_smooth_tex_body}")
+file(READ ${MS}/OpenGL_shaders/3DRenderFS.glsl shader_3DRenderFS)
+string(REPLACE "\r\n" "\n" shader_3DRenderFS "${shader_3DRenderFS}")
+ffcc_patch(shader_3DRenderFS 3DRenderFS.glsl "vec4 FinalColor()\n{\n" "${ffcc_smooth_tex_body}vec4 FinalColor()\n{\n")
+ffcc_patch(shader_3DRenderFS 3DRenderFS.glsl "            tcol = vec4(texture(CurTexture, texcoord)) / vec4(63,63,63,31);\n"
+  "            tcol = (uSmoothTex == 0) ? (vec4(texture(CurTexture, texcoord)) / vec4(63,63,63,31)) : SmoothTexel(texcoord);\n")
+ffcc_write_patched(shader_3DRenderFS ${CMAKE_CURRENT_BINARY_DIR}/melonds_patched/OpenGL_shaders/3DRenderFS.glsl)
+
 set(melonds_shader_headers)
 foreach(sh ${MELONDS_SHADERS})
   set(out ${CMAKE_CURRENT_BINARY_DIR}/melonds_gen/OpenGL_shaders/${sh}.h)
   set(in ${MS}/OpenGL_shaders/${sh}.glsl)
-  if(sh MATCHES "^(2DCompositorVS|2DCompositorFS|2DSpriteVS|FinalPassFS|CaptureFS)$")
+  if(sh MATCHES "^(2DCompositorVS|2DCompositorFS|2DSpriteVS|FinalPassFS|CaptureFS|3DRenderFS)$")
     set(in ${CMAKE_CURRENT_BINARY_DIR}/melonds_patched/OpenGL_shaders/${sh}.glsl)
   endif()
   add_custom_command(OUTPUT ${out}

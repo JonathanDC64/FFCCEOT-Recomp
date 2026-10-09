@@ -392,6 +392,25 @@ quads in perspective scenes are touched, within a budget that leaves room in pol
 out of it loses its last polygons, which are usually characters). The code is `third_party/ffcc_stable_uv.inc`,
 spliced into the start of `GPU3D::SubmitPolygon` at configure time.
 
+### 5.3b Texture smoothing
+The output filter (Display → Filter) only scales the finished picture. The 3D shader still reads each texture with
+nearest sampling, as the DS does, so at 4x and up the textures show their texels as blocks. The setting "Texture
+smoothing" (`graphics.texture_smoothing`, `--texture-smoothing off|smooth|sharp`, off by default, OpenGL renderer only)
+filters them. melonDS keeps the decoded textures as `GL_RGBA8UI` array textures (R, G, B 0-63, A 0-31), which a GPU cannot
+filter, so the blend is done by hand in the fragment shader: four `texture()` fetches at the texel centres around the
+point (the DS repeat, flip and clamp modes are sampler state and still apply to each fetch) weighted bilinearly.
+- Smooth is the plain bilinear weights. Sharp stretches the fraction so texels stay crisp: `f' = clamp((f - 0.5) / w + 0.5,
+  0, 1)` with `w` the texel's size on screen in pixels (`fwidth`, clamped to 1/256..1), a blend band one pixel wide.
+- Texels with alpha 0 keep the palette's colour 0 (black, pink...), so the colours are weighted by their alpha and do not
+  bleed into the edge of a cut-out. When all four texels are clear or solid (every format but A3I5 and A5I3) the blended
+  alpha is rounded to 0 or 1: the cut-out keeps its shape and the opaque and translucent passes get the same pixels as
+  before. A3I5/A5I3 blend their alpha smoothly.
+- Display-capture textures (`fPolygonAttr.z != 0`) are left alone. It is a rendering-only change: the emulated memory of
+  a replay is identical with the setting on or off (`tools/scenario.py compare`).
+The code is `third_party/ffcc_smooth_tex.glsl`, spliced into `3DRenderFS.glsl` at configure time, with the uniform set in
+`UseRenderShader`. The compute renderer (`GPU3D_Compute_shaders.h`, nine `NEAREST` samplers in `GPU3D_Compute.cpp`) needs
+its own patch.
+
 ### 5.4 Screen layouts
 **Today** (`game/src/video.cpp`): single screen (default; the top screen as large as fits, the other as a framed
 picture-in-picture in the bottom-right corner that can be hidden and takes mouse touches), main + side (the main

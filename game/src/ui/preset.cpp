@@ -19,6 +19,7 @@ void applyPresetOriginal() {
     s.filter = video::Filter::Sharp;
     s.scale = 1;
     s.better_polygons = false;
+    s.texture_smoothing = ntr::TextureSmoothing::Off;
 }
 
 void applyPresetEnhanced() {

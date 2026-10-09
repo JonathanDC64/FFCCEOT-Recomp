@@ -885,6 +885,7 @@ void RuntimeImpl::apply_video(VideoSettings s) {
     s.wide_extra = std::clamp(s.wide_extra, 0, 256);
     melonDS::FfccWideExtra = s.wide_extra;
     melonDS::FfccStableUV = s.stable_textures;
+    melonDS::FfccSmoothTex = s.renderer == Renderer::OpenGL ? int(s.texture_smoothing) : 0;
     s.hud_scale = std::clamp(s.hud_scale, 50, 200);
     melonDS::FfccHudEdges = s.hud_edges && s.wide_extra;
     melonDS::FfccHudScale = s.hud_scale;

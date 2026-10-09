@@ -23,6 +23,7 @@ std::filesystem::path temp_ini() {
 void test_round_trip() {
     Settings a;
     a.ui_scale = 125;
+    a.texture_smoothing = ntr::TextureSmoothing::Sharp;
     a.skip_prelaunch = true;
     a.menu_sounds = false;
     a.preset_chosen = true;
@@ -40,6 +41,7 @@ void test_round_trip() {
     Settings b;
     CHECK(load_settings(path, b));
     CHECK(b.ui_scale == 125);
+    CHECK(b.texture_smoothing == ntr::TextureSmoothing::Sharp);
     CHECK(b.skip_prelaunch);
     CHECK(!b.menu_sounds);
     CHECK(b.preset_chosen);
@@ -83,6 +85,10 @@ void test_set_setting() {
     CHECK(set_setting(s, "controls.spell_ring_x", "101"));  // (clamped, like the other numbers)
     CHECK(set_setting(s, "controls.spell_ring_size", "10"));
     CHECK(s.controls.spell_ring_x == 100 && s.controls.spell_ring_size == 30);
+    CHECK(set_setting(s, "graphics.texture_smoothing", "smooth"));
+    CHECK(s.texture_smoothing == ntr::TextureSmoothing::Smooth);
+    CHECK(!set_setting(s, "graphics.texture_smoothing", "blurry"));
+    CHECK(s.texture_smoothing == ntr::TextureSmoothing::Smooth);
     CHECK(!set_setting(s, "no.such_key", "1"));
 }
 

@@ -412,6 +412,14 @@ SettingsWindow::SettingsWindow(bool prelaunch) : mPrelaunch(prelaunch) {
         bool_row(leftPane, rightPane, "Better polygons", SETTING(better_polygons),
             "Splits quads into triangles in a way that avoids visible seams on some surfaces. OpenGL renderer only.",
             notOpenGL);
+        enum_row(
+            leftPane, rightPane, "Texture smoothing", SETTING(texture_smoothing), {0, 1, 2},
+            {"Off (blocky texels)", "Smooth", "Sharp (crisp texels)"},
+            "The game's textures are drawn with nearest sampling, so upscaled they show their texels as blocks (this is "
+            "separate from the scaling filter, which only scales the finished picture). Smooth blends neighbouring texels. "
+            "Sharp keeps each texel crisp and blends only at the edges between them. Differs from the original console. "
+            "OpenGL renderer only.",
+            notOpenGL);
         bool_row(leftPane, rightPane, "Stable textures", SETTING(stable_textures),
             "Some ground tiles in the game have textures that cannot be mapped flat, so they seem to swim as you "
             "move (the DS does this too). This cuts them into small pieces so the texture stays on the ground. "

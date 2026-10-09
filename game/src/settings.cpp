@@ -61,6 +61,7 @@ const char* const kPacings[] = {"vsync", "variable"};
 const char* const kAligns[] = {"top", "middle", "bottom"};
 const char* const kRenderers[] = {"software", "opengl", "compute"};
 const char* const kFilters[] = {"nearest", "linear", "sharp"};
+const char* const kTextureSmoothings[] = {"off", "smooth", "sharp"};
 const char* const kOnlineBuffers[] = {"low", "medium", "original"};
 const char* const kAnalogMovements[] = {"off", "single-player", "multiplayer"};
 const char* const kRingOrientations[] = {"sides", "top"};
@@ -106,6 +107,7 @@ const Field kFields[] = {
     BOOL_FIELD("graphics.better_polygons", better_polygons),
     BOOL_FIELD("graphics.hires_coordinates", hires_coordinates),
     BOOL_FIELD("graphics.stable_textures", stable_textures),
+    ENUM_FIELD("graphics.texture_smoothing", texture_smoothing, kTextureSmoothings),
     BOOL_FIELD("graphics.interpolate", interpolate),
     BOOL_FIELD("graphics.display_rate", display_rate),
     ENUM_FIELD("graphics.pacing", pacing, kPacings),

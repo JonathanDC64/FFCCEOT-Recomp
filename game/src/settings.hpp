@@ -32,6 +32,7 @@ struct Settings {
     video::Filter filter = video::Filter::Linear;
     bool better_polygons = false;
     bool hires_coordinates = true;
+    ntr::TextureSmoothing texture_smoothing = ntr::TextureSmoothing::Off;  // blend the game's textures (OpenGL renderer)
     bool stable_textures = false;  // cut quads with warping texture coordinates into a grid (see ntr::VideoSettings)
     bool interpolate = true;    // 3D at 60 fps (frame interpolation)
     bool display_rate = false;  // with interpolate: 3D at the display's refresh rate (OpenGL/compute renderers)
