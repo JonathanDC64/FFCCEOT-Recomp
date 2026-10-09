@@ -198,7 +198,10 @@ and interpolation (§5.3) need our own rasteriser:
   viewport, and a frame with no perspective geometry at all (the title) stays 4:3 for a while (`ffcc_wide_block`).
 - The HUD: `RenderSprites` groups engine A's touching sprites into clusters; a cluster of at most 150 x 110 pixels at the
   left or right edge is scaled (HUD size, 50-200%) about the screen's corner and, with "HUD at the edges", moved out to the
-  edge of the wide picture (a per-sprite transform in the sprite vertex shader). Dialogs and menus are BG layers and are not scaled.
+  edge of the wide picture (a per-sprite transform in the sprite vertex shader). The pickup text (an item's name or amount,
+  beside the item icon above the HP bar) is not a sprite but a line of background layer 2: while the icon is up (the
+  cluster reaches above y = 152), the compositor shader moves that band of layer 2 (x < 200, the icon's rows) the same way
+  (`uTextHud`, `uTextRect`). Dialogs and menus are BG layers and are not scaled.
 - Not done: the compute renderer, a culling hook (objects the game culls at the 4:3 edge can pop in
   at the sides), HUD size for dialogs and menus.
 
