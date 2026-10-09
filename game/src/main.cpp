@@ -20,11 +20,13 @@
 #include <filesystem>
 #include <fstream>
 #include <map>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <thread>
 #include <vector>
 
+#include "app_icon.hpp"
 #include "cfie_game.hpp"
 #include "crash_report.hpp"
 #include "game_module.hpp"
@@ -283,6 +285,7 @@ public:
     }
 
     ~SdlHost() override {
+        if (exe_icon_thread_.joinable()) exe_icon_thread_.join();  // (never leave the exe half swapped)
         if (window_) SDL_DestroyWindow(window_);
         SDL_Quit();
     }
@@ -600,6 +603,28 @@ private:
         status = setup::check(data_dir);
         ui::app().status = status;
         if (status.state == setup::State::Ready) start_requested_ = true;
+        load_icon();
+    }
+
+public:
+    // Game thread, once the game is set up: the icon a DS shows for it (from the ROM setup keeps) becomes the windows' icon
+    // and, on Windows, the exe's own (app_icon.hpp).
+    void load_icon() {
+        if (icon_ || status.state != setup::State::Ready) return;
+        icon_ = app_icon::from_rom(status.rom);
+        if (!icon_) return;
+        main_thread::run([this] {
+            app_icon::apply_to_window(window_, *icon_);
+            if (window2_) app_icon::apply_to_window(window2_, *icon_);
+        });
+#ifdef _WIN32
+        if (patch_exe_icon && !exe_icon_thread_.joinable()) {
+            exe_icon_thread_ = std::thread([icon = *icon_] {
+                std::string error;
+                if (!app_icon::patch_exe(icon, error)) std::fprintf(stderr, "the exe's icon was not changed: %s\n", error.c_str());
+            });
+        }
+#endif
     }
 
 public:
@@ -859,6 +884,7 @@ private:
                 if (!window2_) return;
                 SDL_SetWindowPosition(window2_, x + w + 8, y);
                 SDL_SetWindowTitle(window2_, (std::string(kTitle) + "  |  second screen").c_str());
+                if (icon_) app_icon::apply_to_window(window2_, *icon_);
             });
             if (window2_) presenter_.open_second(window2_, allow_flip_model);
         } else if (!wanted && window2_) {
@@ -1215,6 +1241,9 @@ public:
     bool unpaced = false;            // testing: run as fast as possible
     bool show_prelaunch = false;     // the start screen is shown over the window
     std::filesystem::path data_dir, toolchain_dir, ui_shot_dir;
+    std::optional<app_icon::Icon> icon_;  // the game's icon, once it is set up
+    std::thread exe_icon_thread_;
+    bool patch_exe_icon = false;          // write it into ffcc.exe (not in tests: --data-dir, nor with --no-exe-icon)
     setup::Status status;
     std::multimap<uint64_t, std::string> set_at;           // debugging: --set-at-frame: "key=value" settings
     std::multimap<uint64_t, std::pair<int, int>> resize_at;  // debugging: --resize-at-frame: window sizes
@@ -1297,6 +1326,7 @@ int main(int argc, char** argv) {
     const bool explicit_rom = argc >= 2 && argv[1][0] != '-';
     const int first_option = explicit_rom ? 2 : 1;
     std::filesystem::path data_dir, save_path, settings_path;
+    bool data_dir_given = false;
     {
         // --data-dir <folder> (testing) keeps everything in that folder; portable.txt next to the program keeps it in a
         // data folder beside it.
@@ -1305,6 +1335,7 @@ int main(int argc, char** argv) {
         std::filesystem::path given;
         for (int i = first_option; i + 1 < argc; i++)
             if (std::strcmp(argv[i], "--data-dir") == 0) given = argv[i + 1];
+        data_dir_given = !given.empty();
         if (!given.empty()) {
             data_dir = given;
             std::filesystem::create_directories(data_dir, ec);
@@ -1390,6 +1421,7 @@ int main(int argc, char** argv) {
                      "  --save-file <file>                   use this save file instead of the usual one\n"
                      "  --read-only-save                     never write the save file\n"
                      "  --no-settings                        ignore settings.ini (neither read nor written)\n"
+                     "  --no-exe-icon                        do not write the game's icon into ffcc.exe (Windows)\n"
                      "  --unpaced                            run as fast as possible\n"
                      "  --log-sounds                         log the id of every sound effect the game starts\n"
                      "  --display-hz <n>                     unpaced display-rate 3D: assume an n Hz display (144)\n",
@@ -1418,7 +1450,7 @@ int main(int argc, char** argv) {
     std::filesystem::path game_module_path = GameModule::default_path();
     bool module_given = false, setup_only = false;
     std::filesystem::path setup_rom, toolchain_dir, ui_script_path, ui_shot_dir = ".";
-    bool force_prelaunch = false, first_run = false;
+    bool force_prelaunch = false, first_run = false, no_exe_icon = false;
     double virtual_display_hz = 144;
     std::map<uint64_t, std::string> screenshots;
     std::vector<ScriptStep> script;
@@ -1511,6 +1543,8 @@ int main(int argc, char** argv) {
             force_prelaunch = true;
         } else if (a == "--first-run") {
             first_run = true;
+        } else if (a == "--no-exe-icon") {
+            no_exe_icon = true;
         } else if (a == "--setup-only") {
             setup_only = true;
         } else if (a == "--ui-script" && has_value) {
@@ -1581,6 +1615,12 @@ int main(int argc, char** argv) {
         else
             std::fprintf(stderr, "ignoring unknown or incomplete option %s\n", a.c_str());
     }
+
+    // Windows: the game's icon goes into this exe (app_icon.hpp), except in tests (--data-dir) and with --no-exe-icon.
+    const bool patch_exe_icon = !data_dir_given && !no_exe_icon && !explicit_rom;
+#ifdef _WIN32
+    if (patch_exe_icon) app_icon::clean_up_exe();
+#endif
 
     // Which game runs: the ROM on the command line as it is, or the game set up from the player's ROM -- which the start
     // screen sets up, in the window, when there is none or it is out of date.
@@ -1667,6 +1707,7 @@ int main(int argc, char** argv) {
     host.data_dir = data_dir;
     host.toolchain_dir = toolchain_dir;
     host.status = status;
+    host.patch_exe_icon = patch_exe_icon;
     host.ui_shot_dir = ui_shot_dir;
     // The start screen is shown on every launch (Dusklight's prelaunch), unless the settings skip it and a game is ready
     // to run, or a ROM was given on the command line.
@@ -1681,6 +1722,7 @@ int main(int argc, char** argv) {
         Game& g = *static_cast<Game*>(p);
         SdlHost& host = g.host;
         if (host.init_graphics(g.save_path)) {
+            host.load_icon();
             if (g.fullscreen) host.set_fullscreen(true);
             g.rc = 0;
             bool quit = false;

@@ -149,7 +149,7 @@ named official site; and an automated tag-driven release, which most of these pr
 
 | Platform | Package | Notes |
 |---|---|---|
-| Windows x64 | zip (`ffcc.exe`, compiler, headers, `LICENSE`/`NOTICE`) | Unsigned binaries trigger SmartScreen and antivirus heuristics, and our setup builds a new DLL on the player's PC: document it in the README. Code signing is a later decision. |
+| Windows x64 | zip (`ffcc.exe`, compiler, headers, `LICENSE`/`NOTICE`) | `ffcc.exe` carries an original icon; once the player's game is set up it writes the game's own icon into its own copy (extract the zip to a folder that is writable, not Program Files; `--no-exe-icon` turns it off). Unsigned binaries trigger SmartScreen and antivirus heuristics, and our setup builds a new DLL on the player's PC: document it in the README. Code signing is a later decision. |
 | Linux x64 | AppImage (*decided*, no Flatpak) | Steam Deck runs the AppImage or the zip with "Add to Steam". |
 | macOS | later | Needs signing and notarisation. |
 

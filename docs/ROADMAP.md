@@ -107,7 +107,7 @@ Milestones are ordered by dependency. Each ends with a demonstrable result. Desi
 - [x] Start screen and setup: the ROM is verified, copied and built into the game on first run (and rebuilt when an update
       changes the build), see [PACKAGING.md](PACKAGING.md)
 - [ ] Setup: an in-app file browser for gamepads, and "Run setup again" in the menu while a game runs
-- [ ] App icon: original artwork (no game assets) for the exe (Windows resource) and the window (`SDL_SetWindowIcon`)
+- [x] App icon: original artwork for the exe until a game is set up, then the game's own DS icon (read from the player's ROM, never shipped) as the window icon and written into the player's `ffcc.exe` (Windows), see ARCHITECTURE.md
 - [ ] ImGui dev tools (`--dev`)
 
 ## M7: Online and LAN multiplayer

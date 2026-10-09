@@ -1,0 +1,4 @@
+// The program's built-in icon (original art, tools/gen_app_icon.py). Icon 1 and its pictures 1..6 are what
+// app_icon::patch_exe replaces with the game's own icon once the player's game is set up.
+LANGUAGE 0, 0
+1 ICON "res/ffcc.ico"

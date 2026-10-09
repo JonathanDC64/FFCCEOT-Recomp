@@ -495,6 +495,14 @@ confirmation (`ui::request_quit_confirm`); only a script's `quit` and a crash di
 has a slider in the right pane (`ui/slider.cpp`) besides the typed value: dragging applies each value, and the settings file
 is written once on release.
 
+**The icon** (`game/src/app_icon.cpp`). `ffcc.exe` carries an original icon (`game/ffcc.rc`, drawn by `tools/gen_app_icon.py`). Once the
+game is set up, `SdlHost::load_icon` decodes the 32x32 icon of the ROM's banner (header 0x68; version and CRC-16 checked) from the
+kept `game/cfie.nds`, sets it as the icon of the windows (`SDL_SetWindowIcon`, larger copies for high DPI) and, on Windows, a
+thread patches it into the exe: a copy is written with `UpdateResource` (icon resources 1..6 and group 1), the running exe is
+renamed to `ffcc.exe.old` and the copy takes its name (deleted at the next start; nothing is done when the exe already holds
+it). It is skipped with `--data-dir` (tests) and `--no-exe-icon`, and logs and carries on when the folder is not writable. The
+icon is Square Enix artwork: it only ever exists on the player's machine.
+
 **Menu sounds** are the game's own: `ui::play_sound` queues one of the game's sound effect ids (1001 confirm, 1002
 cancel, 1004 cursor, 1006 page, 1041 title start; found with `--log-sounds`), and a hook at the sound manager's update
 (`cfie_sound_update`, `0x02076A94`, run once per pass of the game's main loop on its own thread) starts each through the

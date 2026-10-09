@@ -23,3 +23,12 @@ if(TARGET ffcc)
   add_test(NAME ui_smoke COMMAND ${CMAKE_COMMAND} -DFFCC=$<TARGET_FILE:ffcc> -DSCRIPT=${CMAKE_CURRENT_SOURCE_DIR}/ui_smoke.txt
                   -P ${CMAKE_CURRENT_SOURCE_DIR}/ui_smoke.cmake)
 endif()
+
+# The game's icon: the banner's picture and the .ico written into the exe (made-up banner, no game data).
+add_executable(test_icon test_icon.cpp ${PROJECT_SOURCE_DIR}/game/src/app_icon.cpp)
+target_include_directories(test_icon PRIVATE ${PROJECT_SOURCE_DIR}/game/src)
+target_link_libraries(test_icon PRIVATE SDL3::SDL3-static)
+if(WIN32)
+  target_link_libraries(test_icon PRIVATE user32 shell32)
+endif()
+add_test(NAME icon COMMAND test_icon)

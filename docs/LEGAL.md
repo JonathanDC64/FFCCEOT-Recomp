@@ -16,7 +16,8 @@ Square Enix or Nintendo. It contains **no** game code, assets, or data. To use i
   `*.sdat`, …), or anything decompressed or converted from them (models, textures, audio, video, text dumps).
 - **Generated C code** from the recompiler. It is a translation of the game's code and is always produced locally under `build/`.
 - Disassembly listings of game code beyond short, necessary excerpts in issues or docs (prefer describing behaviour).
-- Square Enix / Nintendo logos, artwork, fonts or music, including inside the UI theme.
+- Square Enix / Nintendo logos, artwork, fonts or music, including inside the UI theme. (The game's DS icon is read from the
+  player's own ROM on their machine and written only into their own `ffcc.exe` and windows; never into the repo or a release.)
 - Save files, screenshots of copyrighted UI as test fixtures, or golden images rendered from game data.
 - Links to ROM downloads.
 
