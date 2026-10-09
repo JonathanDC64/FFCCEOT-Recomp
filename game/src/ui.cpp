@@ -14,6 +14,7 @@
 
 #include "RmlUi_Platform_SDL.h"
 #include "RmlUi_Renderer_GL3.h"
+#include "main_thread.hpp"
 #include "ui_assets.hpp"
 
 namespace ui {
@@ -209,13 +210,14 @@ struct Menu::Impl {
     void start_dns_edit() {
         editing_dns = true;
         model.DirtyVariable("editing_dns");
-        SDL_StartTextInput(window);  // (shows an on-screen keyboard where there is one)
+        // (shows an on-screen keyboard where there is one)
+        main_thread::run([w = window] { SDL_StartTextInput(w); }, false);
     }
 
     void end_dns_edit() {
         editing_dns = false;
         model.DirtyVariable("editing_dns");
-        SDL_StopTextInput(window);
+        main_thread::run([w = window] { SDL_StopTextInput(w); }, false);
     }
 
     // While typing the address: digits and dots go in, Backspace deletes, Enter, Esc or a gamepad button ends it.
@@ -534,6 +536,7 @@ void Menu::close() {
     Impl& m = *impl_;
     if (!open_) return;
     if (m.editing_dns) m.end_dns_edit();
+    if (m.store_state()) changed = true;  // (a change made since the last frame is kept)
     m.document->Hide();
     open_ = false;
 }

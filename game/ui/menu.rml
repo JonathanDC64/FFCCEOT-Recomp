@@ -135,7 +135,6 @@
             </div>
             <p class="note" data-if="renderer == 2 &amp;&amp; !compute_available">Compute needs OpenGL 4.3: OpenGL is used instead.</p>
             <p class="note">The game draws its 3D at 30 fps: interpolation shows blended images in between, for one frame (16 ms) of extra latency. The display refresh rate (120, 144 Hz and up) needs the OpenGL or compute renderer and syncs frames to the display. F9 switches between the three.</p>
-            <p class="note">Renderer, resolution and interpolation changes take effect when you resume.</p>
         </div>
 
         <div class="page" data-if="tab == 'audio'">

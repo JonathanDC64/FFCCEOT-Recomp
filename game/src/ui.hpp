@@ -1,4 +1,4 @@
-// The in-game settings menu (RmlUi, drawn with OpenGL over the paused game).
+// The in-game settings menu (RmlUi, drawn with OpenGL over the running game).
 #pragma once
 
 #include <memory>

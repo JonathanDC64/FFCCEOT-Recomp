@@ -50,7 +50,8 @@ off|single-player|multiplayer` sets it for one run). Every DS button and the scr
 gamepad input on the menu's Controls page, which names buttons for the connected controller (Xbox, PlayStation,
 Nintendo). The company logos before the title screen are skipped; pass `--no-skip-logos` to watch them.
 
-Settings: Esc (or Guide, or Back + Start on a gamepad) pauses the game and opens the settings menu: screen layout,
+Settings: Esc (or Guide, or Back + Start on a gamepad) opens the settings menu over the game (which keeps running, without input,
+so online play stays in sync): screen layout,
 fullscreen, renderer, resolution, filter, volume, controls and more. It works with the mouse,
 the keyboard (arrows, Enter, Q/E for tabs) or a gamepad (D-pad or stick, right face button to change, shoulders for
 tabs). Settings are saved to `settings.ini` next to the save (in `%APPDATA%\FFCCEOT-Recomp\EchoesOfTime` on Windows); the

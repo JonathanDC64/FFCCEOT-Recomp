@@ -3,6 +3,7 @@
 #pragma once
 
 #include <cstdint>
+#include <functional>
 #include <memory>
 
 #include "ntr/runtime.hpp"
@@ -97,8 +98,11 @@ public:
     void wait_for_refresh();
     // The refresh rate of the display the window is on (Hz), or 0 if unknown.
     float refresh_rate() const;
+    // Drawn over every frame that present() shows (the settings menu), before it is saved or swapped in.
+    std::function<void()> overlay;
     void present(const ntr::Frame* frame, Filter filter, const char* screenshot = nullptr) {
         draw(frame, filter);
+        if (overlay) overlay();
         swap(screenshot);
     }
 

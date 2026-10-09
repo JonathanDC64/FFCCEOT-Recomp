@@ -5,10 +5,12 @@
 // Shows the screens in a choice of layouts (by default the top screen with the bottom one as a picture-in-picture),
 // with keyboard/gamepad input, touch via the mouse and audio output. Video goes through OpenGL, which also lets
 // melonDS render the screens at a multiple of the DS resolution. Esc (or Guide / Back + Start) opens the settings
-// menu, which pauses the game; the settings are kept in settings.ini next to the save.
+// menu, which is drawn over the game (it keeps running, as online play needs, but gets no input); the settings are
+// kept in settings.ini next to the save. The game runs on its own thread so that dragging the window does not stop it.
 #include <SDL3/SDL.h>
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
@@ -24,6 +26,7 @@
 #include "cfie_game.hpp"
 #include "crash_report.hpp"
 #include "input.hpp"
+#include "main_thread.hpp"
 #include "ntr/rom.hpp"
 #include "ntr/runtime.hpp"
 #include "settings.hpp"
@@ -182,8 +185,12 @@ bool load_input_script(const std::filesystem::path& path, std::vector<ScriptStep
 
 class SdlHost final : public ntr::Host {
 public:
-    bool init(const std::filesystem::path& save_path) {
-        save_path_ = save_path;
+    // The game runs on a thread of its own, so that it keeps going while the window is dragged or resized (Windows
+    // runs a modal loop inside the thread that owns the window for the duration) or while the menu is open. The
+    // main thread owns the window and the event queue (open_window, pump_until_done, ~SdlHost); the game thread
+    // owns OpenGL, the audio and everything else (init_graphics ... shutdown_graphics). It reads events with
+    // SDL_PeepEvents, which does not pump the queue, and sends the few window changes it makes to the main thread.
+    bool open_window() {
         if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMEPAD)) {
             std::fprintf(stderr, "SDL_Init failed: %s\n", SDL_GetError());
             return false;
@@ -194,11 +201,42 @@ public:
         window_ = SDL_CreateWindow(kTitle, wide ? 1280 : stacked ? kScreenW * 3 : kScreenW * 2 * 3,
                                    wide ? 720 : stacked ? kScreenH * 2 * 3 : kScreenH * 3,
                                    SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY);
-        if (!window_ || !presenter_.init(window_, allow_flip_model)) {
+        if (!window_) {
+            std::fprintf(stderr, "cannot open the game window: %s\n", SDL_GetError());
+            return false;
+        }
+        return true;
+    }
+
+    // Main thread: keeps the window alive and its events flowing until the game thread is done.
+    void pump_until_done() {
+        double last = seconds();
+        while (!done_) {
+            SDL_PumpEvents();  // (also runs what the game thread asked of the main thread)
+            SDL_Delay(2);
+            const double now = seconds();
+            if (perf && now - last > 0.25)  // (a window drag or resize: Windows holds this thread for the duration)
+                std::fprintf(stderr, "perf: the window's thread was busy for %.0f ms (frame %llu)\n", (now - last) * 1000.0,
+                             (unsigned long long)frames_.load());
+            last = now;
+        }
+    }
+    void finish() { done_ = true; }
+
+    // Game thread.
+    bool init_graphics(const std::filesystem::path& save_path) {
+        save_path_ = save_path;
+        if (!presenter_.init(window_, allow_flip_model)) {
             std::fprintf(stderr, "cannot open the game window: %s\n", SDL_GetError());
             return false;
         }
         update_layout();
+        presenter_.overlay = [this] {
+            if (!menu_.is_open()) return;
+            int w = 0, h = 0;
+            SDL_GetWindowSizeInPixels(window_, &w, &h);
+            menu_.render(w, h);
+        };
         if (!menu_.init(window_, &settings, presenter_.has_compute()))
             std::fprintf(stderr, "the settings menu is unavailable\n");
 
@@ -214,12 +252,19 @@ public:
         return true;
     }
 
-    ~SdlHost() override {
+    // Game thread, once the runtime is gone.
+    void shutdown_graphics() {
         flush_save();
         if (settings_dirty_ && !settings_path.empty()) save_settings(settings_path, settings);
         menu_.shutdown();
         if (audio_) SDL_DestroyAudioStream(audio_);
+        audio_ = nullptr;
+        if (gamepad_) SDL_CloseGamepad(gamepad_);
+        gamepad_ = nullptr;
         presenter_.shutdown();
+    }
+
+    ~SdlHost() override {
         if (window_) SDL_DestroyWindow(window_);
         SDL_Quit();
     }
@@ -263,8 +308,9 @@ public:
 
     bool show_frame(const ntr::Frame& frame) {
         if (title_dirty_) update_title();  // a change made last frame is now in effect
+        if (runtime_->video().wide_extra != presenter_.wide_extra()) update_layout();  // (the layout follows what is in use)
         ++frames_;
-        if (exit_after_frames && frames_ >= exit_after_frames && frames_ != menu_at_frame) return false;
+        if (exit_after_frames && frames_ >= exit_after_frames && !menu_shot_pending()) return false;
         if (skipping_) {
             // The company logos before the title cannot be skipped in the game: run through them unseen and
             // unheard at full speed. Stop at the title music, on any input, or after a safety limit.
@@ -276,9 +322,20 @@ public:
             open_menu();
             menu_key_pos_ = 0;
         }
-        if (menu_.is_open()) return run_menu(frame);
-        const auto shot = screenshots.find(frames_);
-        const char* shot_path = shot != screenshots.end() ? shot->second.c_str() : nullptr;
+        // Debugging: a screenshot asked for at or before this frame, while the menu is open, is taken once the menu
+        // has settled. Otherwise it is taken at its own frame.
+        const char* shot_path = nullptr;
+        bool menu_shot = false;
+        if (menu_.is_open()) {
+            const auto pending = screenshots.lower_bound(menu_shot_from_);
+            if (pending != screenshots.end() && pending->first <= frames_ && ++menu_frames_ >= 10) {
+                shot_path = pending->second.c_str();
+                menu_shot = true;
+            }
+        } else {
+            const auto shot = screenshots.find(frames_);
+            if (shot != screenshots.end()) shot_path = shot->second.c_str();
+        }
         if (runtime_->video().display_rate) {
             present_display_rate(frame, shot_path);
         } else {
@@ -286,6 +343,10 @@ public:
             presenter_.present(&frame, settings.filter, shot_path);
         }
         if (++frames_since_save_ > 120) flush_save();
+        if (menu_shot) {
+            menu_shot_from_ = frames_ + 1;
+            if (exit_after_frames && frames_ >= exit_after_frames) return false;
+        }
         if (script_quit_ && frames_ >= script_quit_) return false;
         if (!unpaced && !runtime_->video().display_rate) pace();
         return true;
@@ -311,9 +372,26 @@ public:
 
 private:
     bool pump_events() {
+        // Debugging: key presses for the menu (--menu-keys, comma-separated SDL key names such as "Down,Down,Return"),
+        // one per frame so that each takes effect before the next.
+        if (menu_.is_open() && menu_key_pos_ < menu_keys.size()) {
+            const size_t comma = std::min(menu_keys.find(',', menu_key_pos_), menu_keys.size());
+            SDL_Event k{};
+            k.type = SDL_EVENT_KEY_DOWN;
+            k.key.key = SDL_GetKeyFromName(menu_keys.substr(menu_key_pos_, comma - menu_key_pos_).c_str());
+            k.key.scancode = SDL_GetScancodeFromKey(k.key.key, nullptr);
+            k.key.down = true;
+            SDL_PushEvent(&k);
+            menu_key_pos_ = comma + 1;
+        }
+        // (SDL_PeepEvents takes what the main thread has pumped; SDL_PollEvent would pump from this thread.)
         SDL_Event e;
-        while (SDL_PollEvent(&e)) {
+        while (SDL_PeepEvents(&e, 1, SDL_GETEVENT, SDL_EVENT_FIRST, SDL_EVENT_LAST) > 0) {
             if (!handle_common_event(e)) return false;
+            if (menu_.is_open()) {  // the game doesn't see the keys, buttons or clicks meant for the menu
+                menu_.handle_event(e);
+                continue;
+            }
             switch (e.type) {
             case SDL_EVENT_KEY_DOWN:
                 if (e.key.key == SDLK_ESCAPE) open_menu();
@@ -336,6 +414,13 @@ private:
             default: break;
             }
         }
+        if (menu_.quit_requested) return false;
+        if (menu_.changed) {
+            menu_.changed = false;
+            apply_settings();
+        }
+        if (menu_was_open_ && !menu_.is_open()) resumed();
+        menu_was_open_ = menu_.is_open();
         return true;
     }
 
@@ -361,71 +446,42 @@ private:
         return true;
     }
 
+    // The game goes on behind the menu (online play can't wait): the menu is drawn over each frame, the game gets no
+    // input, and the sound plays on.
     void open_menu() {
         if (menu_.is_open()) return;
         menu_.open();
-        if (menu_.is_open() && audio_) SDL_PauseAudioStreamDevice(audio_);
+        if (!menu_.is_open()) return;
+        skipping_ = false;  // (the menu is not to be skipped past)
+        menu_frames_ = 0;
+        menu_was_open_ = true;
         input_hold_ = true;  // whatever opened the menu is not game input
     }
 
-    // The game is paused while the menu is open: this frame stays on screen under the menu until it closes.
-    bool run_menu(const ntr::Frame& frame) {
-        int menu_frames = 0;
-        while (menu_.is_open()) {
-            // Debugging: key presses for the menu (--menu-keys, comma-separated SDL key names such as
-            // "Down,Down,Return"), one per menu frame so that each takes effect before the next.
-            if (menu_key_pos_ < menu_keys.size()) {
-                const size_t comma = std::min(menu_keys.find(',', menu_key_pos_), menu_keys.size());
-                SDL_Event k{};
-                k.type = SDL_EVENT_KEY_DOWN;
-                k.key.key = SDL_GetKeyFromName(menu_keys.substr(menu_key_pos_, comma - menu_key_pos_).c_str());
-                k.key.scancode = SDL_GetScancodeFromKey(k.key.key, nullptr);
-                k.key.down = true;
-                SDL_PushEvent(&k);
-                menu_key_pos_ = comma + 1;
-            }
-            SDL_Event e;
-            while (SDL_PollEvent(&e)) {
-                if (!handle_common_event(e)) return false;
-                menu_.handle_event(e);
-            }
-            if (menu_.quit_requested) return false;
-
-            int w = 0, h = 0;
-            SDL_GetWindowSizeInPixels(window_, &w, &h);
-            presenter_.draw(&frame, settings.filter);
-            menu_.render(w, h);
-            if (menu_.changed) {
-                menu_.changed = false;
-                apply_settings();
-            }
-            // Debugging: a screenshot asked for at or before this frame is taken once the menu has settled.
-            const auto pending = screenshots.lower_bound(menu_shot_from_);
-            const bool shot = pending != screenshots.end() && pending->first <= frames_ && ++menu_frames == 10;
-            presenter_.swap(shot ? pending->second.c_str() : nullptr);
-            if (shot) menu_shot_from_ = frames_ + 1;
-            if (shot && exit_after_frames && frames_ >= exit_after_frames) return false;
-            SDL_Delay(15);
-        }
-        // Resumed: renderer changes take effect now, and the game picks up where it was.
-        sync_video();
+    // The menu closed: what it changed that waits for that takes effect, and the settings are saved.
+    void resumed() {
         runtime_->set_fast_cart(settings.fast_loading);
         runtime_->set_cpu_speed(settings.cpu_speed);
         if (settings_dirty_) {
             if (!settings_path.empty()) save_settings(settings_path, settings);
             settings_dirty_ = false;
         }
-        if (audio_) SDL_ResumeAudioStreamDevice(audio_);
         input_hold_ = true;  // the button or key that closed the menu is not game input either
-        next_frame_ = std::chrono::steady_clock::now();
-        return true;
     }
 
-    // Puts edited settings into effect (except the renderer ones, which wait for the game to resume).
+    // Debugging: is a screenshot waiting for the menu to settle?
+    bool menu_shot_pending() const {
+        if (!menu_.is_open()) return false;
+        const auto pending = screenshots.lower_bound(menu_shot_from_);
+        return pending != screenshots.end() && pending->first <= frames_;
+    }
+
+    // Puts edited settings into effect as they are changed (the game is running behind the menu).
     void apply_settings() {
         settings_dirty_ = true;
         if (settings.fullscreen != fullscreen_) set_fullscreen(settings.fullscreen);
         update_layout();
+        sync_video();
         if (audio_) SDL_SetAudioStreamGain(audio_, settings.volume / 100.0f);
         cfie::online_buffer = settings.online_buffer;
         cfie::fast_saving = settings.fast_saving;
@@ -513,7 +569,7 @@ private:
         else
             t += v.interpolate ? ", 60 fps 3D" : ", 30 fps 3D";
         t += "  |  Esc settings";
-        SDL_SetWindowTitle(window_, t.c_str());
+        main_thread::run([w = window_, t] { SDL_SetWindowTitle(w, t.c_str()); }, false);
     }
 
 public:
@@ -522,38 +578,45 @@ public:
     void set_fullscreen(bool on) {
         settings.fullscreen = on;
         if (on == fullscreen_) return;
+        bool ok = true;
+        main_thread::run([&] {
 #ifdef _WIN32
-        // With flip-model presentation the window exactly covers the display, and Windows shows it directly
-        // (independent flip) with seamless alt-tab. Without it (GL swap), a window exactly covering the monitor gets
-        // promoted to exclusive-style presentation by the driver and alt-tab blanks the screen for seconds; one pixel
-        // taller avoids that, and the shell still treats it as fullscreen. See docs/ARCHITECTURE.md section 5.5.
-        // Each step is synced so the border is gone before positioning.
-        if (on) {
-            SDL_GetWindowPosition(window_, &windowed_.x, &windowed_.y);
-            SDL_GetWindowSize(window_, &windowed_.w, &windowed_.h);
-            windowed_maximized_ = SDL_GetWindowFlags(window_) & SDL_WINDOW_MAXIMIZED;
-            SDL_Rect d;
-            if (!SDL_GetDisplayBounds(SDL_GetDisplayForWindow(window_), &d)) return;
-            if (windowed_maximized_) SDL_RestoreWindow(window_);
-            SDL_SetWindowBordered(window_, false);
-            SDL_SyncWindow(window_);
-            SDL_SetWindowPosition(window_, d.x, d.y);
-            SDL_SetWindowSize(window_, d.w, presenter_.flip_model() ? d.h : d.h + 1);
-            SDL_SyncWindow(window_);
-            SDL_RaiseWindow(window_);
-        } else {
-            SDL_SetWindowBordered(window_, true);
-            SDL_SyncWindow(window_);
-            SDL_SetWindowSize(window_, windowed_.w, windowed_.h);
-            SDL_SetWindowPosition(window_, windowed_.x, windowed_.y);
-            if (windowed_maximized_) SDL_MaximizeWindow(window_);
-            SDL_SyncWindow(window_);
-        }
+            // With flip-model presentation the window exactly covers the display, and Windows shows it directly
+            // (independent flip) with seamless alt-tab. Without it (GL swap), a window exactly covering the monitor gets
+            // promoted to exclusive-style presentation by the driver and alt-tab blanks the screen for seconds; one pixel
+            // taller avoids that, and the shell still treats it as fullscreen. See docs/ARCHITECTURE.md section 5.5.
+            // Each step is synced so the border is gone before positioning.
+            if (on) {
+                SDL_GetWindowPosition(window_, &windowed_.x, &windowed_.y);
+                SDL_GetWindowSize(window_, &windowed_.w, &windowed_.h);
+                windowed_maximized_ = SDL_GetWindowFlags(window_) & SDL_WINDOW_MAXIMIZED;
+                SDL_Rect d;
+                if (!SDL_GetDisplayBounds(SDL_GetDisplayForWindow(window_), &d)) {
+                    ok = false;
+                    return;
+                }
+                if (windowed_maximized_) SDL_RestoreWindow(window_);
+                SDL_SetWindowBordered(window_, false);
+                SDL_SyncWindow(window_);
+                SDL_SetWindowPosition(window_, d.x, d.y);
+                SDL_SetWindowSize(window_, d.w, presenter_.flip_model() ? d.h : d.h + 1);
+                SDL_SyncWindow(window_);
+                SDL_RaiseWindow(window_);
+            } else {
+                SDL_SetWindowBordered(window_, true);
+                SDL_SyncWindow(window_);
+                SDL_SetWindowSize(window_, windowed_.w, windowed_.h);
+                SDL_SetWindowPosition(window_, windowed_.x, windowed_.y);
+                if (windowed_maximized_) SDL_MaximizeWindow(window_);
+                SDL_SyncWindow(window_);
+            }
 #else
-        SDL_SetWindowFullscreenMode(window_, nullptr);  // no display mode = borderless desktop fullscreen
-        SDL_SetWindowFullscreen(window_, on);
-        SDL_SyncWindow(window_);
+            SDL_SetWindowFullscreenMode(window_, nullptr);  // no display mode = borderless desktop fullscreen
+            SDL_SetWindowFullscreen(window_, on);
+            SDL_SyncWindow(window_);
 #endif
+        });
+        if (!ok) return;
         fullscreen_ = on;
         update_layout();
     }
@@ -577,6 +640,7 @@ private:
     }
 
     void update_input() {
+        if (menu_.is_open()) input_hold_ = true;  // (the menu has the keys: the game gets nothing while it is open)
         const input::Bindings& c = settings.controls;
         const bool* k = SDL_GetKeyboardState(nullptr);
         const float dead = c.deadzone / 100.0f;
@@ -783,7 +847,7 @@ private:
     std::vector<uint8_t> save_;
     bool save_dirty_ = false;
     int frames_since_save_ = 0;
-    uint64_t frames_ = 0;
+    std::atomic<uint64_t> frames_{0};  // (the main thread reads it for --perf)
 
     bool skipping_ = false;
     bool input_active_ = false;
@@ -798,6 +862,9 @@ private:
     static_assert(std::size(kDsBits) == input::kFirstAppAction);
     uint64_t script_quit_ = 0;                 // the frame a script's quit step ends the run (0 = none)
     size_t menu_key_pos_ = std::string::npos;  // --menu-keys: the next key to press
+    int menu_frames_ = 0;                      // frames shown since the menu opened
+    bool menu_was_open_ = false;
+    std::atomic<bool> done_{false};            // the game thread has finished (the main thread may close the window)
     uint64_t menu_shot_from_ = 0;              // screenshots before this frame were taken in the menu
     static constexpr uint64_t kMaxLogoSkipFrames = 900;  // the logos end around frame 564
 
@@ -1079,20 +1146,55 @@ int main(int argc, char** argv) {
     host.allow_flip_model = allow_flip_model;
     const bool fullscreen = settings.fullscreen;
     host.settings.fullscreen = false;  // the window starts windowed; set_fullscreen below records the state
-    if (!host.init(save_path)) return 1;
-    if (!menu_tab.empty()) host.menu().set_tab(menu_tab.c_str());
-    if (fullscreen) host.set_fullscreen(true);
-    options.video = host.wanted_video();  // the GL context is current: melonDS's GL renderers can start
-    options.fast_cart = host.settings.fast_loading;
-    options.cpu_speed = host.settings.cpu_speed;
-    online_dns(host.settings.online_server, options.online_dns);
-    cfie::online_buffer = host.settings.online_buffer;
-    cfie::fast_saving = host.settings.fast_saving;
+    if (!host.open_window()) return 1;
 
-    ntr::GameCode code{ntr_recomp_functions, ntr_recomp_function_count, ntr_recomp_overlays, ntr_recomp_overlay_count};
-    auto runtime = ntr::Runtime::create(std::move(rom), code, host, std::move(options));
-    host.attach(runtime.get());
-    const int rc = runtime->run();
-    runtime.reset();  // writes the exit reports (interpreter coverage, function profile); frees the GL renderer
-    return rc;
+    // The game runs on a thread of its own (see SdlHost::open_window); this one keeps the window's events flowing.
+    // The stack is made generous: the main thread's is what the game was written against.
+    struct Game {
+        SdlHost& host;
+        const std::filesystem::path& save_path;
+        const std::string& menu_tab;
+        bool fullscreen;
+        ntr::RuntimeOptions& options;
+        std::vector<uint8_t>& rom;
+        int rc = 1;
+    } game{host, save_path, menu_tab, fullscreen, options, rom};
+    const auto run_game = [](void* p) -> int {
+        Game& g = *static_cast<Game*>(p);
+        SdlHost& host = g.host;
+        if (host.init_graphics(g.save_path)) {
+            if (!g.menu_tab.empty()) host.menu().set_tab(g.menu_tab.c_str());
+            if (g.fullscreen) host.set_fullscreen(true);
+            g.options.video = host.wanted_video();  // the GL context is current: melonDS's GL renderers can start
+            g.options.fast_cart = host.settings.fast_loading;
+            g.options.cpu_speed = host.settings.cpu_speed;
+            online_dns(host.settings.online_server, g.options.online_dns);
+            cfie::online_buffer = host.settings.online_buffer;
+            cfie::fast_saving = host.settings.fast_saving;
+
+            ntr::GameCode code{ntr_recomp_functions, ntr_recomp_function_count, ntr_recomp_overlays,
+                               ntr_recomp_overlay_count};
+            auto runtime = ntr::Runtime::create(std::move(g.rom), code, host, std::move(g.options));
+            host.attach(runtime.get());
+            g.rc = runtime->run();
+            runtime.reset();  // writes the exit reports (interpreter coverage, function profile); frees the GL renderer
+            host.shutdown_graphics();
+        }
+        host.finish();
+        return 0;
+    };
+    SDL_PropertiesID props = SDL_CreateProperties();
+    SDL_SetPointerProperty(props, SDL_PROP_THREAD_CREATE_ENTRY_FUNCTION_POINTER, reinterpret_cast<void*>(+run_game));
+    SDL_SetPointerProperty(props, SDL_PROP_THREAD_CREATE_USERDATA_POINTER, &game);
+    SDL_SetNumberProperty(props, SDL_PROP_THREAD_CREATE_STACKSIZE_NUMBER, 16 << 20);
+    SDL_SetStringProperty(props, SDL_PROP_THREAD_CREATE_NAME_STRING, "game");
+    SDL_Thread* thread = SDL_CreateThreadWithProperties(props);
+    SDL_DestroyProperties(props);
+    if (!thread) {
+        std::fprintf(stderr, "cannot start the game thread: %s\n", SDL_GetError());
+        return 1;
+    }
+    host.pump_until_done();
+    SDL_WaitThread(thread, nullptr);
+    return game.rc;
 }

@@ -445,13 +445,22 @@ Modelled on Dusklight but simpler, with a Final Fantasy crystal look. All art is
 
 **Today:** an in-game settings menu (`game/src/ui.cpp`, documents in `game/ui/`) built on RmlUi 6.3 with its SDL3
 platform and GL3 renderer backends, drawing into the same OpenGL context as the game (which is why that context is at
-least 3.3). Esc, Guide or Back + Start pauses the game and draws the last frame with the menu over it. Tabs: Display,
-Graphics, Audio, Game, Controls (a key list for now). Layout, filter, fullscreen and volume apply at once; renderer
-changes apply on resume. The menu edits a `Settings` struct (`game/src/settings.cpp`) saved as `key = value` lines in
+least 3.3). Esc, Guide or Back + Start opens it, drawn over every frame the presenter shows (`Presenter::overlay`): the game keeps
+running behind it, with neutral input and the sound on, because a paused console drops out of an online game. Tabs:
+Display, Graphics, Audio, Game, Controls (a key list for now). Every setting applies at once. The menu edits a `Settings` struct (`game/src/settings.cpp`) saved as `key = value` lines in
 `settings.ini` in the user data folder (simple enough that TOML can wait). The documents, fonts (OFL) and images are
 embedded in the executable by `cmake/EmbedFiles.cmake`. Keyboard and gamepad navigation are our own (a `focused` class
 on `.nav` rows) rather than RmlUi's spatial navigation, so left/right can change a value. The SDL_GPU render interface
 below comes with the flip-model presentation work (§5.5).
+
+**Threads.** The game runs on a thread of its own (`main()` starts it; 16 MB of stack); the main thread owns the window
+and does nothing but pump SDL events. Windows runs a modal loop in the window's thread while it is dragged or resized,
+which would stop the game for as long as it lasts, and a game that stops drops out of an online match. The game thread
+owns the OpenGL context, the runtime, the audio and the settings; it reads events with `SDL_PeepEvents` (which takes
+what the main thread pumped and pumps nothing itself) and sends the few window changes it makes (the title,
+fullscreen, text input) to the main thread with `main_thread::run` (`game/src/main_thread.hpp`). Never wait on that
+for something per frame: during a drag the main thread serves it only when the drag ends. At exit the game thread
+shuts down OpenGL, and the main thread then destroys the window.
 
 **Plan:**
 - **RmlUi** (HTML/CSS) renders through an SDL_GPU render interface and is fully controller-navigable.

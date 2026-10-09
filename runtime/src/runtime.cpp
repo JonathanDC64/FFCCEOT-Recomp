@@ -845,7 +845,8 @@ void RuntimeImpl::apply_video(VideoSettings s) {
     s.hud_scale = std::clamp(s.hud_scale, 50, 200);
     melonDS::FfccHudEdges = s.hud_edges && s.wide_extra;
     melonDS::FfccHudScale = s.hud_scale;
-    if (!video_applied_ || s.renderer != video_.renderer) {
+    // (A new width needs the renderer's textures made again: a new renderer does that.)
+    if (!video_applied_ || s.renderer != video_.renderer || s.wide_extra != video_.wide_extra) {
         if (s.renderer == Renderer::Software)
             n.SetRenderer(std::make_unique<melonDS::SoftRenderer>(n));
         else
