@@ -86,6 +86,7 @@ as fast as possible.
 - [docs/RESEARCH.md](docs/RESEARCH.md): the DS recomp landscape, prior art, and our analysis of the game
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): how the recompiler, runtime, renderer, UI and networking fit together
 - [docs/ROADMAP.md](docs/ROADMAP.md): milestones
+- [docs/PACKAGING.md](docs/PACKAGING.md): the setup wizard, releases and updates (design)
 - [docs/LEGAL.md](docs/LEGAL.md): what may and may not be committed
 
 ## Contributing

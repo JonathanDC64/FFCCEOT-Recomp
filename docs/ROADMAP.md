@@ -104,7 +104,8 @@ Milestones are ordered by dependency. Each ends with a demonstrable result. Desi
 - [x] RmlUi integration (OpenGL for now), FF crystal theme (original styling, OFL fonts)
 - [x] In-game settings menu (display, graphics, audio, game, controls list), settings persistence (`settings.ini`)
 - [ ] Menu: more pages (online, QoL, mods, about), reset game, button glyphs; RmlUi on SDL_GPU
-- [ ] Launcher/installer flow
+- [ ] Launcher/installer flow: the setup wizard, see [PACKAGING.md](PACKAGING.md)
+- [ ] Menu controls: drag the scrollbar, dropdowns that work with a controller, and the like
 - [ ] App icon: original artwork (no game assets) for the exe (Windows resource) and the window (`SDL_SetWindowIcon`)
 - [ ] ImGui dev tools (`--dev`)
 
@@ -135,10 +136,11 @@ Milestones are ordered by dependency. Each ends with a demonstrable result. Desi
 ## M8: QoL and release packaging
 **Result: a public pre-release.**
 - [ ] QoL features ([ARCHITECTURE.md §9](ARCHITECTURE.md#9-quality-of-life-backlog-initial))
-- [ ] Release mode: bundled libtcc install-time recompilation, caching, benchmarks
+- [ ] Release mode: install-time recompilation from the player's ROM with a bundled compiler, caching; the design and the
+      first benchmark are in [PACKAGING.md](PACKAGING.md)
 - [x] Crash dialog (restart, report, details) and a *Report an issue* button in the menu: a zip with the stack, system
       information, settings, log and a screenshot, and a filled-in GitHub issue form
-- [ ] Packaging (Windows first, then Linux/Steam Deck, macOS), updater (optional)
+- [ ] Packaging (Windows and Linux/Steam Deck first, then macOS), update check on by default
 - [ ] Release workflow: pushing a `v*` tag builds the game-code-free packages (runtime, recompiler, libtcc; the
       game is recompiled from the user's ROM on first run) and publishes a GitHub Release. Until then CI only builds,
       because a built `ffcc.exe` contains recompiled game code and must never be published
