@@ -56,9 +56,36 @@ The Wii's total size is only about 25% more than the DS's, and the tables are id
 in a different packing. Whether the Wii's textures and models are actually sharper is not established; that is the texture
 and model survey below.
 
-### Texture and model survey
+### Texture and model survey (2026-10-10)
 
-Not done yet. The plan: pair the resources of the two `coolres` files by id, and compare texture dimensions and formats and
-model vertex counts. A texture replacement would be keyed by the DS texture's content hash in the OpenGL renderer; better
-models would need a conversion from the Wii's GX display lists to the DS's geometry stream, which the DS GPU's polygon and
-vertex limits restrict.
+A first look, by scanning the two `coolres` files. Evidence so far points to the Wii game using **the same assets** as the DS
+game, converted to big-endian, not a sharper set. It is not a full proof: individual resources have not been paired and
+compared pixel by pixel.
+
+- The resource directory at the start of the file is the DS's, with each 16- and 32-bit field byte-swapped (6 of 8 words
+  of the first entries are equal after swapping, and the data at the same offsets is the same bytes swapped, for example
+  `14 00 64 00` against `00 14 00 64`).
+- The chunk types and counts match: `BMD0` models 1207 (DS) against 1211 (Wii), `BTX0` texture archives 99 against 100,
+  `TEX ` chunks 2104 against 2096 (1959 in `coolres`, 137 moved to `coolresn`), `SHP ` 980 against 979, `JNT ` 509 against
+  508, `ANIM` 2757 against 2755, and `GRID`, `GND `, `ITM ` 138, 138 and 137 on both.
+- The texture chunk headers are distributed the same way: for the three commonest formats 1670, 59 and 55 of the DS textures
+  against 1667, 59 and 55 on the Wii.
+- The Wii files together (`coolres` 30 MB plus `coolresn` 13 MB) are smaller than the DS's one (54 MB), so there is no room for
+  sharper textures; the per-language `coolres0-4` hold text.
+
+What would settle it: pair one texture and one model by id, decode both, and compare the pictures. The texture chunk layout
+differs between the two (the header fields are not a plain byte swap), so that needs the Wii layout worked out first. Until
+then, replacing textures or models does not look worth building; the cutscenes were the large difference.
+
+### Sound (2026-10-10)
+
+- **Cutscene sound.** The Wii cutscene files carry no audio (their THP header lists one component, video). The DS movie has its
+  sound inside the movie file. The Wii must play the cutscene sound from its sound archives, started by the game's own
+  scripts, so there is no ready-made Wii track to put under the Wii picture.
+- **Sound effects.** `se.sdat` plus `se.brstm` hold 575 mono streams (23 minutes in all, most at 16 kHz, the longest 34
+  seconds) and 553 sequences. The streams are numbered (`STRM_0531`, ...) with no names, so which one is which would have to be
+  found by comparing the waveforms with the DS's effects.
+- **Music.** `music.sdat` has 54 sequences and 54 banks, the same count as the DS's 54 `SSEQ`. The Wii holds the instrument
+  samples as DSP-ADPCM in RWAR archives. Whether they sound better than the DS's is not known.
+- To use any of it, the program would need an RSAR/RSEQ/RBNK/RWSD reader, a DSP-ADPCM decoder, a sequencer for the RSEQ
+  scripts, and a mapping from the DS's sound ids to the Wii's. The mapping can be made by correlating decoded audio.
