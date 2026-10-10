@@ -339,7 +339,7 @@ public:
     // playing: the sound and the timing are its).
     void update_wii_cutscene() {
         const cfie::MovieState m = cfie::movie();
-        if (settings.wii_cutscenes && m.playing && wii_cutscenes_.any()) {
+        if (wii::kEnabled && settings.wii_cutscenes && m.playing && wii_cutscenes_.any()) {
             const wii::Picture p = wii_cutscenes_.picture(m.id, m.frame);
             if (p.rgb) {
                 presenter_.set_picture(p.rgb, p.width, p.height, p.serial, {0, 16, 256, 128});

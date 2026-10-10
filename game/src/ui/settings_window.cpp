@@ -17,6 +17,7 @@
 
 #include "../report.hpp"
 #include "../settings.hpp"
+#include "../wii_cutscenes.hpp"
 #include "../setup.hpp"
 
 #include <SDL3/SDL.h>
@@ -338,57 +339,59 @@ SettingsWindow::SettingsWindow(bool prelaunch) : mPrelaunch(prelaunch) {
                         pane.add_rml("<br/><br/>The game is running: close the program first.");
                     }
                 });
-            leftPane.add_section("Wii cutscenes (optional)");
-            leftPane.register_control(
-                leftPane.add_child<StringButton>(StringButton::Props{
-                    .key = "Wii common key",
-                    .getValue = [] { return Rml::String(wii_setup::key_text()); },
-                    .setValue = [](Rml::String value) { wii_setup::set_key_text(std::move(value)); },
-                    .isDisabled = [running] { return running() || wii_setup::busy(); },
-                    .isModified = [] { return !wii_setup::key_text().empty(); },
-                    .maxLength = 64,
-                }),
-                rightPane, [](Pane& pane) {
-                    pane.add_rml("The Wii version of the game has its cutscenes in higher quality, and this program can use "
-                                 "them in place of the DS's. They are on the Wii game disc, which is encrypted: type the "
-                                 "Wii's common key here (32 hexadecimal digits). It is not included with this program, and "
-                                 "is kept only until you close it.");
-                });
-            leftPane.register_control(
-                leftPane
-                    .add_button(ControlledButton::Props{
-                        .text = "Set up from a Wii disc...",
-                        .isDisabled = [running] { return running() || wii_setup::busy() || rom_setup::busy(); },
-                    })
-                    .on_pressed([] {
-                        play_sound(kSoundItemChange);
-                        wii_setup::select_disc();
+            if (wii::kEnabled) {
+                leftPane.add_section("Wii cutscenes (optional)");
+                leftPane.register_control(
+                    leftPane.add_child<StringButton>(StringButton::Props{
+                        .key = "Wii common key",
+                        .getValue = [] { return Rml::String(wii_setup::key_text()); },
+                        .setValue = [](Rml::String value) { wii_setup::set_key_text(std::move(value)); },
+                        .isDisabled = [running] { return running() || wii_setup::busy(); },
+                        .isModified = [] { return !wii_setup::key_text().empty(); },
+                        .maxLength = 64,
                     }),
-                rightPane, [running](Pane& pane) {
-                    pane.add_rml("Choose your own dump of Final Fantasy Crystal Chronicles: Echoes of Time for the Wii "
-                                 "(a .wbfs or .iso file). The cutscenes are copied from it into the data folder, about 2 GB, "
-                                 "once. The disc itself is not kept.");
-                    if (running()) {
-                        pane.add_rml("<br/><br/>The game is running: close the program first.");
-                    }
-                });
-            leftPane.register_control(
-                leftPane.add_select_button({
-                    .key = "Wii cutscenes",
-                    .getValue =
-                        [] {
-                            const int n = wii_setup::installed_count();
-                            return n == 0 ? Rml::String("(none)") : Rml::String(std::format("{} of 38", n));
-                        },
-                }),
-                rightPane, [](Pane& pane) {
-                    pane.add_rml("How many of the game's 38 cutscenes are set up. The DS's own picture plays for any "
-                                 "that are missing. Turn the Wii cutscenes on or off in Settings, Game.");
-                    pane.add_button("Delete the extracted cutscenes").on_pressed([] {
-                        play_sound(kSoundClick);
-                        wii_setup::remove_installed();
+                    rightPane, [](Pane& pane) {
+                        pane.add_rml("The Wii version of the game has its cutscenes in higher quality, and this program can use "
+                                     "them in place of the DS's. They are on the Wii game disc, which is encrypted: type the "
+                                     "Wii's common key here (32 hexadecimal digits). It is not included with this program, and "
+                                     "is kept only until you close it.");
                     });
-                });
+                leftPane.register_control(
+                    leftPane
+                        .add_button(ControlledButton::Props{
+                            .text = "Set up from a Wii disc...",
+                            .isDisabled = [running] { return running() || wii_setup::busy() || rom_setup::busy(); },
+                        })
+                        .on_pressed([] {
+                            play_sound(kSoundItemChange);
+                            wii_setup::select_disc();
+                        }),
+                    rightPane, [running](Pane& pane) {
+                        pane.add_rml("Choose your own dump of Final Fantasy Crystal Chronicles: Echoes of Time for the Wii "
+                                     "(a .wbfs or .iso file). The cutscenes are copied from it into the data folder, about 2 GB, "
+                                     "once. The disc itself is not kept.");
+                        if (running()) {
+                            pane.add_rml("<br/><br/>The game is running: close the program first.");
+                        }
+                    });
+                leftPane.register_control(
+                    leftPane.add_select_button({
+                        .key = "Wii cutscenes",
+                        .getValue =
+                            [] {
+                                const int n = wii_setup::installed_count();
+                                return n == 0 ? Rml::String("(none)") : Rml::String(std::format("{} of 38", n));
+                            },
+                    }),
+                    rightPane, [](Pane& pane) {
+                        pane.add_rml("How many of the game's 38 cutscenes are set up. The DS's own picture plays for any "
+                                     "that are missing. Turn the Wii cutscenes on or off in Settings, Game.");
+                        pane.add_button("Delete the extracted cutscenes").on_pressed([] {
+                            play_sound(kSoundClick);
+                            wii_setup::remove_installed();
+                        });
+                    });
+            }
             leftPane.register_control(
                 leftPane.add_select_button({
                     .key = "Data folder",
@@ -634,10 +637,12 @@ SettingsWindow::SettingsWindow(bool prelaunch) : mPrelaunch(prelaunch) {
         bool_row(leftPane, rightPane, "Fast saving", SETTING(fast_saving),
             "The game writes its save a little at a time, a few seconds at the DS's pace. Fast saving writes it at "
             "once.");
-        bool_row(leftPane, rightPane, "Wii cutscenes", SETTING(wii_cutscenes),
-            "Plays the cutscenes from the Wii version of the game, in higher quality, in place of the DS's, when they "
-            "have been set up (Game files, before the game starts). The sound is the DS's. Takes effect the next time "
-            "the game starts.");
+        if (wii::kEnabled) {
+            bool_row(leftPane, rightPane, "Wii cutscenes", SETTING(wii_cutscenes),
+                "Plays the cutscenes from the Wii version of the game, in higher quality, in place of the DS's, when they "
+                "have been set up (Game files, before the game starts). The sound is the DS's. Takes effect the next time "
+                "the game starts.");
+        }
     });
 
     add_tab("Network", [this](Rml::Element* content) {

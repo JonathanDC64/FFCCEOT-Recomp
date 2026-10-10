@@ -31,8 +31,6 @@ Project page: **<https://jonathandc64.github.io/FFCCEOT-Recomp/>**
   as the stylus, and button names for Xbox, PlayStation and Nintendo controllers.
 - **Online multiplayer restored** through the community Wi-Fi Connection revival servers (Kaeru WFC, WiiLink WFC or your
   own), plus local wireless between instances on one PC (Windows).
-- **Wii cutscenes** (optional): if you also have a dump of the Wii version and know the Wii's common key, the game's 38
-  cutscenes can play from it in place of the DS's, in higher quality (see [docs/WII_ASSETS.md](docs/WII_ASSETS.md)).
 - **Quality of life**: skip the company logos, fast loading, fast saving, a faster emulated CPU, an in-game settings menu
   with a Final Fantasy look that works with mouse, keyboard and gamepad, and two presets (Original and Enhanced) to
   start from.
