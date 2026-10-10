@@ -14,6 +14,10 @@
 
 namespace wii {
 
+// The feature is switched off for now (its pieces stay in the build): nothing of it shows in the menus and no Wii picture is
+// drawn. Set to true to bring it back.
+constexpr bool kEnabled = false;
+
 // The folder the movies are extracted to, under the data folder: <data>/wii/movie/movieNNN.thp.
 std::filesystem::path movie_dir(const std::filesystem::path& data_dir);
 

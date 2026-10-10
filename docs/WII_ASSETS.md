@@ -4,6 +4,9 @@ The Wii release of Echoes of Time (disc ID `RFFEGD` for the USA release) runs th
 the Wii's PowerPC. This page records what its disc holds, how it compares with the DS ROM, and what the program does with
 it. Nothing from the disc is in this repository (see [LEGAL.md](LEGAL.md)); it is all read from the player's own dump.
 
+> **Status: switched off for now.** The code is in the build, but `wii::kEnabled` (`game/src/wii_cutscenes.hpp`) is `false`:
+> the menus do not show it and no Wii picture is drawn. Set it to `true` to bring the feature back.
+
 ## What the program does: Wii cutscenes
 
 The Wii has the same 38 cutscenes (`movie/movie001.mods` ... `movie038.mods`, the same numbering as the DS), as 384x192 video
