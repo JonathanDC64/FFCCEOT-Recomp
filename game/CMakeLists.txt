@@ -129,4 +129,8 @@ if(GIT_FOUND)
                   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR} OUTPUT_VARIABLE FFCC_GIT_REV OUTPUT_STRIP_TRAILING_WHITESPACE
                   ERROR_QUIET)
 endif()
+# A build of exactly the release tag is just the version, with no revision after it.
+if(FFCC_GIT_REV STREQUAL "v${PROJECT_VERSION}-alpha")
+  set(FFCC_GIT_REV "")
+endif()
 target_compile_definitions(ffcc PRIVATE FFCC_VERSION="${PROJECT_VERSION}-alpha" FFCC_GIT_REV="${FFCC_GIT_REV}")
