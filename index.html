@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FFCCEOT-Recomp</title>
+<meta name="description" content="A native PC port of Final Fantasy Crystal Chronicles: Echoes of Time, made by statically recompiling the game. Bring your own copy of the game; nothing of it is included.">
+<meta name="theme-color" content="#0b1430">
+<meta property="og:title" content="FFCCEOT-Recomp">
+<meta property="og:description" content="A native PC port of Final Fantasy Crystal Chronicles: Echoes of Time, made by statically recompiling the game. Windows and Linux.">
+<meta property="og:type" content="website">
+<meta property="og:image" content="https://jonathandc64.github.io/FFCCEOT-Recomp/img/start.webp">
+<link rel="icon" type="image/png" href="img/favicon.png">
+<link rel="apple-touch-icon" href="img/icon.png">
+<link rel="stylesheet" href="style.css">
+<script src="script.js" defer></script>
+</head>
+<body>
+
+<header class="top">
+  <a class="brand" href="#top"><img src="img/favicon.png" alt="" width="28" height="28"><span>FFCCEOT-Recomp</span></a>
+  <nav>
+    <a href="#how">How it works</a>
+    <a href="#features">Features</a>
+    <a href="#screens">Screenshots</a>
+    <a href="#faq">FAQ</a>
+    <a href="https://github.com/JonathanDC64/FFCCEOT-Recomp">GitHub</a>
+  </nav>
+</header>
+
+<main id="top">
+
+<section class="hero">
+  <img class="hero-icon" src="img/icon.png" alt="" width="96" height="96">
+  <p class="badge">Alpha</p>
+  <h1>Final Fantasy Crystal Chronicles<span>Echoes of Time, on PC</span></h1>
+  <p class="lead">A native PC port of the Nintendo DS game, made by statically recompiling it: the game's ARM code is
+    translated to C and compiled on your PC, not emulated. Plug and play on Windows and Linux. You bring your own copy
+    of the game; nothing of it is included.</p>
+
+  <div class="downloads">
+    <a class="button" id="dl-windows" href="https://github.com/JonathanDC64/FFCCEOT-Recomp/releases">
+      <strong>Download for Windows</strong>
+      <small data-meta>Windows 10/11, 64-bit (zip)</small>
+    </a>
+    <a class="button" id="dl-linux" href="https://github.com/JonathanDC64/FFCCEOT-Recomp/releases">
+      <strong>Download for Linux</strong>
+      <small data-meta>64-bit, glibc 2.35+ (AppImage)</small>
+    </a>
+  </div>
+  <p class="release-line"><span id="release-line">See the <a href="https://github.com/JonathanDC64/FFCCEOT-Recomp/releases">releases page</a> for the newest alpha.</span></p>
+</section>
+
+<section class="wide shot-hero">
+  <figure>
+    <img src="img/start.webp" width="1280" height="600" alt="The start screen: the title, with Select ROM, Settings and Quit buttons over a crystal backdrop.">
+  </figure>
+</section>
+
+<section id="how">
+  <h2>How it works</h2>
+  <ol class="steps">
+    <li>
+      <h3>Download</h3>
+      <p>Unzip the Windows package to a folder you can write to (not Program Files), or make the Linux
+        <code>.AppImage</code> executable and run it. Nothing else needs to be installed.</p>
+    </li>
+    <li>
+      <h3>Choose your ROM</h3>
+      <p>Pick your own dump of the game, or drop it on the window. It is checked, and the game is built on your PC with
+        the compiler that comes in the package. That takes about a minute, once.</p>
+    </li>
+    <li>
+      <h3>Play</h3>
+      <p>Choose a preset in the Welcome window (<em>Enhanced</em> is the recommended way to play) and press Play.</p>
+    </li>
+  </ol>
+
+  <div class="panel">
+    <h3>You need your own copy of the game</h3>
+    <p>This project contains <strong>no</strong> game code or data. The USA version is supported:</p>
+    <dl class="rom">
+      <dt>Dump</dt><dd><code>Final Fantasy Crystal Chronicles - Echoes of Time (USA) (En,Fr,Es).nds</code></dd>
+      <dt>SHA-1</dt><dd><code>1df23d5a3a655bdd587c360b581202931d0f66e1</code></dd>
+    </dl>
+    <p class="muted">Other regions are planned later. See <a href="https://github.com/JonathanDC64/FFCCEOT-Recomp/blob/main/docs/LEGAL.md">how the project stays clear of game data</a>.</p>
+  </div>
+</section>
+
+<section id="features">
+  <h2>Features</h2>
+  <div class="grid">
+    <article>
+      <h3>Single-screen play</h3>
+      <p>The second screen is a touchable picture-in-picture. Or choose main + side, stacked, side by side, or a window of
+        its own. Swap the screens at any time.</p>
+    </article>
+    <article>
+      <h3>High resolution</h3>
+      <p>Up to 16x the DS resolution (4K and beyond), matched to your window, with nearest, linear and sharp scaling
+        filters. The exact DS software renderer is kept as the reference.</p>
+    </article>
+    <article>
+      <h3>Smoother picture</h3>
+      <p>Texture smoothing removes the blocky look of the DS textures and the jagged edges of sprites in 3D, and stable
+        textures stop ground textures from warping.</p>
+    </article>
+    <article>
+      <h3>Smooth motion</h3>
+      <p>The game draws its 3D at 30 fps. Frame interpolation shows it at 60 fps or at your display's refresh rate (144 Hz
+        and more), with frame pacing for G-Sync and FreeSync displays.</p>
+    </article>
+    <article>
+      <h3>Widescreen</h3>
+      <p>16:9, 16:10, 21:9 and 32:9, with the health and magic bars at the screen edges, and resizable.</p>
+    </article>
+    <article>
+      <h3>Modern controls</h3>
+      <p>Full gamepad play with no touch screen needed, analog movement, a radial on the right stick to pick the spell
+        element, rebinding, and button names for Xbox, PlayStation and Nintendo controllers.</p>
+    </article>
+    <article>
+      <h3>Online multiplayer</h3>
+      <p>Restored through the community Wi-Fi Connection revival servers (Kaeru WFC, WiiLink WFC or your own), plus local
+        wireless between instances on one PC (Windows).</p>
+    </article>
+    <article>
+      <h3>Quality of life</h3>
+      <p>Skip the company logos, fast loading and saving, and an in-game settings menu with a Final Fantasy look that works
+        with mouse, keyboard and gamepad. Two presets, Original and Enhanced, to start from.</p>
+    </article>
+    <article>
+      <h3>Problem reports</h3>
+      <p><em>Report an issue</em> collects the version, settings, a recent log and a screenshot, with personal paths
+        removed, and opens a prefilled GitHub issue.</p>
+    </article>
+  </div>
+</section>
+
+<section id="screens" class="wide">
+  <div class="narrow">
+    <h2>The settings menu</h2>
+    <p class="muted">Press F1 in the game, or R + Start on a gamepad. It works with the mouse, the keyboard and a
+      gamepad, and the game keeps running behind it so online play stays in sync.</p>
+  </div>
+  <div class="shots">
+    <figure>
+      <img src="img/video.webp" width="1120" height="622" loading="lazy" alt="The Video tab of the settings: layout, resolution, filters and frame rate choices.">
+      <figcaption><strong>Video</strong> Layouts, resolution, filters, widescreen and 3D frame rate.</figcaption>
+    </figure>
+    <figure>
+      <img src="img/input.webp" width="1120" height="622" loading="lazy" alt="The Input tab of the settings: stick dead zone, analog movement and the spell radial.">
+      <figcaption><strong>Input</strong> Rebinding, analog movement and the spell radial.</figcaption>
+    </figure>
+    <figure>
+      <img src="img/network.webp" width="1120" height="622" loading="lazy" alt="The Network tab of the settings: console name, Wi-Fi connection server and input buffer.">
+      <figcaption><strong>Network</strong> Pick the Wi-Fi Connection server for online play.</figcaption>
+    </figure>
+  </div>
+  <p class="narrow muted small">Screenshots show this project's own interface only; the game itself is not shown here.</p>
+</section>
+
+<section id="alpha">
+  <h2>Alpha notes</h2>
+  <p>This is an early build. It boots and plays from the title screen into the field, with sound, saves and online play, but
+    it has been played through the opening areas, not the whole game. Please report problems from the in-game menu or on
+    the <a href="https://github.com/JonathanDC64/FFCCEOT-Recomp/issues">issue tracker</a>.</p>
+  <div class="two">
+    <div class="panel">
+      <h3>Experimental</h3>
+      <p>Features with a warning icon in the settings have had the least testing: widescreen and HUD placement, 3D at 60 fps
+        and at your display's refresh rate, frame pacing, stable and smoothed textures, analog movement in multiplayer, and
+        everything online.</p>
+    </div>
+    <div class="panel">
+      <h3>Known gaps</h3>
+      <ul>
+        <li>No crash dialog on Linux yet (logs and problem reports work).</li>
+        <li>Local wireless between instances on one PC works on Windows only.</li>
+        <li>Only the USA version is supported.</li>
+        <li>Not played through the whole game.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section id="faq">
+  <h2>Questions</h2>
+  <details>
+    <summary>Windows or my antivirus warns about the program. Is it safe?</summary>
+    <p>The builds are unsigned, so Windows SmartScreen or an antivirus may warn about the program, and about the game
+      module it builds on your PC the first time (choose <em>More info</em>, then <em>Run anyway</em>). The whole source is
+      public, and the release lists checksums (<code>SHA256SUMS.txt</code>) so you can check your download.</p>
+  </details>
+  <details>
+    <summary>Is it legal to build the game from my own ROM?</summary>
+    <p>The project includes no game code, art or sound: only the tools that turn <em>your</em> copy of the game into a PC
+      program on <em>your</em> PC. Nothing generated from the game is ever published. The details are in
+      <a href="https://github.com/JonathanDC64/FFCCEOT-Recomp/blob/main/docs/LEGAL.md">docs/LEGAL.md</a>. This is not legal advice.</p>
+  </details>
+  <details>
+    <summary>Does it run on Linux and the Steam Deck?</summary>
+    <p>Yes: make the AppImage executable (<code>chmod +x</code>) and run it. It needs glibc 2.35 or newer. On the Steam Deck,
+      run it from desktop mode. Local wireless between instances is not done on Linux yet.</p>
+  </details>
+  <details>
+    <summary>Where are my saves and settings?</summary>
+    <p>Windows: <code>%APPDATA%\FFCCEOT-Recomp\EchoesOfTime</code>. Linux: <code>~/.local/share/FFCCEOT-Recomp/EchoesOfTime</code>.
+      Put a file named <code>portable.txt</code> next to the program (next to the <code>.AppImage</code> on Linux) to keep
+      them in a <code>data</code> folder beside it instead.</p>
+  </details>
+  <details>
+    <summary>What are the controls?</summary>
+    <p>Keyboard: arrow keys, X / Z / S / A for A / B / X / Y, Q / W for L / R, Enter and Right Shift for Start and Select, and
+      the mouse as the stylus. A gamepad needs no touch screen. Every button can be rebound in the settings. F1 opens the
+      menu, F2 swaps the screens and F11 toggles fullscreen.
+      <a href="https://github.com/JonathanDC64/FFCCEOT-Recomp#controls">All the controls and hotkeys</a>.</p>
+  </details>
+  <details>
+    <summary>How do I report a problem?</summary>
+    <p>Use <em>Report an issue</em> in the in-game menu: it collects the version, settings, a recent log and a screenshot,
+      with personal paths removed, and opens a prefilled GitHub issue. Or
+      <a href="https://github.com/JonathanDC64/FFCCEOT-Recomp/issues">open an issue yourself</a>.</p>
+  </details>
+  <details>
+    <summary>How does a recompiled game differ from an emulator?</summary>
+    <p>The game's ARM code is translated to C ahead of time and compiled to native code, instead of being interpreted while
+      you play. The rest of the DS (graphics, sound, wireless) runs on parts of the melonDS emulator. The
+      <a href="https://github.com/JonathanDC64/FFCCEOT-Recomp/blob/main/docs/ARCHITECTURE.md">architecture notes</a> explain the
+      details.</p>
+  </details>
+</section>
+
+</main>
+
+<footer>
+  <p>
+    <a href="https://github.com/JonathanDC64/FFCCEOT-Recomp">Source code</a> ·
+    <a href="https://github.com/JonathanDC64/FFCCEOT-Recomp/releases">Releases</a> ·
+    <a href="https://github.com/JonathanDC64/FFCCEOT-Recomp/issues">Issues</a> ·
+    <a href="https://github.com/JonathanDC64/FFCCEOT-Recomp/tree/main/docs">Documentation</a> ·
+    <a href="https://github.com/JonathanDC64/FFCCEOT-Recomp/blob/main/LICENSE">GPL-3.0</a>
+  </p>
+  <p class="small">An unofficial fan project. Not affiliated with or endorsed by Square Enix or Nintendo. Final Fantasy,
+    Crystal Chronicles and Echoes of Time are trademarks of their owners. The site uses no cookies, tracking or third-party
+    requests; the download buttons ask GitHub for the newest release when the page opens. Fonts: Cinzel and Alegreya Sans
+    (SIL Open Font License), served from this site.</p>
+</footer>
+
+</body>
+</html>
