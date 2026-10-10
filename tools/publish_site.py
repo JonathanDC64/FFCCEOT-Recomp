@@ -27,7 +27,12 @@ BRANCH = "gh-pages"
 
 
 def git(*args: str, cwd: Path = REPO, check: bool = True, text: bool = True) -> subprocess.CompletedProcess:
-    return subprocess.run(["git", *args], cwd=cwd, check=check, capture_output=True, text=text)
+    r = subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=text)
+    if check and r.returncode:
+        err = r.stderr if text else r.stderr.decode(errors="replace")
+        out = r.stdout if text else ""
+        sys.exit("git " + " ".join(args[:3]) + f" failed ({r.returncode}):\n{out}{err}")
+    return r
 
 
 def main() -> int:
@@ -74,7 +79,14 @@ def main() -> int:
             print(f"{BRANCH} is already up to date with site/ at {rev}")
             return 0
         msg = f"Publish site from {rev}\n\nCo-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>\n"
-        git("-c", f"user.name={name}", "-c", f"user.email={email}", "commit", "-q", "-m", msg, cwd=wt)
+        # The repo's pre-commit hook (the game-data guard) points at tools/, which this branch does not have, so the guard is
+        # run here on the files instead, and the hook is left out of this one commit.
+        guard = subprocess.run([sys.executable, str(REPO / "tools" / "check_no_game_data.py"),
+                                *[str(wt / f) for f in git("ls-files", cwd=wt).stdout.split()]], cwd=REPO)
+        if guard.returncode:
+            sys.exit("the copyright guard rejected site/: not publishing")
+        git("-c", "core.hooksPath=" + str(tmp), "-c", f"user.name={name}", "-c", f"user.email={email}",
+            "commit", "-q", "-m", msg, cwd=wt)
         files = git("ls-files", cwd=wt).stdout.split()
         print(f"{BRANCH}: committed {len(files)} files from site/ at {rev}")
         if args.dry_run:
