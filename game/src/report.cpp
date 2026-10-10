@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -427,10 +428,22 @@ void start_log() {
     std::error_code ec;
     const auto dir = g_data_dir / "logs";
     std::filesystem::create_directories(dir, ec);
-    const auto path = dir / "ffcc.log";
-    // (another instance running at the same time keeps the log: this one has none)
+    auto path = dir / "ffcc.log";
     std::filesystem::rename(path, dir / "ffcc.prev.log", ec);
     g_log_file = _wfsopen(path.c_str(), L"wb", _SH_DENYWR);
+    if (!g_log_file) {
+        // Another instance running at the same time keeps ffcc.log: this one writes its own, which its problem report
+        // quotes. (Those of finished instances are cleared away after a day.)
+        const auto now = std::filesystem::file_time_type::clock::now();
+        for (const auto& e : std::filesystem::directory_iterator(dir, ec)) {
+            const std::wstring name = e.path().filename().wstring();
+            if (name.rfind(L"ffcc.", 0) == 0 && name != L"ffcc.log" && name != L"ffcc.prev.log" &&
+                now - e.last_write_time(ec) > std::chrono::hours(24))
+                std::filesystem::remove(e.path(), ec);
+        }
+        path = dir / (L"ffcc." + std::to_wstring(GetCurrentProcessId()) + L".log");
+        g_log_file = _wfsopen(path.c_str(), L"wb", _SH_DENYWR);
+    }
     if (!g_log_file) return;
     HANDLE read = nullptr, write = nullptr;
     if (!CreatePipe(&read, &write, nullptr, 0)) {

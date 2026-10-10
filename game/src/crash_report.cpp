@@ -19,6 +19,7 @@
 #include <vector>
 
 #include "crash_dialog.hpp"
+#include "ntr/runtime.hpp"
 #include "report.hpp"
 
 namespace crash_report {
@@ -205,7 +206,10 @@ LONG WINAPI on_unhandled(EXCEPTION_POINTERS* info) {
 void on_abort(int) {
     CONTEXT context{};
     RtlCaptureContext(&context);
-    report("abort (see the message above, e.g. \"fatal: ...\")", &context, nullptr);
+    char text[256];
+    if (const char* fatal = ntr::last_fatal(); *fatal) std::snprintf(text, sizeof text, "fatal: %s", fatal);
+    else std::snprintf(text, sizeof text, "abort (see the message above, e.g. \"fatal: ...\")");
+    report(text, &context, nullptr);
     show_dialog();
 }
 

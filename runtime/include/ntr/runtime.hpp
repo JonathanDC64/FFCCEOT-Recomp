@@ -159,4 +159,7 @@ public:
     virtual unsigned render_between(double x) = 0;
 };
 
+// The message of the last fatal error ("" if there was none). A crash report quotes it: the log may not have it yet.
+const char* last_fatal();
+
 }  // namespace ntr
