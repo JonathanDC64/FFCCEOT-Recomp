@@ -91,10 +91,13 @@ public:
         // The window's close button asks first (ui::request_quit_confirm); SDL's own QUIT after the last window closes
         // must not bypass that. A QUIT is then only the system's (logoff, Ctrl+C).
         SDL_SetHint(SDL_HINT_QUIT_ON_LAST_WINDOW_CLOSE, "0");
-        if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMEPAD)) {
+        if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMEPAD)) {
             std::fprintf(stderr, "SDL_Init failed: %s\n", SDL_GetError());
             return false;
         }
+        // Sound is optional: a Linux system without ALSA or PulseAudio libraries still plays, silently.
+        if (!SDL_InitSubSystem(SDL_INIT_AUDIO))
+            std::fprintf(stderr, "no sound: %s\n", SDL_GetError());
         const video::Layout l = settings.layout.layout;
         const bool wide = l == video::Layout::Single || l == video::Layout::MainSide || l == video::Layout::Windows;
         const bool stacked = l == video::Layout::Stacked;
