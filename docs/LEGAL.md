@@ -21,12 +21,18 @@ Square Enix or Nintendo. It contains **no** game code, assets, or data. To use i
 - Save files, screenshots of copyrighted UI as test fixtures, or golden images rendered from game data. (Test scenarios
   live in `scenarios/`, which is git-ignored; a recording is text and can be shared, but only works with the save it was made from.)
 - Links to ROM downloads.
+- **Anything from the Wii version**: a disc image (`.wbfs`, `.iso`), the cutscenes (`movie*.mods`, which are THP video there, or
+  `*.thp`), or anything converted from them. The optional Wii cutscene feature works only on the player's own disc dump,
+  on their machine, into their own data folder (see [WII_ASSETS.md](WII_ASSETS.md)).
+- **The Wii common key**, or any other console key. The disc's game partition is encrypted and the program decrypts it with a key
+  the player types in; the key is never in the source, a release, a test fixture or a log, and is not stored on disk by the program.
+  (The tests build a disc of their own with a made-up key.)
 
 ## How this is enforced
 
 1. `.gitignore` excludes ROMs, extraction folders, build output and asset file types.
 2. `tools/check_no_game_data.py` scans tracked or staged files for ROM/NDS headers, known game file signatures (MODS, SDAT, BMD0,
-   BTX0, …), oversized binaries, and generated recompiler output markers. It runs in CI on every push and PR, and can be
+   BTX0, THP, WBFS, …), oversized binaries, and generated recompiler output markers. It runs in CI on every push and PR, and can be
    installed as a pre-commit hook (`python tools/check_no_game_data.py --install-hook`).
 3. CI never receives a ROM. Tests that need game data run only on developers' machines.
 

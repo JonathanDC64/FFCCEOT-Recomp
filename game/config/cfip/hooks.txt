@@ -49,3 +49,10 @@ main 02028104 before cfie_perspective_aspect
 # Spell element: the field HUD's pad updater, once per tick while the spell bar is live. R + D-pad changes the element
 # through the game's action dispatcher (0x020C68A0); the frontend's spell requests make the same call from here.
 main 020c6c58 before cfie_spell_pad
+
+# Cutscenes: the game's movie object (movie/movie%03d.mods). Its open takes the movie's number (r1; --force-movie changes it),
+# its update calls the frame-count getter right after it has decoded a frame, and its close ends the movie. The frontend can
+# show another picture of the same movie (Wii assets).
+main 020ace64 before cfie_on_movie_open
+main 020acef0 before cfie_on_movie_frame
+main 020aced0 before cfie_on_movie_close

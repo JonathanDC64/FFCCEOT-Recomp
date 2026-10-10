@@ -58,6 +58,7 @@ struct Settings {
     // Game
     GameLanguage language = GameLanguage::English;
     bool skip_logos = true;
+    bool wii_cutscenes = true;  // cutscenes from the Wii version's files, when they are set up (see wii_cutscenes.hpp)
     bool fast_loading = true;  // cartridge reads without the card's delays
     bool fast_saving = true;   // save reads and writes at once instead of at the DS's pace
     int cpu_speed = 4;         // ARM9 clock: 1, 2 or 4 times the DS's

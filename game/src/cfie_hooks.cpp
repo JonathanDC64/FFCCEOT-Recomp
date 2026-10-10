@@ -19,6 +19,8 @@ AnalogMovement analog_movement = AnalogMovement::SinglePlayer;
 uint16_t aspect = 0x1555;
 Stick stick;
 bool log_sounds = false;
+bool log_movies = false;
+int force_movie = 0;
 }  // namespace cfie
 
 namespace {
@@ -103,6 +105,10 @@ std::atomic<uint32_t> sound_head{0}, sound_tail{0};
 std::atomic<int> spell_request{-1};
 std::atomic<int> spell_now{-1};
 std::atomic<uint64_t> spell_tick_count{0};
+
+// The cutscene being played, packed for one atomic read: bit 63 playing, bits 32..46 the movie's number, the low 32 bits the
+// frame last decoded.
+std::atomic<uint64_t> movie_now{0};
 
 int64_t now_ms() {
     return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch())
@@ -193,6 +199,33 @@ extern "C" void cfie_spell_pad(NtrCpu* c) {
     c->r[1] = uint32_t(want + 1);
     ntr_call(c, A->trigger_action | 1);
     c->r[0] = r0, c->r[1] = r1, c->r[2] = r2, c->r[3] = r3, c->r[14] = lr;
+}
+
+namespace cfie {
+MovieState movie() {
+    const uint64_t v = movie_now.load(std::memory_order_relaxed);
+    return {(v >> 63) != 0, int((v >> 32) & 0x7FFF), int(uint32_t(v))};
+}
+}  // namespace cfie
+
+// 0x020ACE48 (the movie object's open: r0 = the object, r1 = the movie's number).
+extern "C" void cfie_on_movie_open(NtrCpu* c) {
+    if (cfie::force_movie > 0) c->r[1] = uint32_t(cfie::force_movie);
+}
+
+// 0x020ACED4 (the movie object's frame count): the movie's update calls it right after it has decoded a frame and counted
+// it (+0x50 is the number of frames decoded, +0x58 the movie's number: its file is movie/movie%03d.mods).
+extern "C" void cfie_on_movie_frame(NtrCpu* c) {
+    const uint32_t decoded = ntr_rd32(c, c->r[0] + 0x50), id = ntr_rd32(c, c->r[0] + 0x58);
+    if (decoded == 0) return;
+    if (cfie::log_movies) std::fprintf(stderr, "movie %u: frame %u\n", id, decoded - 1);
+    movie_now.store((uint64_t(1) << 63) | (uint64_t(id & 0x7FFF) << 32) | (decoded - 1), std::memory_order_relaxed);
+}
+
+// 0x020ACEB4 (the movie object's close): the movie is over, or the object is about to open another.
+extern "C" void cfie_on_movie_close(NtrCpu*) {
+    if (cfie::log_movies && (movie_now.load(std::memory_order_relaxed) >> 63)) std::fprintf(stderr, "movie: closed\n");
+    movie_now.store(0, std::memory_order_relaxed);
 }
 
 // 0x02076FD0: the sound manager starts a sound effect (r1 = the manager, r2 = its id).
@@ -385,6 +418,9 @@ void* cfie::find_hook(const char* name) {
         {"cfie_perspective_aspect", reinterpret_cast<void*>(&cfie_perspective_aspect)},
         {"cfie_player_animation_step", reinterpret_cast<void*>(&cfie_player_animation_step)},
         {"cfie_card_backup_request", reinterpret_cast<void*>(&cfie_card_backup_request)},
+        {"cfie_on_movie_open", reinterpret_cast<void*>(&cfie_on_movie_open)},
+        {"cfie_on_movie_frame", reinterpret_cast<void*>(&cfie_on_movie_frame)},
+        {"cfie_on_movie_close", reinterpret_cast<void*>(&cfie_on_movie_close)},
         {"cfie_on_netcheck", reinterpret_cast<void*>(&cfie_on_netcheck)},
         {"cfie_guest_inputs_to_send", reinterpret_cast<void*>(&cfie_guest_inputs_to_send)},
         {"cfie_set_online_timing", reinterpret_cast<void*>(&cfie_set_online_timing)},

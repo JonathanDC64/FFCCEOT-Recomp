@@ -51,6 +51,21 @@ void request_spell(int element);
 int spell_element();
 uint64_t spell_ticks();
 
+// The cutscene the game is playing (its movie object, movie/movie%03d.mods): which one (the number in the file name) and the
+// number of the frame the game has decoded last (0 is the first). The picture on the DS's screen is that frame. Safe to
+// call from any thread; `playing` is false between movies.
+struct MovieState {
+    bool playing = false;
+    int id = 0;
+    int frame = 0;
+};
+MovieState movie();
+
+// Logs each frame of a cutscene the game decodes (to stderr), to learn the numbers (--log-movies).
+extern bool log_movies;
+// Debugging: every cutscene the game opens is this movie instead (0: as the game asks).
+extern int force_movie;
+
 // Picks the release the hooks' addresses are for: "CFIE" (USA, the default) or "CFIP" (Europe). False for any other
 // code. Call it before the game starts.
 bool select_release(const std::string& game_code);

@@ -231,11 +231,44 @@ bool Presenter::init(SDL_Window* window, bool allow_flip_model) {
     return true;
 }
 
+void Presenter::set_picture(const std::uint8_t* rgb, int w, int h, std::uint64_t serial, const Rect& ds) {
+    picture_ds_ = ds;
+    picture_on_ = rgb && w > 0 && h > 0;
+    if (!picture_on_ || serial == picture_serial_) return;
+    if (!picture_tex_) {
+        GLuint t;
+        glGenTextures(1, &t);
+        picture_tex_ = t;
+    }
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D_ARRAY, picture_tex_);
+    glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
+    glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    if (w != picture_w_ || h != picture_h_) {
+        glTexImage3D(GL_TEXTURE_2D_ARRAY, 0, GL_RGB8, w, h, 1, 0, GL_RGB, GL_UNSIGNED_BYTE, rgb);
+        glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        picture_w_ = w;
+        picture_h_ = h;
+    } else {
+        glTexSubImage3D(GL_TEXTURE_2D_ARRAY, 0, 0, 0, 0, w, h, 1, GL_RGB, GL_UNSIGNED_BYTE, rgb);
+    }
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+    picture_serial_ = serial;
+}
+
 void Presenter::shutdown() {
     if (!context_) return;
     close_second();
     flip_.reset();
     GLuint t = soft_tex_, b = vbo_, a = vao_;
+    if (picture_tex_) {
+        GLuint p = picture_tex_;
+        glDeleteTextures(1, &p);
+        picture_tex_ = 0;
+        picture_w_ = picture_h_ = 0;
+    }
     if (t) glDeleteTextures(1, &t);
     if (b) glDeleteBuffers(1, &b);
     if (a) glDeleteVertexArrays(1, &a);
@@ -386,10 +419,33 @@ void Presenter::draw_views(unsigned target, int width, int height, const ScreenV
             glUniform2f(u_out_size_, v.screen == 1 && inner < 1.0f ? pr.w / inner : pr.w, pr.h);
             glUniform1f(u_opacity_, v.opacity);
             glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+            if (picture_on_ && picture_tex_ && v.screen == 0) draw_picture(r, v.opacity, filter, width, height, frame);
             glDisable(GL_BLEND);
         }
         glUseProgram(0);
     }
+}
+
+// The set_picture picture over the part of the top screen (drawn into `r`) that it covers.
+void Presenter::draw_picture(const Rect& r, float opacity, Filter filter, int width, int height, const ntr::Frame* frame) {
+    // The widescreen renderer's output is wider than the DS screen: its middle part is the 256 pixels the game draws.
+    const bool wide = frame->wide_extra > 0 && !frame->top;
+    const float inner = wide ? float(kScreenW) / (kScreenW + 2 * frame->wide_extra) : 1.0f;
+    const float fx0 = (1 - inner) / 2 + inner * picture_ds_.x / kScreenW, fx1 = (1 - inner) / 2 + inner * (picture_ds_.x + picture_ds_.w) / kScreenW;
+    const float fy0 = picture_ds_.y / kScreenH, fy1 = (picture_ds_.y + picture_ds_.h) / kScreenH;
+    const Rect d{r.x + r.w * fx0, r.y + r.h * fy0, r.w * (fx1 - fx0), r.h * (fy1 - fy0)};
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D_ARRAY, picture_tex_);
+    const GLint f = filter == Filter::Nearest ? GL_NEAREST : GL_LINEAR;
+    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MIN_FILTER, f);
+    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_MAG_FILTER, f);
+    glUniform2f(u_uv_x_, 0.0f, 1.0f);
+    glUniform4f(u_dest_, d.x / width * 2 - 1, 1 - d.y / height * 2, (d.x + d.w) / width * 2 - 1, 1 - (d.y + d.h) / height * 2);
+    glUniform1f(u_layer_, 0.0f);
+    glUniform2f(u_out_size_, d.w, d.h);
+    glUniform1f(u_opacity_, opacity);
+    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+    glBindTexture(GL_TEXTURE_2D_ARRAY, frame->top ? soft_tex_ : frame->gl_texture);  // (the screens' texture, for the next view)
 }
 
 bool Presenter::open_second(SDL_Window* window, bool allow_flip_model) {

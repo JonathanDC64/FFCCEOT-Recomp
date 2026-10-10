@@ -16,6 +16,7 @@ of a release package.
 | Cinzel, Alegreya Sans | Menu fonts | SIL Open Font Licence 1.1 |
 | Material Symbols (Rounded) | Menu icons | Apache-2.0 |
 | UI code adapted from [Dusklight](https://github.com/TwilitRealm/dusklight) | The start screen and settings windows | CC0 |
+| [stb_image](https://github.com/nothings/stb) | Decoding the JPEG frames of the optional Wii cutscenes | Public domain (or MIT) |
 | [LLVM](https://llvm.org) (clang, lld and clang's headers) | Builds the game on your PC from your ROM | Apache-2.0 with LLVM exceptions |
 
 The Wi-Fi Connection features use community revival servers (Kaeru WFC and WiiLink WFC); they are not part of this project.
