@@ -16,7 +16,7 @@ Project page: **<https://jonathandc64.github.io/FFCCEOT-Recomp/>**
 - **Plug and play.** Download, run, choose your own ROM. The game is built on your PC in about a minute, once.
   Nothing else to install. Windows and Linux (AppImage).
 - **USA and European versions**: both dumps are supported (checked by SHA-1, each with its own save), and a language
-  setting (English, French, German, Spanish) picks the game's text language.
+  setting picks the game's text language: English, French and Spanish in both versions, German in the European one.
 - **Single-screen play** by default, with the second screen as a touchable picture-in-picture. Other layouts:
   main + side, stacked, side by side, or the second screen in a window of its own. Swap the screens at any time.
 - **High resolution**: the OpenGL renderer draws at up to 16x the DS resolution (4K and beyond), matched to your window
@@ -48,7 +48,8 @@ it, and builds everything it needs locally.
 | Europe | CFIP | `Final Fantasy Crystal Chronicles - Echoes of Time (Europe) (En,Fr,De,Es).nds` | `18f7004f74c83feba40f003641ec00571e52a301` |
 
 The Japanese version is not supported. Each version keeps its own save (`cfie.sav`, `cfip.sav`); a USA save also loads in
-the European game. The game's language (Settings, Game) is English by default; German is in the European version only.
+the European game. The game's language (Settings, Game) is English by default; the USA version has English, French and Spanish, the
+European one adds German.
 
 ## Install and play
 
