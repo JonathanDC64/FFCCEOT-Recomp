@@ -29,6 +29,8 @@ std::string crc32_hex(uint32_t crc) {
 static const KnownRom kKnownRoms[] = {
     {"1df23d5a3a655bdd587c360b581202931d0f66e1", "86c071f1", "CFIE", "USA",
      "Final Fantasy Crystal Chronicles - Echoes of Time (USA) (En,Fr,Es)", true},
+    {"18f7004f74c83feba40f003641ec00571e52a301", "2dbad135", "CFIP", "Europe",
+     "Final Fantasy Crystal Chronicles - Echoes of Time (Europe) (En,Fr,De,Es)", true},
 };
 
 std::span<const KnownRom> known_roms() { return kKnownRoms; }

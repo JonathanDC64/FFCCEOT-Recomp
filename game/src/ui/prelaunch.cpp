@@ -216,7 +216,7 @@ void Prelaunch::update() {
     if (mRomDetail != nullptr) {
         if (status.state == setup::State::Ready || can_rebuild()) {
             set_display(mRomDetail, Rml::Style::Display::Block);
-            set_text_content(mRomDetail, setup::expected_rom().name);
+            set_text_content(mRomDetail, !status.rom_name.empty() ? status.rom_name : setup::expected_roms().front().name);
         } else {
             set_display(mRomDetail, Rml::Style::Display::None);
         }

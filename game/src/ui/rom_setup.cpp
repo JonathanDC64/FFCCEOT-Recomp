@@ -351,13 +351,13 @@ private:
 void push_mismatch_modal(Document& host) {
     const Mismatch mismatch = *sMismatch;
     sMismatch.reset();
-    const auto expected = setup::expected_rom();
     const bool isDs = !mismatch.check.sha1.empty();
     Rml::String body = escape(mismatch.check.message.empty() ?
                                   std::string("This is not the ROM this version builds the game from.") :
                                   mismatch.check.message);
-    body += "<br/><br/>Expected: <b>" + escape(expected.name) + "</b><br/>SHA-1 " + escape(expected.sha1) +
-            "<br/>CRC-32 " + escape(expected.crc32);
+    for (const auto& expected : setup::expected_roms())
+        body += "<br/><br/>Expected: <b>" + escape(expected.name) + "</b><br/>SHA-1 " + escape(expected.sha1) +
+                "<br/>CRC-32 " + escape(expected.crc32);
     body += "<br/><br/>Your file (" + escape(file_name(mismatch.path)) + ", " + size_text(mismatch.check.size) +
             "):<br/>SHA-1 " + escape(isDs ? mismatch.check.sha1 : std::string("(not a Nintendo DS game)")) +
             "<br/>CRC-32 " + escape(mismatch.check.crc32.empty() ? std::string("-") : mismatch.check.crc32);

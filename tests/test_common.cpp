@@ -51,7 +51,30 @@ static void test_blz() {
     CHECK(std::string(out.begin(), out.end()) == "XYCDABCDABCDABCDABCDABCD");
 }
 
+static ntr::Sha1Digest digest_of(const std::string& hex) {
+    ntr::Sha1Digest d{};
+    for (size_t i = 0; i < d.size(); i++) d[i] = uint8_t(std::stoul(hex.substr(i * 2, 2), nullptr, 16));
+    return d;
+}
+
+static void test_known_roms() {
+    const ntr::KnownRom* usa = ntr::find_known_rom(digest_of("1df23d5a3a655bdd587c360b581202931d0f66e1"));
+    const ntr::KnownRom* eur = ntr::find_known_rom(digest_of("18f7004f74c83feba40f003641ec00571e52a301"));
+    CHECK(usa && eur);
+    if (usa && eur) {
+        CHECK(std::string(usa->game_code) == "CFIE" && usa->supported);
+        CHECK(std::string(eur->game_code) == "CFIP" && eur->supported);
+        CHECK(std::string(eur->crc32_hex) == "2dbad135");
+    }
+    CHECK(!ntr::find_known_rom(digest_of("0000000000000000000000000000000000000000")));
+    // Every supported release has a game code of its own (the configuration and the hooks are chosen by it).
+    for (const ntr::KnownRom& a : ntr::known_roms())
+        for (const ntr::KnownRom& b : ntr::known_roms())
+            if (&a != &b) CHECK(std::strcmp(a.game_code, b.game_code) != 0 || std::strcmp(a.sha1_hex, b.sha1_hex) != 0);
+}
+
 int main() {
+    test_known_roms();
     test_sha1();
     test_crc32();
     test_blz();

@@ -15,6 +15,8 @@ Project page: **<https://jonathandc64.github.io/FFCCEOT-Recomp/>**
 
 - **Plug and play.** Download, run, choose your own ROM. The game is built on your PC in about a minute, once.
   Nothing else to install. Windows and Linux (AppImage).
+- **USA and European versions**: both dumps are supported (checked by SHA-1, each with its own save), and a language
+  setting (English, French, German, Spanish) picks the game's text language.
 - **Single-screen play** by default, with the second screen as a touchable picture-in-picture. Other layouts:
   main + side, stacked, side by side, or the second screen in a window of its own. Swap the screens at any time.
 - **High resolution**: the OpenGL renderer draws at up to 16x the DS resolution (4K and beyond), matched to your window
@@ -43,8 +45,10 @@ it, and builds everything it needs locally.
 | Region | Code | Dump | SHA-1 |
 |---|---|---|---|
 | USA | CFIE | `Final Fantasy Crystal Chronicles - Echoes of Time (USA) (En,Fr,Es).nds` | `1df23d5a3a655bdd587c360b581202931d0f66e1` |
+| Europe | CFIP | `Final Fantasy Crystal Chronicles - Echoes of Time (Europe) (En,Fr,De,Es).nds` | `18f7004f74c83feba40f003641ec00571e52a301` |
 
-Other regions are planned later.
+The Japanese version is not supported. Each version keeps its own save (`cfie.sav`, `cfip.sav`); a USA save also loads in
+the European game. The game's language (Settings, Game) is English by default; German is in the European version only.
 
 ## Install and play
 
@@ -94,7 +98,8 @@ This is an early build: please report problems from the in-game menu or on the i
   display's refresh rate, frame pacing, stable and smoothed textures, analog movement in multiplayer, and everything
   online. They work, but have had less testing.
 - Not done on Linux yet: the crash dialog (logs and problem reports work) and local wireless between instances.
-- Only the USA version is supported.
+- Only the USA and European versions are supported. The European one has had less testing than the USA one: online play
+  with it in particular (a rare crash on the host was seen once).
 
 ## Command line
 
@@ -156,7 +161,7 @@ build/release/game/ffcc.exe "path/to/your/dump.nds"
 
 The recompiler (`ntr-recomp`) turns the ROM into C in `build/` (never committed) and the game is compiled from it as
 `cfie_game.dll` (`.so` on Linux) next to the program. Only addresses and names from the game live in the repository
-(`game/config/cfie`); no game code or data is ever committed, and a copyright guard keeps it that way:
+(`game/config/cfie` for the USA version, `game/config/cfip` for the European one); no game code or data is ever committed, and a copyright guard keeps it that way:
 
 ```sh
 python tools/check_no_game_data.py --install-hook    # once, before your first commit

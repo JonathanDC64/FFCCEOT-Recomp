@@ -36,6 +36,7 @@ FORBIDDEN_MAGICS = [
 # SHA-1 of known game dumps (verification facts, not data).
 KNOWN_ROM_SHA1 = {
     "1df23d5a3a655bdd587c360b581202931d0f66e1",  # CFIE (USA)
+    "18f7004f74c83feba40f003641ec00571e52a301",  # CFIP (Europe)
 }
 
 # Marker the recompiler writes at the top of every generated file.

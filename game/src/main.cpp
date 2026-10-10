@@ -126,9 +126,12 @@ public:
     }
     void finish() { done_ = true; }
 
+    // Game thread. The save the game writes (the release being played decides it, which is known once the game is loaded).
+    void use_save_path(const std::filesystem::path& save_path) { save_path_ = save_path; }
+
     // Game thread.
     bool init_graphics(const std::filesystem::path& save_path) {
-        save_path_ = save_path;
+        use_save_path(save_path);
         if (!presenter_.init(window_, allow_flip_model)) {
             std::fprintf(stderr, "cannot open the game window: %s\n", SDL_GetError());
             return false;
@@ -1300,9 +1303,11 @@ public:
 };
 
 // Reads the ROM and loads the recompiled game for it. False, with `error` set, if either cannot be used.
+// Each release keeps its own save (cfie.sav, cfip.sav), so playing one never replaces the other's: `save_path` is changed
+// to the release's, unless it was chosen with --save-file (`per_release_save` is false).
 bool load_game(const std::filesystem::path& rom_path, const std::filesystem::path& module_path,
-               const std::filesystem::path& save_path, ntr::RuntimeOptions& options, std::vector<uint8_t>& rom,
-               GameModule& module, std::string& error) {
+               std::filesystem::path& save_path, bool per_release_save, ntr::RuntimeOptions& options,
+               std::vector<uint8_t>& rom, GameModule& module, std::string& error) {
     rom = read_file(rom_path);
     if (rom.empty()) {
         error = "cannot read " + rom_path.string();
@@ -1310,13 +1315,32 @@ bool load_game(const std::filesystem::path& rom_path, const std::filesystem::pat
     }
     const ntr::KnownRom* known = ntr::find_known_rom(ntr::sha1(rom));
     if (!known || !known->supported) {
-        error = rom_path.string() + " is not a supported dump (need the USA release, sha1 1df23d5a...)";
+        error = rom_path.string() + " is not a supported dump (need the USA release, sha1 1df23d5a..., or the European, 18f7004f...)";
         return false;
+    }
+    if (!cfie::select_release(known->game_code)) {
+        error = std::string("no hooks for the release ") + known->game_code;
+        return false;
+    }
+    if (per_release_save && !save_path.empty()) {
+        std::string stem = known->game_code;
+        for (char& c : stem) c = char(std::tolower(static_cast<unsigned char>(c)));
+        save_path.replace_filename(stem + ".sav");
     }
     if (!save_path.empty() && std::filesystem::exists(save_path)) options.save_data = read_file(save_path);
     const auto wifi_path = std::filesystem::path(save_path).replace_extension(".wfc");
     if (!save_path.empty() && std::filesystem::exists(wifi_path)) options.wifi_settings = read_file(wifi_path);
     return module.load(module_path, error);
+}
+
+// The DS firmware's number for a language (0 Japanese, 1 English, 2 French, 3 German, 4 Italian, 5 Spanish).
+uint8_t firmware_language(GameLanguage l) {
+    switch (l) {
+        case GameLanguage::French: return 2;
+        case GameLanguage::German: return 3;
+        case GameLanguage::Spanish: return 5;
+        default: return 1;
+    }
 }
 
 bool parse_renderer(const std::string& s, ntr::Renderer& r) {
@@ -1423,7 +1447,7 @@ int main(int argc, char** argv) {
     crash_report::install(testing || data_dir.empty() ? std::filesystem::path{} : data_dir / "crashes", !testing);
     if (argc >= 2 && (std::strcmp(argv[1], "--help") == 0 || std::strcmp(argv[1], "-h") == 0)) {
         std::fprintf(stderr,
-                     "usage: %s [your Echoes of Time (USA) dump.nds] [options]\n"
+                     "usage: %s [your Echoes of Time (USA or Europe) dump.nds] [options]\n"
                      "Without a dump, the game set up from your ROM runs (the start screen asks for the ROM the first time).\n"
                      "Settings are kept in settings.ini (F1 or R+Start opens the menu); these options override them:\n"
                      "screens:\n"
@@ -1461,6 +1485,7 @@ int main(int argc, char** argv) {
                      "  --analog-movement off|single-player|multiplayer   the stick's direction and speed (default single-player)\n"
                      "online:\n"
                      "  --console-name <name>                the console's name other players see (default: this PC's)\n"
+                     "  --language english|french|german|spanish   the language the game plays in (German: Europe only)\n"
                      "  --online-server wiilink|kaeru|host|<DNS address>   Wi-Fi Connection server (default kaeru)\n"
                      "start screen and setup:\n"
                      "  --prelaunch                          show the start screen even with a ROM on the command line\n"
@@ -1499,11 +1524,14 @@ int main(int argc, char** argv) {
     std::filesystem::path rom_path = explicit_rom ? std::filesystem::path(argv[1]) : std::filesystem::path();
 
     // Testing options that decide which files are used come first: the other options override settings.ini.
-    bool read_only_save = false, unpaced = false;
+    bool read_only_save = false, unpaced = false, per_release_save = true;
     for (int i = first_option; i < argc; i++) {
         const std::string a = argv[i];
         if (a == "--no-settings") settings_path.clear();
-        else if (a == "--save-file" && i + 1 < argc) save_path = argv[i + 1];
+        else if (a == "--save-file" && i + 1 < argc) {
+            save_path = argv[i + 1];
+            per_release_save = false;
+        }
         else if (a == "--read-only-save") read_only_save = true;
         else if (a == "--unpaced") unpaced = true;
     }
@@ -1570,6 +1598,12 @@ int main(int argc, char** argv) {
         }
         else if (a == "--console-name" && has_value)
             settings.console_name = sanitize_console_name(argv[++i]);
+        else if (a == "--language" && has_value) {
+            if (!set_setting(settings, "game.language", argv[++i])) {
+                std::fprintf(stderr, "--language: english, french, german or spanish\n");
+                return 2;
+            }
+        }
         else if (a == "--online-server" && has_value) {
             std::array<uint8_t, 4> dns;
             if (!online_dns(argv[++i], dns)) {
@@ -1763,7 +1797,8 @@ int main(int argc, char** argv) {
 
     struct Game {
         SdlHost& host;
-        const std::filesystem::path& save_path;
+        std::filesystem::path& save_path;
+        bool per_release_save;
         bool fullscreen;
         ntr::RuntimeOptions& options;
         std::vector<uint8_t> rom;
@@ -1775,7 +1810,7 @@ int main(int argc, char** argv) {
         int rc = 1;
     };
     SdlHost host;
-    Game game{host, save_path, settings.fullscreen, options};
+    Game game{host, save_path, per_release_save, settings.fullscreen, options};
     game.explicit_rom = explicit_rom;
     game.module_given = module_given;
     game.rom_path = rom_path;
@@ -1784,7 +1819,7 @@ int main(int argc, char** argv) {
     if (explicit_rom) {
         // (Before the window: a ROM that cannot be used is reported at once.)
         std::string error;
-        if (!load_game(rom_path, game_module_path, save_path, options, game.rom, game.module, error)) {
+        if (!load_game(rom_path, game_module_path, save_path, per_release_save, options, game.rom, game.module, error)) {
             std::fprintf(stderr, "%s\n", error.c_str());
             return 1;
         }
@@ -1870,7 +1905,8 @@ int main(int argc, char** argv) {
                 if (host.status.state == setup::State::Ready) {
                     std::string error;
                     if (load_game(host.status.rom, g.module_given ? g.module_path : host.status.module, g.save_path,
-                                  g.options, g.rom, g.module, error)) {
+                                  g.per_release_save, g.options, g.rom, g.module, error)) {
+                        host.use_save_path(g.save_path);
                         g.loaded = true;
                         break;
                     }
@@ -1886,6 +1922,7 @@ int main(int argc, char** argv) {
                 g.options.cpu_speed = host.settings.cpu_speed;
                 online_dns(host.settings.online_server, g.options.online_dns);
                 g.options.console_name = resolved_console_name(host.settings);
+                g.options.language = firmware_language(host.settings.language);
                 cfie::online_buffer = host.settings.online_buffer;
                 cfie::fast_saving = host.settings.fast_saving;
 

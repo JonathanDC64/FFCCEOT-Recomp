@@ -1,9 +1,17 @@
 set(FFCC_GAME_CONFIG ${CMAKE_CURRENT_SOURCE_DIR}/config/cfie)
+set(FFCC_GAME_CONFIG_EUR ${CMAKE_CURRENT_SOURCE_DIR}/config/cfip)
 
 # Development: the game built from your ROM at build time (cfie_game, next to the executable). It is generated from the
 # user's own ROM and never committed. Without FFCC_ROM nothing of the game is built, which is what a release is: the
 # program then sets the game up from the player's ROM when it first runs (src/setup.cpp).
 if(FFCC_ROM)
+  # The configuration for the ROM's release, from the game code in its header (CFIP: Europe, otherwise USA).
+  file(READ "${FFCC_ROM}" _rom_code OFFSET 12 LIMIT 4 HEX)
+  if(_rom_code STREQUAL "43464950")
+    set(FFCC_ROM_CONFIG ${FFCC_GAME_CONFIG_EUR})
+  else()
+    set(FFCC_ROM_CONFIG ${FFCC_GAME_CONFIG})
+  endif()
   set(FFCC_GEN_DIR ${CMAKE_BINARY_DIR}/recomp_generated)
   set(FFCC_GEN_SHARDS 64)
 
@@ -21,9 +29,9 @@ if(FFCC_ROM)
 
   add_custom_command(
     OUTPUT ${FFCC_GEN_SOURCES} ${FFCC_GEN_DIR}/funcs.h
-    COMMAND ntr-recomp --rom "${FFCC_ROM}" --config "${FFCC_GAME_CONFIG}" --out "${FFCC_GEN_DIR}"
+    COMMAND ntr-recomp --rom "${FFCC_ROM}" --config "${FFCC_ROM_CONFIG}" --out "${FFCC_GEN_DIR}"
             --report "${CMAKE_BINARY_DIR}/recomp_report.txt"
-    DEPENDS ntr-recomp ${FFCC_GAME_CONFIG}/functions.txt ${FFCC_GAME_CONFIG}/hooks.txt ${FFCC_GAME_CONFIG}/regions.txt "${FFCC_ROM}"
+    DEPENDS ntr-recomp ${FFCC_ROM_CONFIG}/functions.txt ${FFCC_ROM_CONFIG}/hooks.txt ${FFCC_ROM_CONFIG}/regions.txt "${FFCC_ROM}"
     COMMENT "Recompiling game code from your ROM"
     VERBATIM)
 
@@ -83,6 +91,9 @@ set(FFCC_UI_FILES
   ${FFCC_GAME_CONFIG}/functions.txt
   ${FFCC_GAME_CONFIG}/hooks.txt
   ${FFCC_GAME_CONFIG}/regions.txt
+  ${FFCC_GAME_CONFIG_EUR}/functions.txt
+  ${FFCC_GAME_CONFIG_EUR}/hooks.txt
+  ${FFCC_GAME_CONFIG_EUR}/regions.txt
   ${CMAKE_SOURCE_DIR}/runtime/include/ntr/recomp.h)
 set(FFCC_UI_ASSETS ${CMAKE_CURRENT_BINARY_DIR}/ui_assets.cpp)
 add_custom_command(

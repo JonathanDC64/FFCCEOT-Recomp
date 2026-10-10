@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.28)
 # The program carries its C/C++ runtime (no Visual C++ redistributable to install), for every target including the fetched ones.
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
-project(FFCCEOTRecomp VERSION 0.1.0 LANGUAGES C CXX)
+project(FFCCEOTRecomp VERSION 0.2.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -16,7 +16,7 @@ else()
 endif()
 
 # Path to the user's own ROM. Only needed for steps that generate code from it (dev mode).
-set(FFCC_ROM "" CACHE FILEPATH "Path to your own FFCC: Echoes of Time (USA) ROM dump")
+set(FFCC_ROM "" CACHE FILEPATH "Path to your own FFCC: Echoes of Time ROM dump (USA or Europe)")
 
 # A build for a release package (tools/package.py): no path of the build machine ends up in the binary or its debug info.
 option(FFCC_PACKAGE "Build for a release package" OFF)

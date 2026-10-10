@@ -34,13 +34,16 @@ void log(const char* fmt, ...) {
     std::fflush(stderr);
 }
 
+static char g_last_fatal[512];
+
+const char* last_fatal() { return g_last_fatal; }
+
 [[noreturn]] void fatal(const char* fmt, ...) {
     va_list ap;
     va_start(ap, fmt);
-    std::fprintf(stderr, "fatal: ");
-    std::vfprintf(stderr, fmt, ap);
-    std::fprintf(stderr, "\n");
+    std::vsnprintf(g_last_fatal, sizeof g_last_fatal, fmt, ap);
     va_end(ap);
+    std::fprintf(stderr, "fatal: %s\n", g_last_fatal);
     std::fflush(stderr);
     std::abort();
 }
@@ -82,6 +85,14 @@ RuntimeImpl::RuntimeImpl(std::vector<uint8_t> rom, const GameCode& code, Host& h
         header.MacAddr[5] += n * 0x10;
         header.MacAddr[0] &= 0xFC;
         header.UpdateChecksum();
+        args.Firmware.UpdateChecksums();
+    }
+    {
+        // The language the game plays in: the firmware's setting, in both copies of the user data.
+        for (auto& user : args.Firmware.GetUserData()) {
+            user.Settings = u16((user.Settings & ~7u) | (options.language & 7u));
+            user.UpdateChecksum();
+        }
         args.Firmware.UpdateChecksums();
     }
     if (!options.console_name.empty()) {
@@ -648,7 +659,10 @@ void RuntimeImpl::call(u32 target) {
     if (!e) {
         if (target == kBiosIrqReturn || target == kHleCallReturn)
             fatal("unbalanced return to %08x (sp %08x)", target, cpu.r[13]);
-        if (!can_interpret(target)) fatal("no recompiled function at %08x (lr %08x, sp %08x)", target, cpu.r[14], cpu.r[13]);
+        if (!can_interpret(target)) {
+            dump_state();
+            fatal("no recompiled function at %08x (lr %08x, sp %08x)", target, cpu.r[14], cpu.r[13]);
+        }
         interpret(target, cpu.r[14]);
         return;
     }

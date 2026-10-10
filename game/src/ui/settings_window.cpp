@@ -309,10 +309,12 @@ SettingsWindow::SettingsWindow(bool prelaunch) : mPrelaunch(prelaunch) {
                     })
                     .on_pressed([] { rom_setup::select_rom(); }),
                 rightPane, [running](Pane& pane) {
-                    const auto expected = setup::expected_rom();
-                    pane.add_rml("The game is built from your own copy of " + escape(expected.name) +
-                                 ". It has to be this exact dump:<br/><br/>SHA-1 " + escape(expected.sha1) +
-                                 "<br/>CRC-32 " + escape(expected.crc32));
+                    Rml::String text = "The game is built from your own copy of Echoes of Time (USA or Europe). It has to "
+                                       "be one of these exact dumps:";
+                    for (const auto& expected : setup::expected_roms())
+                        text += "<br/><br/><b>" + escape(expected.name) + "</b><br/>SHA-1 " + escape(expected.sha1) +
+                                "<br/>CRC-32 " + escape(expected.crc32);
+                    pane.add_rml(text);
                     if (running()) {
                         pane.add_rml("<br/><br/>The game is running: close the program to choose another ROM.");
                     }
@@ -559,6 +561,11 @@ SettingsWindow::SettingsWindow(bool prelaunch) : mPrelaunch(prelaunch) {
             "Plays the game's own sound effects in these menus. They play while the game is running.");
 
         leftPane.add_section("Game");
+        enum_row(
+            leftPane, rightPane, "Language", SETTING(language), {0, 1, 2, 3}, {"English", "French", "German", "Spanish"},
+            "The language the game plays in. The USA release has English, French and Spanish; the European release "
+            "also has German. A language the release lacks plays in English. Takes effect the next time the game "
+            "starts.");
         bool_row(leftPane, rightPane, "Skip the company logos", SETTING(skip_logos),
             "Goes straight to the title screen when the game starts. Takes effect the next time the game starts.");
         bool_row(leftPane, rightPane, "Fast loading", SETTING(fast_loading),

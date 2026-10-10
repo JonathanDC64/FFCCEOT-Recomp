@@ -24,6 +24,10 @@ inline int aspect_extra(Aspect a) {
 // timer of the frontend's own, at once, for a variable refresh rate display (G-Sync, FreeSync).
 enum class Pacing { Vsync, Variable };
 
+// The language the game plays in: the DS firmware's language setting, which the game reads at start. The USA release
+// has English, French and Spanish; the European adds German (a language a release lacks plays in English).
+enum class GameLanguage { English, French, German, Spanish };
+
 struct Settings {
     // Display
     video::LayoutSettings layout;
@@ -52,6 +56,7 @@ struct Settings {
     bool preset_chosen = false;   // the Welcome window has been answered (it shows on the first run)
     bool suppress_preset = false;  // not saved: a test run offers no Welcome window (and leaves preset_chosen alone)
     // Game
+    GameLanguage language = GameLanguage::English;
     bool skip_logos = true;
     bool fast_loading = true;  // cartridge reads without the card's delays
     bool fast_saving = true;   // save reads and writes at once instead of at the DS's pace
