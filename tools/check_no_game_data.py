@@ -24,6 +24,7 @@ FORBIDDEN_EXTS = {
     ".rsb", ".mods", ".sdat", ".sseq", ".sbnk", ".swar", ".strm",
     ".nsbmd", ".nsbtx", ".nsbca", ".nsbta", ".nsbtp", ".nsbma", ".narc",
     ".iso", ".wbfs", ".rvz", ".wad",
+    ".thp",  # Wii cutscenes (docs/WII_ASSETS.md)
 }
 
 # Magic numbers at offset 0 of DS game file formats.
@@ -31,6 +32,7 @@ FORBIDDEN_MAGICS = [
     b"MODS", b"SDAT", b"SSEQ", b"SBNK", b"SWAR", b"STRM", b"NARC",
     b"BMD0", b"BTX0", b"BCA0", b"BTA0", b"BTP0", b"BMA0", b"BVA0",
     b"RGCN", b"RLCN", b"RCSN", b"RECN", b"RNAN",
+    b"THP\0", b"WBFS",  # Wii cutscenes and disc images
 ]
 
 # SHA-1 of known game dumps (verification facts, not data).

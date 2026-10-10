@@ -137,6 +137,7 @@ const Field kFields[] = {
     BOOL_FIELD("interface.preset_chosen", preset_chosen),
     ENUM_FIELD("game.language", language, kLanguages),
     BOOL_FIELD("game.skip_logos", skip_logos),
+    BOOL_FIELD("game.wii_cutscenes", wii_cutscenes),
     BOOL_FIELD("game.fast_loading", fast_loading),
     BOOL_FIELD("game.fast_saving", fast_saving),
     Field{"game.cpu_speed", [](const Settings& s) { return std::to_string(s.cpu_speed); },

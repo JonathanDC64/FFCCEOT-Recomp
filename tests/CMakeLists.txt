@@ -2,6 +2,11 @@ add_executable(test_common test_common.cpp)
 target_link_libraries(test_common PRIVATE ntr_common)
 add_test(NAME common COMMAND test_common)
 
+# AES and the Wii disc reader, against the published test vectors and a disc made up in the test (no game data).
+add_executable(test_wii_disc test_wii_disc.cpp)
+target_link_libraries(test_wii_disc PRIVATE ntr_common)
+add_test(NAME wii_disc COMMAND test_wii_disc)
+
 # Frame interpolation's stream matching and blending (no melonDS or game data needed).
 add_executable(test_gx test_gx.cpp ${PROJECT_SOURCE_DIR}/runtime/src/gx_match.cpp)
 target_include_directories(test_gx PRIVATE ${PROJECT_SOURCE_DIR}/runtime/src)

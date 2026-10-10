@@ -14,6 +14,7 @@ Each component keeps its own licence.
 | [aurora](https://github.com/encounter/aurora) | not used as code; its RmlUi integration is the model for `game/src/ui/host.cpp` | RmlUi on SDL3 and OpenGL | MIT |
 | [Cinzel](https://github.com/NDISCOVER/Cinzel), [Alegreya Sans](https://github.com/huertatipografica/Alegreya-Sans) | font files in `game/ui/res/fonts`, licence texts beside them | Menu typefaces | SIL OFL 1.1 |
 | [Material Symbols Rounded](https://github.com/google/material-design-icons) | font file in `game/ui/res/fonts` (over the copyright guard's size limit, so listed in `tools/game_data_allowlist.txt`) | Icons in the UI | Apache-2.0 |
+| [stb_image](https://github.com/nothings/stb) | single header `third_party/stb/stb_image.h` (v2.30), JPEG decoding only | Decodes the frames of the Wii cutscenes (THP is motion JPEG) | Public domain / MIT |
 | [LLVM](https://llvm.org) clang and lld | not in the repository; bundled in release packages (`<program>/toolchain`) | Builds the recompiled game on the player's PC | Apache-2.0 with LLVM exceptions |
 | teakra, libslirp, glad | bundled inside the melonDS tree and built from it | DSP emulation (DSi), user-mode networking for the emulated Wi-Fi, OpenGL loader | MIT (teakra), BSD-3-Clause (libslirp), MIT/public domain (glad); see each directory |
 

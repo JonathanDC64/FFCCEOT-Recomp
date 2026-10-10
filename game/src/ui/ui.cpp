@@ -7,6 +7,7 @@
 #include "input.hpp"
 #include "prelaunch.hpp"
 #include "rom_setup.hpp"
+#include "wii_setup.hpp"
 #include "window.hpp"
 
 #include <RmlUi/Core.h>
@@ -50,6 +51,7 @@ bool initialize() noexcept {
 void shutdown() noexcept {
     sEventCapture = {};
     rom_setup::shutdown();
+    wii_setup::shutdown();
     sDocumentStack.clear();
     sPassiveDocuments.clear();
     input::reset_input_state();

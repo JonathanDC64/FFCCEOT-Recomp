@@ -48,6 +48,7 @@
 #include "ui/modal.hpp"
 #include "ui/overlay.hpp"
 #include "ui/prelaunch.hpp"
+#include "wii_cutscenes.hpp"
 #include "ui/preset.hpp"
 #include "ui/rom_setup.hpp"
 #include "ui/sound.hpp"
@@ -200,6 +201,7 @@ public:
 
     void attach(ntr::Runtime* rt) {
         runtime_ = rt;
+        wii_cutscenes_.set_dir(wii::movie_dir(data_dir));
         sent_video_ = rt->video();
         sync_video();
         update_title();
@@ -266,6 +268,8 @@ public:
             skipping_ = false;
             next_frame_ = std::chrono::steady_clock::now();
         }
+        dump_movie_frame(frame);
+        update_wii_cutscene();
         // Debugging: a screenshot asked for at this frame.
         const char* shot_path = nullptr;
         {
@@ -293,6 +297,56 @@ public:
         if (!unpaced && !runtime_->video().display_rate) pace();
         log_frame(frame);
         return true;
+    }
+
+    // Debugging (--dump-movie-frames, with the software renderer): the picture the DS shows for each frame of a cutscene,
+    // its 256x128 part as raw RGB appended to <dir>/movieNNN.rgb, and the frame numbers in movieNNN.txt. The game decodes a
+    // frame during one emulated frame and shows it in the next, so a change is dumped one frame later.
+    void dump_movie_frame(const ntr::Frame& frame) {
+        if (dump_movie_dir.empty() || !frame.top) return;
+        const cfie::MovieState m = cfie::movie();
+        if (dump_pending_) {
+            dump_pending_ = false;
+            char name[64];
+            std::snprintf(name, sizeof name, "movie%03d", dump_id_);
+            const std::filesystem::path base = std::filesystem::path(dump_movie_dir) / name;
+            std::filesystem::create_directories(dump_movie_dir);
+            if (FILE* f = std::fopen((base.string() + ".rgb").c_str(), "ab")) {
+                std::vector<uint8_t> rgb(256 * 128 * 3);
+                for (int y = 0; y < 128; y++)
+                    for (int x = 0; x < 256; x++) {
+                        const uint32_t p = frame.top[(y + 16) * 256 + x];
+                        uint8_t* o = &rgb[(y * 256 + x) * 3];
+                        o[0] = uint8_t(p >> 16), o[1] = uint8_t(p >> 8), o[2] = uint8_t(p);
+                    }
+                std::fwrite(rgb.data(), 1, rgb.size(), f);
+                std::fclose(f);
+            }
+            if (FILE* f = std::fopen((base.string() + ".txt").c_str(), "a")) {
+                std::fprintf(f, "%d\n", dump_frame_);
+                std::fclose(f);
+            }
+        }
+        if (m.playing && (m.id != dump_id_ || m.frame != dump_frame_)) {
+            dump_id_ = m.id;
+            dump_frame_ = m.frame;
+            dump_pending_ = true;
+        }
+        if (!m.playing) dump_id_ = dump_frame_ = -1;
+    }
+
+    // The Wii cutscene's picture for the frame of the DS's movie that the game is on, over the DS's own (which keeps
+    // playing: the sound and the timing are its).
+    void update_wii_cutscene() {
+        const cfie::MovieState m = cfie::movie();
+        if (settings.wii_cutscenes && m.playing && wii_cutscenes_.any()) {
+            const wii::Picture p = wii_cutscenes_.picture(m.id, m.frame);
+            if (p.rgb) {
+                presenter_.set_picture(p.rgb, p.width, p.height, p.serial, {0, 16, 256, 128});
+                return;
+            }
+        }
+        presenter_.clear_picture();
     }
 
     // Presents a picture; with --perf-log, times it (the k-th of the emulated frame).
@@ -1231,6 +1285,9 @@ private:
     std::chrono::steady_clock::time_point next_frame_;
     double emu_time_ = 0;          // display-rate 3D: when the current emulated frame went on screen (seconds)
     double virtual_clock_ = 0;     // display-rate 3D with --unpaced: the virtual display's time
+    int dump_id_ = -1, dump_frame_ = -1;  // --dump-movie-frames: the cutscene frame last seen
+    wii::Cutscenes wii_cutscenes_;        // the Wii version's cutscenes, if set up
+    bool dump_pending_ = false;
     bool refresh_waited_ = false;  // display-rate 3D: waited for a refresh not yet drawn for
     double last_refresh_ = 0;      // display-rate 3D: when that refresh was (seconds)
     double present_count_from_ = 0;  // --perf: when the count of presents started
@@ -1280,6 +1337,7 @@ public:
     uint64_t crash_at_frame = 0, abort_at_frame = 0, report_at_frame = 0;  // testing the crash dialog and the report
     std::map<uint64_t, std::string> screenshots;  // debugging: save the window at these frames
     std::vector<ScriptStep> script;  // testing: scripted input, in frame order
+    std::string dump_movie_dir;      // debugging: --dump-movie-frames
     PerfLog perf_log;  // testing: --perf-log
     HashLog hash_log;  // testing: --frame-hash
     double pace_late_ms_ = 0, refresh_late_ms_ = 0;
@@ -1517,6 +1575,9 @@ int main(int argc, char** argv) {
                      "  --no-exe-icon                        do not write the game's icon into ffcc.exe (Windows)\n"
                      "  --unpaced                            run as fast as possible\n"
                      "  --log-sounds                         log the id of every sound effect the game starts\n"
+                     "  --log-movies                         log each cutscene frame the game decodes\n"
+                     "  --force-movie <n>                    every cutscene is movie n instead\n"
+                     "  --dump-movie-frames <dir>            write the picture of each cutscene frame as raw RGB (software renderer)\n"
                      "  --display-hz <n>                     unpaced display-rate 3D: assume an n Hz display (144)\n",
                      argv[0]);
         return 2;
@@ -1554,6 +1615,7 @@ int main(int argc, char** argv) {
     bool mix_real_input = false, ignore_require = false;
     std::filesystem::path perf_log_path, frame_hash_path;
     uint64_t perf_from_frame = 0;
+    std::string dump_movie_dir;
     std::filesystem::path record_path;
     for (int i = first_option; i < argc; i++) {
         const std::string a = argv[i];
@@ -1701,6 +1763,12 @@ int main(int argc, char** argv) {
             ;
         else if (a == "--log-sounds")
             cfie::log_sounds = true;
+        else if (a == "--log-movies")
+            cfie::log_movies = true;
+        else if (a == "--force-movie" && has_value)
+            cfie::force_movie = std::atoi(argv[++i]);
+        else if (a == "--dump-movie-frames" && has_value)
+            dump_movie_dir = argv[++i];
         else if (a == "--set-at-frame" && i + 2 < argc) {
             const uint64_t f = std::strtoull(argv[++i], nullptr, 10);
             set_at.emplace(f, argv[++i]);
@@ -1872,6 +1940,7 @@ int main(int argc, char** argv) {
         host.recorder.comment(require);
     }
     host.read_only_save = read_only_save;
+    host.dump_movie_dir = dump_movie_dir;
     host.unpaced = unpaced;
     host.virtual_display_hz = virtual_display_hz;
     host.perf = options.perf;

@@ -468,6 +468,13 @@ window is made one pixel taller than the display, which fails the driver's exact
 **Later:** the native renderer (§5.1) on SDL_GPU presents through D3D12/Vulkan swapchains, which are flip-model
 already; the interop goes away then.
 
+### 5.6 Wii cutscenes
+
+Optional. The DS movie player keeps running (sound, timing, skipping); three hooks (`cfie_on_movie_open/frame/close`) tell the
+frontend which movie is playing and its frame. `wii::Cutscenes` decodes the matching frame of the Wii version's THP video
+(extracted by `ntr::WiiDisc` from the player's own disc at setup) and `video::Presenter` draws it over the DS movie area of
+the top screen. Details, alignment and legal notes: [WII_ASSETS.md](WII_ASSETS.md).
+
 ## 6. Input and the "no touch screen" scheme
 **Today:** `game/src/input.cpp` binds each action (the 12 DS buttons, plus show other screen, swap screens and
 fullscreen) to one key and one gamepad input (a button, a stick direction or a trigger), with the left stick as an

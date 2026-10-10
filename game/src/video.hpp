@@ -115,6 +115,11 @@ public:
     void wait_for_refresh();
     // The refresh rate of the display the window is on (Hz), or 0 if unknown.
     float refresh_rate() const;
+    // A picture shown over part of the top screen, in place of what the game draws there (the Wii cutscenes): `rgb` is w * h * 3
+    // bytes, and it covers the DS pixels `ds` of the 256 x 192 screen. It is uploaded when `serial` differs from the last
+    // call's. The context must be current (the thread that presents).
+    void set_picture(const std::uint8_t* rgb, int w, int h, std::uint64_t serial, const Rect& ds);
+    void clear_picture() { picture_on_ = false; }
     // Drawn over every frame that present() shows (the settings menu), before it is saved or swapped in.
     std::function<void()> overlay;
     void present(const ntr::Frame* frame, Filter filter, const char* screenshot = nullptr) {
@@ -149,6 +154,7 @@ private:
     void draw_views(unsigned target, int width, int height, const ScreenView* views, int count, const ntr::Frame* frame,
                     Filter filter);
     void show_second(const ntr::Frame* frame, Filter filter, const char* screenshot);
+    void draw_picture(const Rect& r, float opacity, Filter filter, int width, int height, const ntr::Frame* frame);
 
     SDL_Window* window_ = nullptr;
     void* context_ = nullptr;  // SDL_GLContext
@@ -158,6 +164,11 @@ private:
     bool vsync_ = false;
     bool tearing_ = false;
     unsigned program_ = 0, vbo_ = 0, vao_ = 0, soft_tex_ = 0;
+    unsigned picture_tex_ = 0;  // set_picture's picture (a one-layer array texture, as the screens' shader reads)
+    int picture_w_ = 0, picture_h_ = 0;
+    std::uint64_t picture_serial_ = ~std::uint64_t(0);
+    bool picture_on_ = false;
+    Rect picture_ds_;
     int wide_extra_ = 0;
     int u_uv_x_ = -1;
     int u_dest_ = -1, u_layer_ = -1, u_sharp_ = -1, u_out_size_ = -1, u_tex_ = -1, u_opacity_ = -1;
