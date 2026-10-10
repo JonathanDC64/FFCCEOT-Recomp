@@ -1,6 +1,6 @@
 # Architecture
 
-> Status: **design**. Nothing here is implemented yet. Decisions marked *(open)* still need to be settled.
+> Status: **mostly built** (see [ROADMAP.md](ROADMAP.md) for what is left). Some sections still read as the original design; decisions marked *(open)* are not settled.
 > Research behind these choices is in [RESEARCH.md](RESEARCH.md).
 
 ## 0. Goals

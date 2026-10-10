@@ -103,45 +103,97 @@ Everything in the settings can also be set for one run. Run `ffcc --help` for th
 ROM given), `--toolchain <dir>` (the compiler to build with) and `--data-dir <dir>`. The program has no console window
 of its own: started from a terminal it prints there, but the terminal does not wait for it.
 
-## Building (development)
+## Problems?
 
-You need CMake 3.28+, Ninja, Python 3, and clang-cl (or MSVC) on Windows, or clang on Linux.
+- **Where are the logs and settings?** In the data folder (see above): `settings.ini`, the save, `logs/ffcc.log`. On the start screen,
+  Settings → Game files → *Open data folder* opens it.
+- **The game fails to build or the ROM is rejected.** The ROM has to be exactly the dump in the table above (the start
+  screen shows the expected SHA-1). On the start screen, Settings → Game files → *Set up again* rebuilds the game from the kept copy.
+- **A warning from Windows or your antivirus.** The program and the game module it builds are unsigned: see above.
+- **Anything else:** use *Report an issue* in the menu (it attaches the version, settings and a recent log, with personal
+  paths removed) or open an issue on GitHub.
+
+## Building from source
+
+Most people want a release package. To build the program yourself:
+
+**What you need**
+
+- Git, CMake 3.28 or newer, Ninja and Python 3.
+- **Windows:** Visual Studio 2022 Build Tools (the C++ workload) and LLVM's clang-cl. Run the commands from a "x64 Native
+  Tools" prompt, or set it up with `vcvars64.bat`, so the compiler finds the MSVC headers.
+- **Linux:** clang and libstdc++ 13 or newer (the code uses C++20 `<format>`), plus the X11 or Wayland, EGL, ALSA and
+  PulseAudio development packages SDL3 needs (the list is in `.github/workflows/build.yml`).
+- Your own ROM, only to build the game itself (see below).
+
+**Build the program** (no ROM needed; this is what a release contains)
 
 ```sh
 git clone --recursive https://github.com/JonathanDC64/FFCCEOT-Recomp.git
-cd FFCCEOT-Recomp            # existing clone: git submodule update --init
+cd FFCCEOT-Recomp                      # in an existing clone: git submodule update --init
+cmake --preset release                 # Linux: cmake --preset linux-release
+cmake --build --preset release         # Linux: cmake --build --preset linux-release
+ctest --preset release                 # the unit tests (8)
+build/release/game/ffcc.exe            # Linux: build/linux-release/game/ffcc
+```
+
+Run it and the start screen asks for your ROM, then builds the game on your PC exactly as a player's copy does. It needs
+a compiler: it looks in `<program>/toolchain`, then on your PATH (`--toolchain <dir>` names one; on Windows
+`C:/Program Files/LLVM/bin` is tried too).
+
+**Build the game into the build folder** (for development: faster to iterate, and it runs the recompiler as part of the
+build)
+
+```sh
 cmake --preset release -DFFCC_ROM="path/to/your/dump.nds"
 cmake --build --preset release
 build/release/game/ffcc.exe "path/to/your/dump.nds"
 ```
 
-The recompiler runs at build time and writes the generated C to `build/` (never committed), and the game is built from it
-as `cfie_game.dll` next to `ffcc.exe`. Without `FFCC_ROM`, only the program itself is built, which is what a release is:
-it contains no game. Release packages are made by `python tools/package.py windows|linux` (see
-[docs/PACKAGING.md](docs/PACKAGING.md)).
+The recompiler (`ntr-recomp`) turns the ROM into C in `build/` (never committed) and the game is compiled from it as
+`cfie_game.dll` (`.so` on Linux) next to the program. Only addresses and names from the game live in the repository
+(`game/config/cfie`); no game code or data is ever committed, and a copyright guard keeps it that way:
 
-Testing: `--input-script <file>` plays scripted input, one step per line (`<frame> press A+Up [frames]`,
+```sh
+python tools/check_no_game_data.py --install-hook    # once, before your first commit
+```
+
+**Release packages** are made by `python tools/package.py windows` and `python tools/package.py linux` (the Linux one runs
+in Docker): see [docs/PACKAGING.md](docs/PACKAGING.md).
+
+**Where things are**
+
+| Folder | What |
+|---|---|
+| `recompiler/` | `ntr-recomp`: ARM decoder, function discovery and the C emitter |
+| `runtime/` | The hardware model around melonDS, the guest CPU and OS model, video, audio |
+| `game/` | The program: window, settings, input, the UI (`game/src/ui`), setup from a ROM, `game/config` (symbols and hooks) |
+| `common/` | Code shared by the recompiler and the runtime |
+| `third_party/` | melonDS (a submodule, patched at configure time) and the build files for the other libraries |
+| `tools/` | The packager, the copyright guard, scenario and UI screenshot scripts, ROM info |
+| `tests/` | Unit tests, the UI smoke test and the recompiler's differential tests against Unicorn (`tests/difftest`) |
+
+**Testing.** `--input-script <file>` plays scripted input, one step per line (`<frame> press A+Up [frames]`,
 `<frame> touch x,y [frames]`, `<frame> stick x,y [frames]` and `<frame> rstick x,y [frames]` in percent,
 `<frame> shot file.png`, `<frame> quit`; `+N` as the frame means N frames after the previous step). Automated runs should
 not touch your own files: `--save-file <copy.sav>` uses another save file, `--read-only-save` never writes the save,
-`--no-settings` neither reads nor writes `settings.ini`, and `--unpaced` runs as fast as possible. To record a problem
-and replay it with timings and frame hashes, see [docs/TESTING.md](docs/TESTING.md).
+`--no-settings` neither reads nor writes `settings.ini`, and `--unpaced` runs as fast as possible. To record a problem and
+replay it with timings and frame hashes, see [docs/TESTING.md](docs/TESTING.md).
 
 ## Documentation
 
-- [docs/RESEARCH.md](docs/RESEARCH.md): the DS recomp landscape, prior art, and our analysis of the game
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): how the recompiler, runtime, renderer, UI and networking fit together
-- [docs/ROADMAP.md](docs/ROADMAP.md): milestones
-- [docs/PACKAGING.md](docs/PACKAGING.md): the start screen and ROM setup, releases and updates (design)
+- [docs/ROADMAP.md](docs/ROADMAP.md): milestones and what is left
+- [docs/PACKAGING.md](docs/PACKAGING.md): the start screen, ROM setup, building packages, releases
+- [docs/TESTING.md](docs/TESTING.md): scenarios, perf logs and frame hashes
+- [docs/RESEARCH.md](docs/RESEARCH.md): the DS recomp landscape, prior art, and our analysis of the game
 - [docs/LEGAL.md](docs/LEGAL.md): what may and may not be committed
+- [third_party/README.md](third_party/README.md): the components used, with versions
 
 ## Contributing
 
-Before your first commit, install the copyright guard:
-
-```sh
-python tools/check_no_game_data.py --install-hook
-```
+Issues and pull requests are welcome. Install the copyright guard first (see above): it refuses a commit that contains
+anything of the game. Please run the build and `ctest` before you open a pull request.
 
 ## Credits
 
