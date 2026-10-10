@@ -5,6 +5,8 @@ recompiling the game: its ARM code is translated to C and compiled on your PC, n
 
 **[Download the latest alpha for Windows or Linux](https://github.com/JonathanDC64/FFCCEOT-Recomp/releases)** (a Windows zip or a Linux AppImage; you bring your own ROM).
 
+Project page: **<https://jonathandc64.github.io/FFCCEOT-Recomp/>**
+
 > **Status: alpha.** The game boots and plays from the title screen into the field, with sound, saves and online play.
 > It has been played through the opening areas, not the whole game, so expect rough edges: see
 > [Alpha notes](#alpha-notes) and the [roadmap](docs/ROADMAP.md).
