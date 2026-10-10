@@ -18,6 +18,8 @@
 #include "../settings.hpp"
 #include "../setup.hpp"
 
+#include <SDL3/SDL.h>
+
 #include <algorithm>
 #include <array>
 #include <filesystem>
@@ -247,6 +249,40 @@ Rml::String custom_dns_of(const Settings& s) {
 std::string toolchain_text() {
     const auto toolchain = setup::find_toolchain(app().toolchain_dir);
     return toolchain.ok() ? path_text(toolchain.clang.parent_path()) : std::string("Not found");
+}
+
+// The software this program is made of (mirrors NOTICE.md).
+struct Credit {
+    const char* name;
+    const char* use;
+    const char* licence;
+    const char* url;  // empty: no page to open
+};
+constexpr Credit kCredits[] = {
+    {"melonDS", "The Nintendo DS hardware model: graphics, sound, wireless and the CPU fallback.",
+     "GPL-3.0 (with blip-buf, dolphin, fatfs, libslirp and teakra)", "https://github.com/melonDS-emu/melonDS"},
+    {"SDL3", "Window, input and audio.", "zlib", "https://libsdl.org"},
+    {"RmlUi", "The menus.", "MIT", "https://github.com/mikke89/RmlUi"},
+    {"FreeType", "Text in the menus.", "FreeType Licence", "https://freetype.org"},
+    {"Dusklight", "The start screen and settings windows are adapted from its interface code.", "CC0",
+     "https://github.com/TwilitRealm/dusklight"},
+    {"LLVM", "Its compiler (clang and lld) builds the game on your PC from your ROM.",
+     "Apache-2.0 with LLVM exceptions", "https://llvm.org"},
+    {"Cinzel and Alegreya Sans", "The fonts of the menus.", "SIL Open Font Licence 1.1", "https://fonts.google.com"},
+    {"Material Symbols", "The icons of the menus.", "Apache-2.0", "https://fonts.google.com/icons"},
+    {"Kaeru WFC and WiiLink WFC", "Community servers that bring back the Wi-Fi Connection. Not part of this project.",
+     "", ""},
+};
+
+// Where a release package keeps the licence texts (next to the program, or in the AppImage's share folder).
+fs::path licences_dir() {
+    const char* base = SDL_GetBasePath();
+    if (!base) return {};
+    std::error_code ec;
+    for (const fs::path& d : {fs::path(base) / "licenses", fs::path(base) / ".." / "share" / "doc" / "ffcc" / "licenses"}) {
+        if (fs::is_directory(d, ec)) return fs::weakly_canonical(d, ec);
+    }
+    return {};
 }
 
 }  // namespace
@@ -622,6 +658,65 @@ SettingsWindow::SettingsWindow(bool prelaunch) : mPrelaunch(prelaunch) {
         bool_row(leftPane, rightPane, "Skip the main menu at start", SETTING(skip_prelaunch),
             "Starts the game right away when it is set up, without the main menu. The menu is still available in "
             "the game: press F1 or R+Start.");
+    });
+
+    add_tab("About", [this](Rml::Element* content) {
+        auto& leftPane = add_child<Pane>(content, Pane::Type::Controlled);
+        auto& rightPane = add_child<Pane>(content, Pane::Type::Uncontrolled);
+
+        leftPane.add_section("This program");
+        leftPane.register_control(
+            leftPane.add_select_button({
+                .key = "Version",
+                .getValue = [] { return Rml::String(report::version()); },
+            }),
+            rightPane, [](Pane& pane) {
+                pane.add_text("Final Fantasy Crystal Chronicles: Echoes of Time, PC port.");
+                pane.add_rml("<br/>Version " + escape(report::version()) +
+                             "<br/><br/>This is an early alpha: things are missing and things break. Features marked "
+                             "Experimental are the least tested.");
+                pane.add_button("Open the project page").on_pressed([] {
+                    play_sound(kSoundClick);
+                    report::open_url(report::kRepositoryUrl);
+                });
+            });
+        leftPane.register_control(
+            leftPane.add_select_button({
+                .key = "Licence",
+                .getValue = [] { return Rml::String("GPL-3.0"); },
+            }),
+            rightPane, [](Pane& pane) {
+                pane.add_text("This program is free software under the GNU General Public License, version 3.");
+                pane.add_rml("<br/>It contains no game code and no game data. The game is built on your PC from your "
+                             "own copy of the ROM. Final Fantasy Crystal Chronicles: Echoes of Time is a work of "
+                             "Square Enix. This project is not affiliated with or endorsed by Square Enix or "
+                             "Nintendo.");
+                if (const fs::path dir = licences_dir(); !dir.empty()) {
+                    pane.add_button("Open the licence texts").on_pressed([dir] {
+                        play_sound(kSoundClick);
+                        report::reveal(dir);
+                    });
+                }
+            });
+
+        leftPane.add_section("Made with");
+        for (const Credit& credit : kCredits) {
+            leftPane.register_control(
+                leftPane.add_select_button({
+                    .key = credit.name,
+                    .getValue = [] { return Rml::String(); },
+                }),
+                rightPane, [&credit](Pane& pane) {
+                    pane.add_text(credit.use);
+                    if (credit.licence[0]) pane.add_rml(std::string("<br/>Licence: ") + escape(credit.licence));
+                    if (credit.url[0]) {
+                        pane.add_button("Open the website").on_pressed([url = std::string(credit.url)] {
+                            play_sound(kSoundClick);
+                            report::open_url(url);
+                        });
+                    }
+                });
+        }
     });
 }
 

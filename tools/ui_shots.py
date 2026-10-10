@@ -45,6 +45,14 @@ SCENARIOS = [
         keys("4") + " shot:t4",
         keys("5") + " shot:t5",
         keys("6") + " shot:t6",
+        keys("7") + " shot:t7-about",
+    ]),
+    ("about", False, ["--prelaunch", "--first-run"], [
+        OPEN_SETTINGS,
+        keys("7") + " shot:version",
+        keys("Down") + " shot:licence",
+        keys("Down", "Down") + " shot:credit",
+        keys("Down", "Down", "Down", "Down", "Down", "Down") + " shot:credit-end",
     ]),
     ("option-pane", False, ["--prelaunch", "--first-run"], [
         OPEN_SETTINGS,
