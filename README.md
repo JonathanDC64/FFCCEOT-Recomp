@@ -15,6 +15,8 @@ Project page: **<https://jonathandc64.github.io/FFCCEOT-Recomp/>**
 
 - **Plug and play.** Download, run, choose your own ROM. The game is built on your PC in about a minute, once.
   Nothing else to install. Windows and Linux (AppImage).
+- **USA and European versions**: both dumps are supported (checked by SHA-1, each with its own save), and a language
+  setting (English, French, German, Spanish) picks the game's text language.
 - **Single-screen play** by default, with the second screen as a touchable picture-in-picture. Other layouts:
   main + side, stacked, side by side, or the second screen in a window of its own. Swap the screens at any time.
 - **High resolution**: the OpenGL renderer draws at up to 16x the DS resolution (4K and beyond), matched to your window
@@ -96,7 +98,8 @@ This is an early build: please report problems from the in-game menu or on the i
   display's refresh rate, frame pacing, stable and smoothed textures, analog movement in multiplayer, and everything
   online. They work, but have had less testing.
 - Not done on Linux yet: the crash dialog (logs and problem reports work) and local wireless between instances.
-- Only the USA and European versions are supported. The European one has had less testing than the USA one.
+- Only the USA and European versions are supported. The European one has had less testing than the USA one: online play
+  with it in particular (a rare crash on the host was seen once).
 
 ## Command line
 

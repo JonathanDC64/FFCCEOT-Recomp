@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Builds a release package: the program and the compiler it needs, and nothing of the game.
 
-  python tools/package.py windows [--version 0.1.0-alpha] [--llvm-dir DIR] [--no-build]
+  python tools/package.py windows [--version 0.2.0-alpha] [--llvm-dir DIR] [--no-build]
   python tools/package.py linux   (run inside tools/docker/linux.Dockerfile's image: see docs/PACKAGING.md)
 
 The package holds the program, a small piece of LLVM (clang and the linker, with clang's own headers: the player's PC
@@ -30,7 +30,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import check_no_game_data as guard  # noqa: E402
 
-DEFAULT_VERSION = "0.1.0-alpha"
+DEFAULT_VERSION = "0.2.0-alpha"
 LLVM_VERSION = "22.1.8"
 LLVM_MAJOR = LLVM_VERSION.split(".")[0]
 LLVM_RELEASE = f"https://github.com/llvm/llvm-project/releases/download/llvmorg-{LLVM_VERSION}/"
@@ -68,8 +68,11 @@ LICENSES = [
 README_TXT = """Final Fantasy Crystal Chronicles: Echoes of Time, PC port ({version}, alpha)
 
 1. {start}
-2. Choose your own copy of the game (the USA release, Final Fantasy Crystal Chronicles - Echoes of Time (USA) (En,Fr,Es).nds,
-   or the European one, (Europe) (En,Fr,De,Es).nds).
+2. Choose your own copy of the game. Two versions are supported (checked by SHA-1):
+   - USA: Final Fantasy Crystal Chronicles - Echoes of Time (USA) (En,Fr,Es).nds
+     1df23d5a3a655bdd587c360b581202931d0f66e1
+   - Europe: Final Fantasy Crystal Chronicles - Echoes of Time (Europe) (En,Fr,De,Es).nds
+     18f7004f74c83feba40f003641ec00571e52a301
    It is checked and built into a game for your PC (about a minute, once). Nothing else has to be installed.
 
 This package contains no game data. It is an early alpha: report problems from the in-game menu (Report an issue).
