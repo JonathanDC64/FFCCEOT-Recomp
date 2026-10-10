@@ -62,15 +62,15 @@ A first look, by scanning the two `coolres` files. Evidence so far points to the
 game, converted to big-endian, not a sharper set. It is not a full proof: individual resources have not been paired and
 compared pixel by pixel.
 
-- The resource directory at the start of the file is the DS's, with each 16- and 32-bit field byte-swapped (6 of 8 words
-  of the first entries are equal after swapping, and the data at the same offsets is the same bytes swapped, for example
-  `14 00 64 00` against `00 14 00 64`).
+- The resource directory at the start of the file is the DS's, read as big-endian words, 16,237 of the first 16,384 words (64 KB)
+  equal the DS's, and the data at the same offsets in the next entries is the same bytes with 16- and 32-bit fields swapped,
+  for example `14 00 64 00` against `00 14 00 64`.
 - The chunk types and counts match: `BMD0` models 1207 (DS) against 1211 (Wii), `BTX0` texture archives 99 against 100,
   `TEX ` chunks 2104 against 2096 (1959 in `coolres`, 137 moved to `coolresn`), `SHP ` 980 against 979, `JNT ` 509 against
   508, `ANIM` 2757 against 2755, and `GRID`, `GND `, `ITM ` 138, 138 and 137 on both.
 - The texture chunk headers are distributed the same way: for the three commonest formats 1670, 59 and 55 of the DS textures
   against 1667, 59 and 55 on the Wii.
-- The Wii files together (`coolres` 30 MB plus `coolresn` 13 MB) are smaller than the DS's one (54 MB), so there is no room for
+- The Wii files together (`coolres` 30 MB plus `coolresn` 13 MB) are smaller than the DS's one (54 MB), so there is little room for
   sharper textures; the per-language `coolres0-4` hold text.
 
 What would settle it: pair one texture and one model by id, decode both, and compare the pictures. The texture chunk layout
