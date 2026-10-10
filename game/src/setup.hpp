@@ -16,8 +16,8 @@ namespace setup {
 // hooks), the runtime header and the program's ABI version are already part of what a built game is keyed by.
 constexpr int kRecompilerRevision = 1;
 
-// Where setup keeps its files: <data>/game/cfie.nds (the ROM, copied), <data>/game/<key>/cfie_game.dll (the built
-// module) and <data>/game/manifest.ini.
+// Where setup keeps its files: <data>/game/cfie.nds (the ROM, copied; the name is the same for every release),
+// <data>/game/<key>/cfie_game.dll (the built module) and <data>/game/manifest.ini.
 std::filesystem::path game_dir(const std::filesystem::path& data_dir);
 
 struct ToolchainPaths {
@@ -34,15 +34,16 @@ struct RomCheck {
     bool ok = false;
     std::string message;  // what to tell the player: why it was refused, or what it is
     std::string sha1, crc32;  // of the file, when it is a DS dump (lowercase hex)
+    std::string code;         // its game code (CFIE, CFIP), when it is a supported dump
     uint64_t size = 0;
 };
 RomCheck verify_rom(const std::filesystem::path& path);
 
-// The dump this version sets up: what the player's file has to match.
+// The dumps this version sets up (one per release it supports): what the player's file has to match.
 struct ExpectedRom {
     std::string name, sha1, crc32;
 };
-ExpectedRom expected_rom();
+std::vector<ExpectedRom> expected_roms();
 
 // Dumps that look like the supported game in the usual places (downloads, documents, ...), by file header only.
 std::vector<std::filesystem::path> find_roms();
@@ -61,6 +62,7 @@ struct Status {
     std::filesystem::path rom;     // the copy of the ROM
     std::filesystem::path module;  // the built game
     bool have_rom_copy = false;    // the copy exists (a rebuild needs no ROM from the player)
+    std::string rom_name;          // which release it is, e.g. "... (Europe) (En,Fr,De,Es)" (empty if never set up)
 };
 Status check(const std::filesystem::path& data_dir);
 

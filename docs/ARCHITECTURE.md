@@ -59,7 +59,7 @@ FFCCEOT-Recomp/
 │   ├── net/           #   DWC/SOC/WM high-level replacements on host sockets
 │   └── fs/            #   ROM/NitroFS access, save files, user data dirs
 ├── game/              # FFCC: Echoes of Time specific layer
-│   ├── config/cfie/   #   per-region config: functions.txt, hooks.txt, regions.txt (addresses only)
+│   ├── config/cfie/   #   per-region config (cfie: USA, cfip: Europe): functions.txt, hooks.txt, regions.txt (addresses only)
 │   ├── hooks/         #   C++ replacements and mid-function hooks (widescreen, culling, QoL, input schemes)
 │   └── features/      #   QoL feature implementations
 ├── ui/                # RmlUi documents (.rml/.rcss) + C++ glue, ImGui dev panels; our own art only
@@ -69,6 +69,18 @@ FFCCEOT-Recomp/
 ├── third_party/       # melonDS core (submodule), SDL3 (fetched by CMake); later RmlUi, imgui, tinycc, …
 └── docs/
 ```
+
+**Releases.** The USA (CFIE) and European (CFIP) dumps are supported; each has its own config directory and a row in
+`common/src/known_roms.cpp`, and setup picks the config by the game code of the ROM it verified (the choice is recorded
+in `manifest.ini` as `rom_code`, and the build is keyed by that config). The European release is the USA build with some
+code added in the middle of the program: its code after about `0x020A3800` sits 0x1C higher and its data and overlays
+0x20 higher (the overlays are the same size but one), and its text archive (`coolres.rsb`) differs. So `cfip` was made
+from `cfie` rather than from a new dsd analysis: `tools/port_region.py` finds each function of the first release in the
+second by comparing bytes (ignoring branch offsets and pointers into the program) and moves the hooks and code regions with
+them. A function it cannot find is placed by its neighbours and listed in its report (six for CFIP: none of them hooked).
+The game-specific glue (`game/src/cfie_hooks.cpp`) keeps a table of the addresses it uses per release
+(`cfie::select_release`, called when the game is loaded); each release keeps its own save (`cfie.sav`, `cfip.sav`,
+unless `--save-file` is given). The game's language is the firmware's: Settings, Game sets it (`RuntimeOptions::language`).
 
 ## 3. Recompiler (`ntr-recomp`)
 

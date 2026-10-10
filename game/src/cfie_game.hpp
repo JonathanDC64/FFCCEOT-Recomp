@@ -1,7 +1,8 @@
-// State the CFIE hooks share with the frontend.
+// State the game hooks (CFIE, CFIP) share with the frontend.
 #pragma once
 
 #include <cstdint>
+#include <string>
 
 namespace cfie {
 
@@ -50,7 +51,11 @@ void request_spell(int element);
 int spell_element();
 uint64_t spell_ticks();
 
-// The hooks of game/config/cfie/hooks.txt by name, for the game module (null for a name that is not one).
+// Picks the release the hooks' addresses are for: "CFIE" (USA, the default) or "CFIP" (Europe). False for any other
+// code. Call it before the game starts.
+bool select_release(const std::string& game_code);
+
+// The hooks of game/config/<release>/hooks.txt by name, for the game module (null for a name that is not one).
 void* find_hook(const char* name);
 
 }  // namespace cfie

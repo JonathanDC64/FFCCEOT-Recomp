@@ -159,6 +159,6 @@ Milestones are ordered by dependency. Each ends with a demonstrable result. Desi
 - [ ] Mod / texture-pack loader
 
 ## Later
-- EUR (CFIP) and JPN (CFIJ) support via per-region configs
+- JPN (CFIJ) support (EUR, CFIP, is done: `game/config/cfip`, made with `tools/port_region.py`)
 - HLE audio (SSEQ player), FFmpeg video path with upscaling
 - Achievements, Discord presence, accessibility features

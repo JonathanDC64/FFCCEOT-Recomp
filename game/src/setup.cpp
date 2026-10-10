@@ -37,9 +37,17 @@ constexpr const char* kLinkerName = "ld.lld";
 constexpr int kManifestFormat = 1;
 constexpr uint64_t kMinFreeBytes = 700ull << 20;  // the ROM copy, the generated C and the objects, with room to spare
 
-// The files embedded from the source tree (game/CMakeLists.txt): the game's configuration and the module's header.
+// The files embedded from the source tree (game/CMakeLists.txt): the game's configuration for each release it supports
+// (game/config/cfie: USA, cfip: Europe; see tools/port_region.py) and the module's header.
 const char* const kConfigFiles[] = {"functions.txt", "hooks.txt", "regions.txt"};
-std::string config_asset(const char* name) { return std::string("../config/cfie/") + name; }
+std::string config_dir(const std::string& game_code) {
+    std::string d = game_code;
+    for (char& c : d) c = char(std::tolower(static_cast<unsigned char>(c)));
+    return d;
+}
+std::string config_asset(const std::string& game_code, const char* name) {
+    return "../config/" + config_dir(game_code) + "/" + name;
+}
 constexpr const char* kHeaderAsset = "../../runtime/include/ntr/recomp.h";
 
 std::vector<uint8_t> read_all(const fs::path& p) {
@@ -55,17 +63,17 @@ bool write_all(const fs::path& p, const void* data, size_t size) {
     return bool(f);
 }
 
-// What a built game depends on besides the ROM: this program's ABI, the recompiler's revision, the game's
+// What a built game depends on besides the ROM: this program's ABI, the recompiler's revision, the game's (release's)
 // configuration and the module's header. Any change makes the cache stale, so no revision has to be remembered for
 // those; only a change inside the recompiler itself (kRecompilerRevision) does.
-std::string generator_id() {
+std::string generator_id(const std::string& game_code) {
     std::vector<uint8_t> bytes;
     const std::string head = "abi " + std::to_string(NTR_ABI_VERSION) + " rev " + std::to_string(kRecompilerRevision) + "\n";
     bytes.insert(bytes.end(), head.begin(), head.end());
     auto add = [&](const char* path) {
         if (const ui::Asset* a = ui::find_asset(path)) bytes.insert(bytes.end(), a->data, a->data + a->size);
     };
-    for (const char* f : kConfigFiles) add(config_asset(f).c_str());
+    for (const char* f : kConfigFiles) add(config_asset(game_code, f).c_str());
     add(kHeaderAsset);
     return ntr::to_hex(ntr::sha1(bytes)).substr(0, 16);
 }
@@ -264,11 +272,28 @@ ToolchainPaths find_toolchain(const fs::path& override_dir) {
     return tc;
 }
 
-ExpectedRom expected_rom() {
+std::vector<ExpectedRom> expected_roms() {
+    std::vector<ExpectedRom> v;
     for (const ntr::KnownRom& k : ntr::known_roms())
-        if (k.supported) return {k.description, k.sha1_hex, k.crc32_hex};
-    return {};
+        if (k.supported) v.push_back({k.description, k.sha1_hex, k.crc32_hex});
+    return v;
 }
+
+namespace {
+bool supported_code(const std::string& code) {
+    for (const ntr::KnownRom& k : ntr::known_roms())
+        if (k.supported && code == k.game_code) return true;
+    return false;
+}
+std::string supported_codes_text() {
+    std::string s;
+    for (const ntr::KnownRom& k : ntr::known_roms()) {
+        if (!k.supported) continue;
+        s += (s.empty() ? "" : ", ") + std::string(k.region) + " (" + k.game_code + ")";
+    }
+    return s;
+}
+}  // namespace
 
 RomCheck verify_rom(const fs::path& path) {
     RomCheck r;
@@ -304,20 +329,22 @@ RomCheck verify_rom(const fs::path& path) {
     if (const ntr::KnownRom* known = ntr::find_known_rom(digest)) {
         if (known->supported) {
             r.ok = true;
+            r.code = known->game_code;
             r.message = std::string(known->description);
             return r;
         }
-        r.message = std::string("That is ") + known->description + ", which is not supported yet. Only the USA release works for now.";
+        r.message = std::string("That is ") + known->description + ", which is not supported yet. This version works with the " +
+                    supported_codes_text() + " releases.";
         return r;
     }
-    if (h.code == "CFIE") {
-        r.message = "This is the USA release of Echoes of Time, but it is not the original dump: it has been modified, trimmed or badly dumped. "
-                    "Dump your cartridge again, or use an untouched copy.";
+    if (supported_code(h.code)) {
+        r.message = "This is a supported release of Echoes of Time (" + h.code + "), but it is not the original dump: it has been modified, "
+                    "trimmed or badly dumped. Dump your cartridge again, or use an untouched copy.";
         return r;
     }
     if (h.code.rfind("CFI", 0) == 0) {
-        r.message = "That looks like Echoes of Time (" + h.code + "), but not the USA release this version supports (CFIE). "
-                    "Its SHA-1 is " + r.sha1 + ".";
+        r.message = "That looks like Echoes of Time (" + h.code + "), but not a release this version supports: " + supported_codes_text() +
+                    ". Its SHA-1 is " + r.sha1 + ".";
         return r;
     }
     r.message = "That is " + (h.title.empty() ? std::string("another game") : h.title) + " (" + h.code + "), not Echoes of Time.";
@@ -345,7 +372,7 @@ std::vector<fs::path> find_roms() {
                 uint8_t head[0x200] = {};
                 if (!f.read(reinterpret_cast<char*>(head), sizeof head)) continue;
                 const Header h = parse_header(head, sizeof head);
-                if (h.plausible && h.code == "CFIE") found.push_back(it->path());
+                if (h.plausible && supported_code(h.code)) found.push_back(it->path());
             }
         }
     };
@@ -355,6 +382,16 @@ std::vector<fs::path> find_roms() {
     found.erase(std::unique(found.begin(), found.end()), found.end());
     return found;
 }
+
+namespace {
+// The game code in a ROM file's header (empty if it cannot be read): tells the releases apart, which are the same size.
+std::string rom_game_code(const fs::path& path) {
+    std::ifstream f(path, std::ios::binary);
+    uint8_t head[0x200] = {};
+    if (!f.read(reinterpret_cast<char*>(head), sizeof head)) return {};
+    return parse_header(head, sizeof head).code;
+}
+}  // namespace
 
 Status check(const fs::path& data_dir) {
     Status s;
@@ -372,14 +409,18 @@ Status check(const fs::path& data_dir) {
         auto it = m.find(k);
         return it == m.end() ? std::string() : it->second;
     };
-    if (to_u64(get("format")) != kManifestFormat || to_u64(get("abi")) != NTR_ABI_VERSION || get("generator") != generator_id()) {
+    // (A manifest from before the Europe release has no rom_code: it was the USA one.)
+    const std::string code = get("rom_code").empty() ? std::string("CFIE") : get("rom_code");
+    for (const ntr::KnownRom& k : ntr::known_roms())
+        if (get("rom_sha1") == k.sha1_hex) s.rom_name = k.description;
+    if (to_u64(get("format")) != kManifestFormat || to_u64(get("abi")) != NTR_ABI_VERSION || get("generator") != generator_id(code)) {
         s.state = State::Outdated;
         s.reason = "This version changes how the game is built from your ROM, so it has to be set up again.";
         return s;
     }
     s.module = dir / get("module");
     if (get("module").empty() || !fs::is_regular_file(s.module, ec) || !s.have_rom_copy ||
-        fs::file_size(s.rom, ec) != to_u64(get("rom_size"))) {
+        fs::file_size(s.rom, ec) != to_u64(get("rom_size")) || rom_game_code(s.rom) != code) {
         s.state = State::Damaged;
         s.reason = "Some of the game's files are missing, so it has to be set up again.";
         return s;
@@ -417,18 +458,21 @@ Result run(const Request& req, const Callbacks& callbacks) {
         rep.progress(0.0f, "Checking your ROM");
         const fs::path rom_copy = dir / "cfie.nds";
         fs::path rom_path = rom_copy;
-        std::string rom_sha1;
+        std::string rom_sha1, rom_code;
         if (!req.rom_source.empty()) {
             const RomCheck check = verify_rom(req.rom_source);
             rep.log("rom: " + check.message + (check.sha1.empty() ? "" : " (sha1 " + check.sha1 + ")"));
             if (!check.ok) return fail(check.message);
             rom_path = req.rom_source;
             rom_sha1 = check.sha1;
+            rom_code = check.code;
         } else {
             const RomCheck check = verify_rom(rom_copy);
             if (!check.ok) return fail("The copy of your ROM that was kept is no longer usable. Choose your ROM again. (" + check.message + ")");
             rom_sha1 = check.sha1;
+            rom_code = check.code;
         }
+        rep.log("release: " + rom_code);
         if (rep.cancelled()) return fail("");
 
         // 2. Keep a copy, so the game keeps working when the original is moved and so a later update can rebuild.
@@ -455,7 +499,7 @@ Result run(const Request& req, const Callbacks& callbacks) {
         fs::create_directories(gen);
         fs::create_directories(include);
         for (const char* f : kConfigFiles) {
-            const ui::Asset* a = ui::find_asset(config_asset(f));
+            const ui::Asset* a = ui::find_asset(config_asset(rom_code, f));
             if (!a || !write_all(config / f, a->data, a->size)) return fail(std::string("This program lacks its own file ") + f + ".");
         }
         const ui::Asset* header = ui::find_asset(kHeaderAsset);
@@ -479,7 +523,7 @@ Result run(const Request& req, const Callbacks& callbacks) {
         if (rep.cancelled()) return fail("");
 
         // 5. Build the module.
-        const std::string key = "build-" + generator_id();
+        const std::string key = "build-" + generator_id(rom_code);
         const fs::path out_dir = dir / key;
         fs::create_directories(out_dir, ec);
         const fs::path module = out_dir / kModuleName;
@@ -491,8 +535,8 @@ Result run(const Request& req, const Callbacks& callbacks) {
         {
             std::ostringstream m;
             m << "# Written by setup. Delete this file to run setup again.\n"
-              << "format = " << kManifestFormat << "\nabi = " << NTR_ABI_VERSION << "\ngenerator = " << generator_id()
-              << "\nrom_sha1 = " << rom_sha1 << "\nrom_size = " << fs::file_size(rom_copy, ec)
+              << "format = " << kManifestFormat << "\nabi = " << NTR_ABI_VERSION << "\ngenerator = " << generator_id(rom_code)
+              << "\nrom_code = " << rom_code << "\nrom_sha1 = " << rom_sha1 << "\nrom_size = " << fs::file_size(rom_copy, ec)
               << "\nmodule = " << key << "/" << kModuleName << "\n";
             const std::string text = m.str();
             if (!write_all(dir / "manifest.ini", text.data(), text.size())) return fail("Cannot write the manifest.");

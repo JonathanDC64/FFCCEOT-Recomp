@@ -1,10 +1,11 @@
-// Game-specific glue for hooks listed in game/config/cfie/hooks.txt.
+// Game-specific glue for the hooks listed in game/config/<release>/hooks.txt (CFIE: USA, CFIP: Europe).
 #include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <cstdio>
 #include <cmath>
 #include <cstring>
+#include <string>
 
 #include "cfie_game.hpp"
 #include "ntr/nitro.h"
@@ -21,25 +22,73 @@ bool log_sounds = false;
 }  // namespace cfie
 
 namespace {
-constexpr uint32_t kOsIrqTable = 0x027E0000;            // OS_IRQTable (DTCM)
-constexpr uint32_t kOsIrqHandlerThreadSwitch = 0x01FF8190;  // OS_IrqHandler_ThreadSwitch (ITCM)
-constexpr uint32_t kErrno = 0x02103AFC;                     // the C library's errno
-constexpr uint32_t kGuestSendAllowance = 0x0212F8A8 + 68;  // how many more inputs the host lets a guest send, less one
-constexpr uint32_t kOnlineTiming = 0x0212FD28;              // the online timing table (see cfie_set_online_timing)
-constexpr uint32_t kNetwork = 0x0212F700;                   // the game's network state (+2: 0 alone, 2 online)
-constexpr uint32_t kNetworkIsOnline = 0x020AD998;           // (network): the Wi-Fi Connection is up
-constexpr uint32_t kCardCommon = 0x020FEE40;                // the card library's common state (cardi_common)
-constexpr uint32_t kPlayers = 0x02122E98;                   // the players (572 bytes each; +328: their character)
-constexpr uint32_t kPlayerPresent = 0x02099780;             // (players, n): player n is in the game
-constexpr uint32_t kMoveYaw = 0x02057220;                   // (character): the camera's yaw its movement turns by
-constexpr uint32_t kSinCosTable = 0x020CD780;               // FX_SinCosTable_: sin, cos (4.12) per 16 angle units
-constexpr uint32_t kAnimationStep = 0x0206F1C8;             // (character): 1, or 1.5 and 0.5 under Haste and Slow
-constexpr uint32_t kRunAnimation = 0x52554E20;              // 'RUN ', at a character's +364 while it plays
-constexpr uint32_t kStartSound = 0x020B2B10;                // (_, id): the sound manager starts sound effect `id`
-constexpr uint32_t kSpellElement = 0x02135148;              // the selected spell element (a byte, 0 to 5)
-constexpr uint32_t kSpellActions = 0x02136D6C;              // the field HUD's actions: (actions, element + 1) selects one
-constexpr uint32_t kTriggerAction = 0x020C68A0;             // (actions, id): runs the handler of an action
-constexpr uint32_t kBlankInputCall = 0x020ADF81;            // return address: a slot nobody's records came in for
+// The game's addresses. The European release is the USA build with some code added in the middle of the program: its
+// code after about 0x020A3800 sits 0x1C higher and everything from the end of the program (the data, then the
+// overlays) 0x20 higher. Addresses in the comments below are the USA release's (CFIE).
+struct Addresses {
+    uint32_t os_irq_table;  // OS_IRQTable (DTCM)
+    uint32_t os_irq_handler_thread_switch;  // OS_IrqHandler_ThreadSwitch (ITCM)
+    uint32_t errno_;  // the C library's errno
+    uint32_t guest_send_allowance;  // how many more inputs the host lets a guest send, less one
+    uint32_t online_timing;  // the online timing table (see cfie_set_online_timing)
+    uint32_t network;  // the game's network state (+2: 0 alone, 2 online)
+    uint32_t network_is_online;  // (network): the Wi-Fi Connection is up
+    uint32_t card_common;  // the card library's common state (cardi_common)
+    uint32_t players;  // the players (572 bytes each; +328: their character)
+    uint32_t player_present;  // (players, n): player n is in the game
+    uint32_t move_yaw;  // (character): the camera's yaw its movement turns by
+    uint32_t sin_cos_table;  // FX_SinCosTable_: sin, cos (4.12) per 16 angle units
+    uint32_t animation_step;  // (character): 1, or 1.5 and 0.5 under Haste and Slow
+    uint32_t run_animation;  // 'RUN ', at a character's +364 while it plays
+    uint32_t start_sound;  // (_, id): the sound manager starts sound effect `id`
+    uint32_t spell_element;  // the selected spell element (a byte, 0 to 5)
+    uint32_t spell_actions;  // the field HUD's actions: (actions, element + 1) selects one
+    uint32_t trigger_action;  // (actions, id): runs the handler of an action
+    uint32_t blank_input_call;  // return address: a slot nobody's records came in for
+};
+constexpr Addresses kUsa = {
+    0x027E0000,  // os_irq_table
+    0x01FF8190,  // os_irq_handler_thread_switch
+    0x02103AFC,  // errno_
+    0x0212F8A8 + 68,  // guest_send_allowance
+    0x0212FD28,  // online_timing
+    0x0212F700,  // network
+    0x020AD998,  // network_is_online
+    0x020FEE40,  // card_common
+    0x02122E98,  // players
+    0x02099780,  // player_present
+    0x02057220,  // move_yaw
+    0x020CD780,  // sin_cos_table
+    0x0206F1C8,  // animation_step
+    0x52554E20,  // run_animation
+    0x020B2B10,  // start_sound
+    0x02135148,  // spell_element
+    0x02136D6C,  // spell_actions
+    0x020C68A0,  // trigger_action
+    0x020ADF81  // blank_input_call
+};
+constexpr Addresses kEur = {
+    0x027E0000,  // os_irq_table
+    0x01FF8190,  // os_irq_handler_thread_switch
+    0x02103B1C,  // errno_
+    0x0212F8C8 + 68,  // guest_send_allowance
+    0x0212FD48,  // online_timing
+    0x0212F720,  // network
+    0x020AD9B4,  // network_is_online
+    0x020FEE60,  // card_common
+    0x02122EB8,  // players
+    0x02099780,  // player_present
+    0x02057220,  // move_yaw
+    0x020CD79C,  // sin_cos_table
+    0x0206F1C8,  // animation_step
+    0x52554E20,  // run_animation
+    0x020B2B2C,  // start_sound
+    0x02135168,  // spell_element
+    0x02136D8C,  // spell_actions
+    0x020C68BC,  // trigger_action
+    0x020ADF9D  // blank_input_call
+};
+const Addresses* A = &kUsa;  // the release being played (cfie::select_release)
 
 // Menu sounds: a small ring of requests from the frontend, started by cfie_sound_update.
 struct SoundRequest {
@@ -79,14 +128,14 @@ const SlotStick* moving_stick(int32_t player) {
 // (a DS or another emulator would move the character by the D-pad bits and fall out of step).
 bool send_stick(NtrCpu* c) {
     if (cfie::analog_movement == cfie::AnalogMovement::Off) return false;
-    if (ntr_rd8(c, kNetwork + 2) == 0) return true;
+    if (ntr_rd8(c, A->network + 2) == 0) return true;
     if (cfie::analog_movement != cfie::AnalogMovement::Multiplayer) return false;
     const uint32_t lr = c->r[14], r0 = c->r[0], r1 = c->r[1], r2 = c->r[2], r3 = c->r[3];
     bool all = true;
     for (uint32_t n = 0; n < 4 && all; n++) {
-        c->r[0] = kPlayers;
+        c->r[0] = A->players;
         c->r[1] = n;
-        ntr_call(c, kPlayerPresent | 1);
+        ntr_call(c, A->player_present | 1);
         all = c->r[0] == 0 || slot_sticks[n].marked;
     }
     c->r[0] = r0, c->r[1] = r1, c->r[2] = r2, c->r[3] = r3, c->r[14] = lr;
@@ -94,7 +143,7 @@ bool send_stick(NtrCpu* c) {
 }
 }  // namespace
 
-extern "C" void cfie_os_irq_handler(NtrCpu* c) { ntr::nitro::irq_handler(c, kOsIrqTable, kOsIrqHandlerThreadSwitch); }
+extern "C" void cfie_os_irq_handler(NtrCpu* c) { ntr::nitro::irq_handler(c, A->os_irq_table, A->os_irq_handler_thread_switch); }
 
 namespace cfie {
 void queue_sound(uint16_t id) {
@@ -120,7 +169,7 @@ extern "C" void cfie_sound_update(NtrCpu* c) {
         if (!fresh || id == 0) continue;
         c->r[0] = 0;
         c->r[1] = id;
-        ntr_call(c, kStartSound | 1);
+        ntr_call(c, A->start_sound | 1);
     }
     c->r[0] = r0, c->r[1] = r1, c->r[2] = r2, c->r[3] = r3, c->r[14] = lr;
 }
@@ -134,15 +183,15 @@ uint64_t spell_ticks() { return spell_tick_count.load(std::memory_order_relaxed)
 // 0x020C6C3C (the field HUD's pad updater, once per tick: r0 = its state): applies a requested spell element through the
 // game's action dispatcher, the call its R + D-pad handler (0x020C6CCC) makes.
 extern "C" void cfie_spell_pad(NtrCpu* c) {
-    const int current = int(int8_t(ntr_rd8(c, kSpellElement)));
+    const int current = int(int8_t(ntr_rd8(c, A->spell_element)));
     spell_now.store(current, std::memory_order_relaxed);
     spell_tick_count.fetch_add(1, std::memory_order_relaxed);
     const int want = spell_request.exchange(-1, std::memory_order_relaxed);
     if (want < 0 || want > 5 || want == current) return;
     const uint32_t r0 = c->r[0], r1 = c->r[1], r2 = c->r[2], r3 = c->r[3], lr = c->r[14];
-    c->r[0] = kSpellActions;
+    c->r[0] = A->spell_actions;
     c->r[1] = uint32_t(want + 1);
-    ntr_call(c, kTriggerAction | 1);
+    ntr_call(c, A->trigger_action | 1);
     c->r[0] = r0, c->r[1] = r1, c->r[2] = r2, c->r[3] = r3, c->r[14] = lr;
 }
 
@@ -188,7 +237,7 @@ extern "C" void cfie_apply_input(NtrCpu* c) {
     const uint32_t slot = c->r[1], record = c->r[0];
     if (slot >= 4) return;
     SlotStick& s = slot_sticks[slot];
-    if (c->r[14] == kBlankInputCall) {
+    if (c->r[14] == A->blank_input_call) {
         s = {};
         return;
     }
@@ -211,14 +260,14 @@ extern "C" int cfie_analog_move(NtrCpu* c) {
     const int64_t speed = int64_t(int32_t(c->r[2])) * s->push / kFullPush;
     // The stick's direction (x = sin, z = cos of its angle), z towards the bottom of the screen (the D-pad's Down).
     const uint32_t a = uint32_t(s->angle) << 4;
-    const int64_t x = int16_t(ntr_rd16(c, kSinCosTable + a * 4)), z = int16_t(ntr_rd16(c, kSinCosTable + a * 4 + 2));
+    const int64_t x = int16_t(ntr_rd16(c, A->sin_cos_table + a * 4)), z = int16_t(ntr_rd16(c, A->sin_cos_table + a * 4 + 2));
 
     const uint32_t lr = c->r[14];
-    c->r[0] = ntr_rd32(c, kPlayers + 572 * uint32_t(player) + 328);
-    ntr_call(c, kMoveYaw | 1);
+    c->r[0] = ntr_rd32(c, A->players + 572 * uint32_t(player) + 328);
+    ntr_call(c, A->move_yaw | 1);
     c->r[14] = lr;
     const uint32_t i = (c->r[0] & 0xFFFF) >> 4;
-    const int64_t sin = int16_t(ntr_rd16(c, kSinCosTable + i * 4)), cos = int16_t(ntr_rd16(c, kSinCosTable + i * 4 + 2));
+    const int64_t sin = int16_t(ntr_rd16(c, A->sin_cos_table + i * 4)), cos = int16_t(ntr_rd16(c, A->sin_cos_table + i * 4 + 2));
     // As MTX_RotY33 and MTX_MultVec33, then FX_Mul by the speed.
     const int64_t vx = (x * cos + z * sin) >> 12, vz = (z * cos - x * sin) >> 12;
     ntr_wr32(c, out, uint32_t((vx * speed + 0x800) >> 12));
@@ -247,13 +296,13 @@ extern "C" void cfie_perspective_aspect(NtrCpu* c) {
 
 extern "C" int cfie_player_animation_step(NtrCpu* c) {
     const uint32_t character = ntr_rd32(c, ntr_rd32(c, c->r[0] + 8) + 20);
-    if (ntr_rd32(c, character + 364) != kRunAnimation) return 0;
+    if (ntr_rd32(c, character + 364) != A->run_animation) return 0;
     const int32_t player = int8_t(ntr_rd8(c, character + 172));
     const SlotStick* s = moving_stick(player);
-    if (!s || s->push >= kFullPush || character != ntr_rd32(c, kPlayers + 572 * uint32_t(player) + 328)) return 0;
+    if (!s || s->push >= kFullPush || character != ntr_rd32(c, A->players + 572 * uint32_t(player) + 328)) return 0;
     const uint32_t lr = c->r[14];
     c->r[0] = character;
-    ntr_call(c, kAnimationStep | 1);
+    ntr_call(c, A->animation_step | 1);
     c->r[14] = lr;
     c->r[0] = uint32_t(int64_t(int32_t(c->r[0])) * s->push / kFullPush);
     return 1;
@@ -262,13 +311,13 @@ extern "C" int cfie_player_animation_step(NtrCpu* c) {
 // 0x02025260: CARDi_RequestStreamCommand. The game's save thread reads and writes the save 1 KB at a time, and the
 // card library hands each 256-byte page to the ARM7: a save of 25 KB took 3.2 s. Fast saving does it at once.
 extern "C" int cfie_card_backup_request(NtrCpu* c) {
-    return cfie::fast_saving && ntr::nitro::card_backup_request(c, kCardCommon);
+    return cfie::fast_saving && ntr::nitro::card_backup_request(c, A->card_common);
 }
 
 // 0x02005BBC: the Wi-Fi Connection test (DWC netcheck). It converts the HTTP status with atoi and fails if errno is
 // ERANGE, but errno is never cleared: the stats server's session key (\sesskey\, read with atoi at 0x02040D02)
 // overflows on today's revival servers, and every connection after the first then fails with error 52200.
-extern "C" void cfie_on_netcheck(NtrCpu* c) { ntr_wr32(c, kErrno, 0); }
+extern "C" void cfie_on_netcheck(NtrCpu* c) { ntr_wr32(c, A->errno_, 0); }
 
 // 0x020ADDBC: how many of the guest's queued inputs (one per game frame, 30 a second) to send to the host now: at most
 // 3, and no more than the host allows. Online (Wi-Fi Connection) the game sends nothing until it has 3, so an input
@@ -276,11 +325,11 @@ extern "C" void cfie_on_netcheck(NtrCpu* c) { ntr_wr32(c, kErrno, 0); }
 // wireless it sends whatever it has every frame; this does the same online (unless the game's own timing is chosen).
 extern "C" void cfie_guest_inputs_to_send(NtrCpu* c) {
     int32_t n = std::min(int32_t(ntr_rd32(c, c->r[0] + 108)), 3);
-    n = std::min(n, int32_t(ntr_rd32(c, kGuestSendAllowance)) + 1);
-    if (cfie::online_buffer == cfie::OnlineBuffer::Original && ntr_rd8(c, kNetwork + 2) == 2 && n != 3) {
+    n = std::min(n, int32_t(ntr_rd32(c, A->guest_send_allowance)) + 1);
+    if (cfie::online_buffer == cfie::OnlineBuffer::Original && ntr_rd8(c, A->network + 2) == 2 && n != 3) {
         const uint32_t lr = c->r[14];
-        c->r[0] = kNetwork;
-        ntr_call(c, kNetworkIsOnline | 1);
+        c->r[0] = A->network;
+        ntr_call(c, A->network_is_online | 1);
         c->r[14] = lr;
         if (c->r[0] != 0) n = 0;
     }
@@ -309,8 +358,15 @@ extern "C" void cfie_set_online_timing(NtrCpu* c) {
         20,                        // +108: the largest target
         original ? game : margin,  // +112: the target over the ping
     };
-    for (int i = 0; i < 8; i++) ntr_wr32(c, kOnlineTiming + 84 + 4 * i, uint32_t(fields[i]));
-    ntr_wr32(c, kOnlineTiming + 116, preset);
+    for (int i = 0; i < 8; i++) ntr_wr32(c, A->online_timing + 84 + 4 * i, uint32_t(fields[i]));
+    ntr_wr32(c, A->online_timing + 116, preset);
+}
+
+bool cfie::select_release(const std::string& game_code) {
+    if (game_code == "CFIE") A = &kUsa;
+    else if (game_code == "CFIP") A = &kEur;
+    else return false;
+    return true;
 }
 
 void* cfie::find_hook(const char* name) {

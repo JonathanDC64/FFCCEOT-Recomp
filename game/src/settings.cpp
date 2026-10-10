@@ -62,6 +62,7 @@ const char* const kAligns[] = {"top", "middle", "bottom"};
 const char* const kRenderers[] = {"software", "opengl", "compute"};
 const char* const kFilters[] = {"nearest", "linear", "sharp"};
 const char* const kTextureSmoothings[] = {"off", "smooth", "sharp"};
+const char* const kLanguages[] = {"english", "french", "german", "spanish"};
 const char* const kOnlineBuffers[] = {"low", "medium", "original"};
 const char* const kAnalogMovements[] = {"off", "single-player", "multiplayer"};
 const char* const kRingOrientations[] = {"sides", "top"};
@@ -134,6 +135,7 @@ const Field kFields[] = {
           }},
     BOOL_FIELD("interface.skip_prelaunch", skip_prelaunch),
     BOOL_FIELD("interface.preset_chosen", preset_chosen),
+    ENUM_FIELD("game.language", language, kLanguages),
     BOOL_FIELD("game.skip_logos", skip_logos),
     BOOL_FIELD("game.fast_loading", fast_loading),
     BOOL_FIELD("game.fast_saving", fast_saving),

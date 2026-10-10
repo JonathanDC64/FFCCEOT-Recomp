@@ -68,7 +68,8 @@ LICENSES = [
 README_TXT = """Final Fantasy Crystal Chronicles: Echoes of Time, PC port ({version}, alpha)
 
 1. {start}
-2. Choose your own copy of the game (USA, Final Fantasy Crystal Chronicles - Echoes of Time (USA) (En,Fr,Es).nds).
+2. Choose your own copy of the game (the USA release, Final Fantasy Crystal Chronicles - Echoes of Time (USA) (En,Fr,Es).nds,
+   or the European one, (Europe) (En,Fr,De,Es).nds).
    It is checked and built into a game for your PC (about a minute, once). Nothing else has to be installed.
 
 This package contains no game data. It is an early alpha: report problems from the in-game menu (Report an issue).
@@ -209,7 +210,7 @@ def scan(stage: Path):
             continue
         name = p.name.lower()
         if p.suffix.lower() in guard.FORBIDDEN_EXTS or name.startswith(("cfie_game", "libcfie_game", "func_table")) \
-                or name in ("manifest.ini", "cfie.sav", "cfie.nds"):
+                or name in ("manifest.ini", "cfie.sav", "cfip.sav", "cfie.nds"):
             bad.append(p)
         elif p.suffix.lower() == ".c" and "generated" in p.read_text(errors="ignore")[:400].lower():
             bad.append(p)

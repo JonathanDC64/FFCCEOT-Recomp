@@ -29,6 +29,7 @@ void test_round_trip() {
     a.preset_chosen = true;
     a.volume = 40;
     a.hud_scale = 150;
+    a.language = GameLanguage::German;
     a.controls.spell_ring = false;
     a.controls.spell_ring_orientation = ring::Orientation::Top;
     a.controls.spell_ring_size = 90;
@@ -47,6 +48,7 @@ void test_round_trip() {
     CHECK(b.preset_chosen);
     CHECK(b.volume == 40);
     CHECK(b.hud_scale == 150);
+    CHECK(b.language == GameLanguage::German);
     CHECK(b.controls == a.controls);
     CHECK(!b.controls.spell_ring);
     CHECK(b.controls.spell_ring_orientation == ring::Orientation::Top);

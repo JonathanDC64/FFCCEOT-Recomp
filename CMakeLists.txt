@@ -16,7 +16,7 @@ else()
 endif()
 
 # Path to the user's own ROM. Only needed for steps that generate code from it (dev mode).
-set(FFCC_ROM "" CACHE FILEPATH "Path to your own FFCC: Echoes of Time (USA) ROM dump")
+set(FFCC_ROM "" CACHE FILEPATH "Path to your own FFCC: Echoes of Time ROM dump (USA or Europe)")
 
 # A build for a release package (tools/package.py): no path of the build machine ends up in the binary or its debug info.
 option(FFCC_PACKAGE "Build for a release package" OFF)

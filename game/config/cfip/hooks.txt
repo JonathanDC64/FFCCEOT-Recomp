@@ -1,0 +1,51 @@
+# Recompiler hooks for CFIP.
+# Format: <module> <address> replace|before|instead <c_function>
+#   replace: the recompiled body is replaced by a call to the C function.
+#   before:  the C function is called on entry, then the recompiled body runs.
+#   instead: the C function (returning int) is called on entry; the recompiled body runs if it returns 0.
+
+# NitroSDK thread context switches: guest threads run on host fibers (runtime/src/nitro.cpp).
+main 0202c8e8 replace ntr_nitro_save_context   # OS_SaveContext
+main 0202c934 replace ntr_nitro_load_context   # OS_LoadContext
+main 0202c864 replace ntr_nitro_init_context   # OS_InitContext
+
+# IRQ dispatch: enters OS_IrqHandler_ThreadSwitch explicitly (game/src/cfie_hooks.cpp).
+itcm 01ff8128 replace cfie_os_irq_handler      # OS_IrqHandler
+
+# DS Protect (encrypted anti-piracy checks): report a genuine cartridge.
+main 020cb2dc replace ntr_dsprot_not_detected
+main 020cb3b4 replace ntr_dsprot_not_detected
+main 020cb48c replace ntr_dsprot_not_detected
+
+# Sound: start background music. The first call is the title screen's BGM (game/src/cfie_hooks.cpp: logo skip).
+main 0207713c before cfie_on_bgm_play
+
+# Sound: the sound manager's update, once per pass of the game's main loop. Queued menu sounds start here (the one place
+# on the game's own thread that is safe to start a sound from), and --log-sounds logs the ones the game starts.
+main 02076a94 before cfie_sound_update
+main 02076fd0 before cfie_on_sound_start
+
+# Wi-Fi Connection test (DWC netcheck): clear errno first. The test reads errno after its strtol, and the GameSpy
+# stats session key of today's servers overflows the game's strtol, leaving ERANGE for the next connection.
+main 02005bbc before cfie_on_netcheck
+
+# Online play buffers inputs much more than local wireless, so a guest's controls lag (game/src/cfie_hooks.cpp).
+main 020addd8 replace cfie_guest_inputs_to_send
+main 020ae330 replace cfie_set_online_timing
+
+# Save reads and writes (CARDi_RequestStreamCommand): with fast saving, done on the save memory at once.
+main 02025260 instead cfie_card_backup_request
+
+# Analog movement: the stick goes in the input records' touch bytes while the screen isn't touched, every console
+# keeps each player's, and moves that player's character by it (direction and speed, and the run's pace).
+main 02082a40 instead cfie_pack_input
+main 020af13c before cfie_apply_input
+main 02056498 instead cfie_analog_move
+main 0206f1bc instead cfie_player_animation_step
+
+# Widescreen: the projection's aspect ratio (the game's only perspective setup, called with 4:3).
+main 02028104 before cfie_perspective_aspect
+
+# Spell element: the field HUD's pad updater, once per tick while the spell bar is live. R + D-pad changes the element
+# through the game's action dispatcher (0x020C68A0); the frontend's spell requests make the same call from here.
+main 020c6c58 before cfie_spell_pad

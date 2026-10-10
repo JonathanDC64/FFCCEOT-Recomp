@@ -68,7 +68,7 @@ game code and can never be published ([LEGAL.md](LEGAL.md)). The release flow ha
 | ROM | *Decided:* setup copies the player's ROM into the data folder, so a moved or deleted original does not break the game. |
 | Executable | *Decided:* one `ffcc` executable: the recompiler is linked into it (no separate `ntr-recomp` to confuse players). |
 | Setup UI | *Decided:* the start screen of the game window (a port of Dusklight's), fully controller-navigable. |
-| ROM check | *Decided:* USA (CFIE) dump only, SHA-1 verified, with clear messages for other regions, bad dumps and archives. |
+| ROM check | *Decided:* the USA (CFIE) and European (CFIP) dumps, SHA-1 verified, with clear messages for other regions, bad dumps and archives. |
 | Regeneration | *Decided:* automatic, with a progress screen, when a new release changes the generated game. The old build is kept until the new one succeeds. |
 | Updates | *Decided:* check GitHub Releases on launch (option, **on by default**), show a banner with the release notes and a download button. No self-replacing of binaries. |
 | Data folder | *Decided:* per-user data folder as now, plus `portable.txt` beside the exe for portable mode. |
@@ -215,7 +215,7 @@ gamepad-only operation of the start screen and the update banner.
 
 1. Code signing for Windows: see below for the options; the owner decides.
 2. Licence choice and the NOTICE audit (melonDS, RmlUi, SDL, Freetype, fonts), and when the repo goes public.
-3. Other ROM regions and revisions later: a per-region config and hash table, or only USA.
+3. Other ROM regions and revisions later (USA and Europe are done): a per-region config (`game/config/<code>`) and a row in `common/src/known_roms.cpp`.
 4. How small the clang bundle can get (§4).
 
 ## 9. Work breakdown

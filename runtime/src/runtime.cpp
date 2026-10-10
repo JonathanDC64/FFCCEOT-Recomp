@@ -84,6 +84,14 @@ RuntimeImpl::RuntimeImpl(std::vector<uint8_t> rom, const GameCode& code, Host& h
         header.UpdateChecksum();
         args.Firmware.UpdateChecksums();
     }
+    {
+        // The language the game plays in: the firmware's setting, in both copies of the user data.
+        for (auto& user : args.Firmware.GetUserData()) {
+            user.Settings = u16((user.Settings & ~7u) | (options.language & 7u));
+            user.UpdateChecksum();
+        }
+        args.Firmware.UpdateChecksums();
+    }
     if (!options.console_name.empty()) {
         // The nickname other players see (online and local wireless lobbies): both copies of the firmware's user data.
         char16_t nick[10] = {};
