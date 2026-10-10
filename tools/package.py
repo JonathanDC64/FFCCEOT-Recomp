@@ -109,7 +109,9 @@ def llvm_source(target: str, llvm_dir: str | None) -> Path:
     if llvm_dir:
         return Path(llvm_dir)
     name, digest, inner = LLVM_ARCHIVES[target]
-    cache = ROOT / "build" / "pkgcache"
+    # On Windows the compiler's own path ends up in the PDB, so the download is kept in a folder that says nothing about who
+    # built the package (not in the repo, whose folder name is the builder's choice).
+    cache = Path(os.environ["ProgramData"]) / "ffcc-pkgcache" if platform.system() == "Windows" and "ProgramData" in os.environ else ROOT / "build" / "pkgcache"
     unpacked = cache / inner
     if (unpacked / "bin").is_dir():
         return unpacked
@@ -215,6 +217,17 @@ def scan(stage: Path):
         sys.exit("game data in the package:\n  " + "\n  ".join(str(b) for b in bad))
 
 
+def check_no_build_paths(stage: Path):
+    """Refuses a program or debug file that holds the folder of the machine that built it."""
+    needles = {str(ROOT).lower().encode(), str(ROOT).replace("\\", "/").lower().encode()}
+    for f in stage.iterdir():
+        if f.suffix.lower() in (".exe", ".pdb"):
+            data = f.read_bytes().lower()
+            for n in needles:
+                if n in data:
+                    sys.exit(f"{f.name} contains the build folder {n.decode()}")
+
+
 def zip_dir(stage: Path, out: Path):
     out.parent.mkdir(parents=True, exist_ok=True)
     if out.exists():
@@ -231,8 +244,13 @@ def package_windows(args):
     llvm = llvm_source("windows", args.llvm_dir)
     check_llvm(llvm, "windows")
     if not args.no_build:
+        shutil.rmtree(build_dir, ignore_errors=True)  # (a clean configure: nothing cached from another folder or compiler path)
         with neutral_root("windows") as root:
-            build("windows", root, root / "build" / "pkg-windows", llvm)
+            try:
+                tools = root / llvm.relative_to(ROOT)  # (the compiler is seen through the neutral drive too: its path ends up in the PDB)
+            except ValueError:
+                tools = llvm
+            build("windows", root, root / "build" / "pkg-windows", tools)
     exe = build_dir / "game" / "ffcc.exe"
     if not exe.exists():
         sys.exit(f"{exe} was not built")
@@ -244,6 +262,7 @@ def package_windows(args):
     pdb = build_dir / "game" / "ffcc.pdb"
     if pdb.exists():
         shutil.copy2(pdb, stage / "ffcc.pdb")  # (crash reports show source lines with it)
+    check_no_build_paths(stage)
     copy_llvm(llvm, "windows", stage)
     copy_licenses(build_dir, stage)
     (stage / "README.txt").write_text(README_TXT.format(
