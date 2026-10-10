@@ -1,24 +1,40 @@
 # FFCCEOT-Recomp
 
-A static recompilation of **Final Fantasy Crystal Chronicles: Echoes of Time** (Nintendo DS, 2009) into a native PC application.
+A native PC port of **Final Fantasy Crystal Chronicles: Echoes of Time** (Nintendo DS, 2009), made by statically
+recompiling the game: its ARM code is translated to C and compiled on your PC, not emulated.
 
 > **Status: alpha.** The game boots and plays from the title screen into the field, with sound, saves and online play.
-> Expect rough edges: see [Alpha notes](#alpha-notes) and the [roadmap](docs/ROADMAP.md).
+> It has been played through the opening areas, not the whole game, so expect rough edges: see
+> [Alpha notes](#alpha-notes) and the [roadmap](docs/ROADMAP.md).
 
-## Goals
+## Features
 
-- Native PC executable. The game's ARM code is translated to C and compiled, not emulated.
-- **60+ FPS** through frame interpolation, with game logic kept at its native tick.
-- **Widescreen** (16:9 now, more ratios planned) and resolutions up to **4K** and beyond.
-- **Modern controls**: full gamepad play with no touch screen needed, plus rebinding and mouse-as-stylus.
-- **Single-screen play** by default. The second screen is available as an overlay, picture-in-picture, side-by-side, stacked, or a separate window.
-- **Online multiplayer restored** through community Nintendo WFC revival servers, plus LAN play between PCs.
-- **Quality-of-life** features and an in-game configuration menu with a Final Fantasy look.
+- **Plug and play.** Download, run, choose your own ROM. The game is built on your PC in about a minute, once.
+  Nothing else to install. Windows and Linux (AppImage).
+- **Single-screen play** by default, with the second screen as a touchable picture-in-picture. Other layouts:
+  main + side, stacked, side by side, or the second screen in a window of its own. Swap the screens at any time.
+- **High resolution**: the OpenGL renderer draws at up to 16x the DS resolution (4K and beyond), matched to your window
+  automatically, with nearest, linear and sharp scaling filters. The exact DS software renderer is kept as the reference.
+- **Smoother picture**: texture smoothing (Smooth or Sharp) removes the blocky look of the DS textures and the jagged
+  edges of sprites in 3D, and Stable textures stops ground textures from warping.
+- **Smooth motion**: the game draws its 3D at 30 fps; frame interpolation shows it at 60 fps or at your display's refresh
+  rate (144 Hz and more), with optional frame pacing for G-Sync and FreeSync displays.
+- **Widescreen** (16:9, 16:10, 21:9, 32:9) with the health and magic bars at the screen edges and resizable.
+- **Modern controls**: full gamepad play with no touch screen needed (the left stick moves, analog movement walks the way
+  the stick points), a radial for the right stick to pick the spell element, rebinding for keyboard and gamepad, mouse
+  as the stylus, and button names for Xbox, PlayStation and Nintendo controllers.
+- **Online multiplayer restored** through the community Wi-Fi Connection revival servers (Kaeru WFC, WiiLink WFC or your
+  own), plus local wireless between instances on one PC (Windows).
+- **Quality of life**: skip the company logos, fast loading, fast saving, a faster emulated CPU, an in-game settings menu
+  with a Final Fantasy look that works with mouse, keyboard and gamepad, and two presets (Original and Enhanced) to
+  start from.
+- **Problem reports**: *Report an issue* collects the version, settings, a recent log and a screenshot, with personal
+  paths removed, and opens a prefilled issue.
 
 ## You need your own copy of the game
 
-This repository contains **no** game code or data. The application asks for your own dump of the game on first launch,
-checks it, and builds everything it needs locally.
+This project contains **no** game code or data. The program asks for your own dump of the game on first launch, checks
+it, and builds everything it needs locally.
 
 | Region | Code | Dump | SHA-1 |
 |---|---|---|---|
@@ -26,21 +42,66 @@ checks it, and builds everything it needs locally.
 
 Other regions are planned later.
 
+## Install and play
+
+1. Download the package for your system from the Releases page.
+   - **Windows:** unzip it to a folder you can write to (not Program Files) and run `ffcc.exe`.
+   - **Linux:** make the `.AppImage` executable (`chmod +x`) and run it. It needs glibc 2.35 or newer (Steam Deck: run it
+     from desktop mode).
+2. Choose your ROM (or drop it on the window). It is checked, a copy is kept in the data folder, and the game is built
+   with the compiler that comes in the package. That takes about a minute, once; an update that changes what is
+   generated rebuilds by itself from the kept copy.
+3. Pick a preset in the Welcome window (*Enhanced* is the recommended way to play) and press Play.
+
+The program is **unsigned**, so Windows SmartScreen or your antivirus may warn about it the first time, and about the
+game module it builds. Saves and settings live in `%APPDATA%\FFCCEOT-Recomp\EchoesOfTime` (Linux:
+`~/.local/share/FFCCEOT-Recomp/EchoesOfTime`); put a file named `portable.txt` next to the program (next to the
+`.AppImage` on Linux) to keep them in a `data` folder beside it instead.
+
+## Controls
+
+| DS button | Keyboard | Gamepad (Nintendo positions) |
+|---|---|---|
+| D-pad | Arrow keys | D-pad, left stick |
+| A / B / X / Y | X / Z / S / A | Right / bottom / top / left face button |
+| L / R | Q / W | Shoulder buttons |
+| Start / Select | Enter / Right Shift | Start / Back |
+| Touch screen | Mouse | (not needed: the game plays with buttons) |
+
+Every DS button and the screen actions can be rebound on the Controls page of the settings, which names buttons for the
+connected controller. With analog movement (on in single-player by default) your character walks the way the stick
+points, slower when it is pushed less; in multiplayer it needs every player on this PC version, so choose
+"Single-player and multiplayer" there (with a DS or another emulator in the room, everyone stays on the eight
+directions). The right stick opens a radial of the six spell gems: point at one, then hold X to cast (the number keys
+1 to 6 do the same). The company logos before the title screen are skipped.
+
+Hotkeys: **F1** (or R + Start on a gamepad) opens the settings menu over the game, which keeps running without input so
+online play stays in sync; **F2** (left stick click) swaps the screens, **F3** (right stick click) shows or hides the picture-in-picture, **F4** moves the side
+screen of the main + side layout, **F5** switches the renderer, **F6/F7** lower or raise the resolution, **F8** cycles
+the filter, **F9** cycles the 3D frame rate, **F10** cycles the layout and **F11** toggles borderless fullscreen. The
+menu works with the mouse, the keyboard (arrows, Enter, Q/E for tabs) or a gamepad (D-pad or stick, right face button
+to change, shoulders for tabs). The Settings window ends with an **About** tab: version, licence and credits.
+
 ## Alpha notes
 
-This is an early build. It has been played through the opening areas, not the whole game, so expect bugs; please
-report them from the in-game menu (*Report an issue* zips the details with personal paths removed) or on the issue tracker.
+This is an early build: please report problems from the in-game menu or on the issue tracker.
 
-- **Plug and play.** Unzip (Windows) or make the AppImage executable (Linux), start the program and choose your own
-  ROM. It is checked, copied into the program's data folder and built into a native game module on your PC with the
-  compiler that ships in the package. Nothing else has to be installed.
-- **Experimental features** carry a warning icon in the settings menu: widescreen and HUD placement, 3D at 60 fps and at
-  your display's refresh rate, frame pacing, stable and smoothed textures, analog movement in multiplayer, and
-  everything online (Wi-Fi Connection through a revival server). They work, but have had less testing.
-- The program is **unsigned**, so Windows SmartScreen or your antivirus may warn about it the first time (and about the
-  game module it builds). Extract it to a folder you can write to (not Program Files).
-- Saves and settings live in `%APPDATA%\FFCCEOT-Recomp\EchoesOfTime` (Linux: `~/.local/share/FFCCEOT-Recomp/EchoesOfTime`);
-  put a file named `portable.txt` next to the program to keep them in a `data` folder beside it instead.
+- **Experimental features** carry a warning icon in the settings: widescreen and HUD placement, 3D at 60 fps and at your
+  display's refresh rate, frame pacing, stable and smoothed textures, analog movement in multiplayer, and everything
+  online. They work, but have had less testing.
+- Not done on Linux yet: the crash dialog (logs and problem reports work) and local wireless between instances.
+- Only the USA version is supported.
+
+## Command line
+
+Everything in the settings can also be set for one run. Run `ffcc --help` for the list; the main options are
+`--layout single|main-side|stacked|side|windows`, `--side-align top|middle|bottom`, `--swap-screens`,
+`--no-second-screen`, `--renderer software|opengl`, `--scale auto|1..16`, `--filter nearest|linear|sharp`,
+`--texture-smoothing off|smooth|sharp`, `--stable-textures`, `--better-polygons`, `--display-rate`, `--no-interpolate`,
+`--pacing variable --rate-cap <fps>`, `--aspect 16:9`, `--hud-edges`, `--hud-scale 50..200`, `--fullscreen`,
+`--analog-movement off|single-player|multiplayer`, `--no-skip-logos`, `--prelaunch` (show the start screen even with a
+ROM given), `--toolchain <dir>` (the compiler to build with) and `--data-dir <dir>`. The program has no console window
+of its own: started from a terminal it prints there, but the terminal does not wait for it.
 
 ## Building (development)
 
@@ -56,56 +117,15 @@ build/release/game/ffcc.exe "path/to/your/dump.nds"
 
 The recompiler runs at build time and writes the generated C to `build/` (never committed), and the game is built from it
 as `cfie_game.dll` next to `ffcc.exe`. Without `FFCC_ROM`, only the program itself is built, which is what a release is:
-it contains no game. Run it with no ROM on the command line and the start screen asks for yours the first time (choose
-the file or drop it on the window), builds the game from it in
-about a minute and keeps a copy of the ROM and the built game in the data folder. Later runs start straight away, and
-an update that changes how the game is built rebuilds it by itself from that copy. `--prelaunch` shows the start screen even with a ROM on the command line,
-`--toolchain <dir>` names the compiler to build with (the program has no console window of its own: started from a
-terminal it prints there, but the terminal does not wait for it), and a `portable.txt` next to the program keeps everything in a
-`data` folder beside it.
-
-Controls (defaults): arrows, X = A, Z = B, S = X, A = Y, Q = L, W = R, Enter = Start, Right Shift = Select, mouse = touch
-screen, Esc = settings menu. Gamepads use the Nintendo button positions (DS A is the right face button, B the bottom one),
-and the left stick works as the D-pad. With analog movement (Controls page) your character walks the way the stick
-points, slower when it is pushed less, instead of in the D-pad's eight directions. It is on in single-player by
-default. In multiplayer it needs every player on this PC version: choose "Single-player and multiplayer". With a DS or
-another emulator in the room, everyone stays on the eight directions (`--analog-movement
-off|single-player|multiplayer` sets it for one run). Every DS button and the screen/fullscreen actions can be rebound to a key and a
-gamepad input on the menu's Controls page, which names buttons for the connected controller (Xbox, PlayStation,
-Nintendo). The right stick picks the spell element: push it and a radial of the six gems appears, point at one to select
-it (then hold X to cast); the number keys 1-6 do the same (the Controls page can turn the radial off). The company logos
-before the title screen are skipped; pass `--no-skip-logos` to watch them.
-
-Settings: Esc (or Guide, or Back + Start on a gamepad) opens the settings menu over the game (which keeps running, without input,
-so online play stays in sync): screen layout,
-fullscreen, renderer, resolution, filter, volume, controls and more. It works with the mouse,
-the keyboard (arrows, Enter, Q/E for tabs) or a gamepad (D-pad or stick, right face button to change, shoulders for
-tabs). Settings are saved to `settings.ini` next to the save (in `%APPDATA%\FFCCEOT-Recomp\EchoesOfTime` on Windows); the
-options below override them for one run, and the hotkeys change them too.
-
-Screens: by default the top screen fills the window and the bottom screen is a picture-in-picture in the corner
-(click it to touch). F1 cycles the layout (single, main + side, stacked, side by side, two windows), F2 swaps the screens, F3 or
-the right stick click shows/hides the picture-in-picture, F4 moves the side screen of the main + side layout (the main
-screen at the left edge, the other filling the rest of the width) between bottom, middle and top. Options:
-`--layout single|main-side|stacked|side|windows`, `--side-align top|middle|bottom`, `--swap-screens`, `--no-second-screen`.
-
-Video: the screens are rendered with OpenGL at a multiple of the DS resolution that matches the window (up to 16×,
-4K and beyond). While playing: F5 switches the renderer (software, OpenGL), F6/F7 lower/raise the internal
-resolution (past 1× or 16× returns to auto), F8 cycles the filter (nearest, linear, sharp), F9 cycles the 3D frame rate (the game draws its 3D at 30 fps; frame interpolation
-shows blended images in between, at 60 fps or at the display's refresh rate, e.g. 144 Hz, with the OpenGL renderer; `--display-rate` starts in that mode; Graphics → Frame pacing can present on a timer for G-Sync and FreeSync displays, `--pacing variable` with `--rate-cap <fps>`, `--no-interpolate` turns interpolation off), F11 toggles borderless fullscreen (`--fullscreen` starts in it; on Windows frames go through a DXGI flip-model swapchain, so alt-tab is seamless, and `--no-flip-model` falls back to a plain GL swap).
-The window title shows the current settings. The same choices exist as options:
-`--renderer software|opengl`, `--scale auto|1..16`, `--filter nearest|linear|sharp`, `--texture-smoothing off|smooth|sharp`, `--better-polygons`,
-`--no-hires-coordinates`.
-
-Widescreen (OpenGL renderer; Display → Aspect ratio, or `--aspect 16:9`): a wider top screen (16:9, 16:10, 21:9 or
-32:9) with more of the world to the sides. The health and magic bars can sit at the screen edges (`--hud-edges`) and be resized (`--hud-scale 50..200`);
-menus, dialogs and the title stay 4:3.
+it contains no game. Release packages are made by `python tools/package.py windows|linux` (see
+[docs/PACKAGING.md](docs/PACKAGING.md)).
 
 Testing: `--input-script <file>` plays scripted input, one step per line (`<frame> press A+Up [frames]`,
-`<frame> touch x,y [frames]`, `<frame> stick x,y [frames]` and `<frame> rstick x,y [frames]` in percent, `<frame> shot file.png`, `<frame> quit`; `+N` as the frame means N frames after the
-previous step). Automated runs should not touch your own files: `--save-file <copy.sav>` uses another save file,
-`--read-only-save` never writes the save, `--no-settings` neither reads nor writes `settings.ini`, and `--unpaced` runs
-as fast as possible. To record a problem and replay it with timings and frame hashes, see [docs/TESTING.md](docs/TESTING.md).
+`<frame> touch x,y [frames]`, `<frame> stick x,y [frames]` and `<frame> rstick x,y [frames]` in percent,
+`<frame> shot file.png`, `<frame> quit`; `+N` as the frame means N frames after the previous step). Automated runs should
+not touch your own files: `--save-file <copy.sav>` uses another save file, `--read-only-save` never writes the save,
+`--no-settings` neither reads nor writes `settings.ini`, and `--unpaced` runs as fast as possible. To record a problem
+and replay it with timings and frame hashes, see [docs/TESTING.md](docs/TESTING.md).
 
 ## Documentation
 
