@@ -40,6 +40,15 @@ to a draft release.
 Not done on Linux yet: the crash dialog (the log and system information in problem reports do work) and local wireless
 between instances (Windows only).
 
+### Publishing the site
+
+The project's web page lives in `site/` (plain HTML, CSS and a little JavaScript; fonts and screenshots are self-hosted, and
+the screenshots show the program's own interface only, never the game). GitHub Pages serves the root of the `gh-pages`
+branch. After a change to `site/` is merged to main, run `python tools/publish_site.py` from main: it commits what is in
+`site/` at HEAD onto `gh-pages` in a temporary worktree and pushes it (`--dry-run` stops before the push). It refuses to run
+unless your git email is a GitHub noreply address. The download buttons read the newest release from the GitHub API when
+the page opens, so a new release needs no change to the site.
+
 ## 1. Goal
 
 A release download that contains **no game code and no game data**: only our own runtime, UI, the recompiler and a way to
