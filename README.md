@@ -3,6 +3,8 @@
 A native PC port of **Final Fantasy Crystal Chronicles: Echoes of Time** (Nintendo DS, 2009), made by statically
 recompiling the game: its ARM code is translated to C and compiled on your PC, not emulated.
 
+**[Download the latest alpha for Windows or Linux](https://github.com/JonathanDC64/FFCCEOT-Recomp/releases)** (a Windows zip or a Linux AppImage; you bring your own ROM).
+
 > **Status: alpha.** The game boots and plays from the title screen into the field, with sound, saves and online play.
 > It has been played through the opening areas, not the whole game, so expect rough edges: see
 > [Alpha notes](#alpha-notes) and the [roadmap](docs/ROADMAP.md).
