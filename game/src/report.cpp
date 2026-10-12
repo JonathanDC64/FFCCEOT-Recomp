@@ -451,8 +451,15 @@ void start_log() {
         g_log_file = nullptr;
         return;
     }
-    g_console_out = GetStdHandle(STD_ERROR_HANDLE);
-    if (!g_console_out || g_console_out == INVALID_HANDLE_VALUE) g_console_out = GetStdHandle(STD_OUTPUT_HANDLE);
+    HANDLE console = GetStdHandle(STD_ERROR_HANDLE);
+    if (!console || console == INVALID_HANDLE_VALUE) console = GetStdHandle(STD_OUTPUT_HANDLE);
+    // A copy of its own: the _dup2 calls below close the C runtime's descriptors, and with them the handle that was
+    // here, whose number the next duplicate of the pipe's end can take (the tee would then write into its own pipe, and
+    // read it again, without end).
+    g_console_out = nullptr;
+    if (console && console != INVALID_HANDLE_VALUE &&
+        !DuplicateHandle(GetCurrentProcess(), console, GetCurrentProcess(), &g_console_out, 0, FALSE, DUPLICATE_SAME_ACCESS))
+        g_console_out = nullptr;
     const int fd = _open_osfhandle(reinterpret_cast<intptr_t>(write), _O_BINARY);
     if (fd < 0) return;
     std::fflush(stdout);
