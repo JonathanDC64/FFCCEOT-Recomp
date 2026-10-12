@@ -461,6 +461,13 @@ void start_log() {
     _dup2(fd, 2);
     SetStdHandle(STD_OUTPUT_HANDLE, write);
     SetStdHandle(STD_ERROR_HANDLE, write);
+    // A program without a console (started from the desktop: a windowed program) has no stdout and stderr to begin with:
+    // the C runtime marks the streams as closed (file descriptor -2), and printf writes nothing even with descriptors 1
+    // and 2 on the pipe. Open the streams (on NUL) so that they have descriptors, and put the pipe on those.
+    if (_fileno(stdout) < 0) std::freopen("NUL", "w", stdout);
+    if (_fileno(stderr) < 0) std::freopen("NUL", "w", stderr);
+    if (_fileno(stdout) >= 0) _dup2(fd, _fileno(stdout));
+    if (_fileno(stderr) >= 0) _dup2(fd, _fileno(stderr));
     // Unbuffered: the C runtime on Windows treats _IOLBF as fully buffered, so with 4 KB of buffer nothing the program
     // prints ever reached the log file (a problem report quoted an empty log) until 4 KB had been written.
     std::setvbuf(stdout, nullptr, _IONBF, 0);
