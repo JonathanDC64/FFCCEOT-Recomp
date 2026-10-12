@@ -48,3 +48,8 @@ add_test(NAME input_script COMMAND test_input_script)
 add_executable(test_spell_ring test_spell_ring.cpp ${PROJECT_SOURCE_DIR}/game/src/spell_ring.cpp)
 target_include_directories(test_spell_ring PRIVATE ${PROJECT_SOURCE_DIR}/game/src)
 add_test(NAME spell_ring COMMAND test_spell_ring)
+
+# The update check's release list, version comparison and notes (no network needed).
+add_executable(test_release_info test_release_info.cpp ${PROJECT_SOURCE_DIR}/game/src/release_info.cpp)
+target_include_directories(test_release_info PRIVATE ${PROJECT_SOURCE_DIR}/game/src)
+add_test(NAME release_info COMMAND test_release_info)

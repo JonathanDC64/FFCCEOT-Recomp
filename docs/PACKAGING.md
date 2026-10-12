@@ -120,10 +120,17 @@ game is set up).
 
 ### Update check
 
-On launch, if enabled (Settings → Game, default on), query the latest GitHub release once per day on a background
-thread; compare versions; show a menu banner with the notes and a "Download" button that opens the release page. A
-failure or no network is silent. The request carries nothing but the app name and version. Self-replacement is out of
-scope: the reference projects either skip updating entirely or ship updaters that broke on some platforms (§6).
+*Done* (`game/src/update_check.cpp`, `game/src/release_info.cpp`). On launch, if enabled (Settings → Interface → Check for
+updates, default on), the program asks GitHub for the ten newest releases once, on a background thread (WinHTTP on
+Windows; the system's `curl` on Linux, since the program has no HTTP library). The releases list is used instead of
+"latest" because every release so far is a pre-release, which "latest" skips. The first one newer than this build
+(major.minor.patch, then alpha < beta < rc < release) is shown on the start screen: a panel with the version and the
+release notes as plain text (`plain_notes`), and a Download button in the menu that opens the release page. With the
+start screen skipped or gone, a toast over the game says so, and Settings → About has the notes and an *Open the release
+page* button. A failure or no network is silent (a line in the log). The request carries nothing but the app name and
+version in its User-Agent. Test runs never check (`--update-check-as <version>` forces a check as if the program were
+that version). Self-replacement is out of scope: the reference projects either skip updating entirely or ship updaters
+that broke on some platforms (§6).
 
 ## 4. Compiler choice: measurements
 
@@ -227,7 +234,7 @@ gamepad-only operation of the start screen and the update banner.
 3. Setup UI: verification, native picker and drag-and-drop, progress, cancel, failure with a report button, rebuild
    from the kept copy. *Done* (`game/src/ui/prelaunch.cpp`, `game/src/ui/rom_setup.cpp`). Still to do: an in-app file browser for a
    gamepad-only Steam Deck session, and "Run setup again" in the settings menu.
-5. Update check and banner.
+5. Update check and banner. *Done.*
 6. Linux ports (§7).
 7. Packaging script and release workflow; NOTICE/licence audit; README and FAQ wording.
 8. Settings UI polish: *Done* with the port of Dusklight's UI (scrollable panes, option lists that work with a controller).

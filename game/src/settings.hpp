@@ -53,6 +53,7 @@ struct Settings {
     // Interface
     int ui_scale = 0;           // the menus' size in percent (50-200), 0 = the display's
     bool skip_prelaunch = false;  // start straight into the game when it is set up
+    bool check_updates = true;    // look for a newer release on GitHub at start (see update_check.hpp)
     bool preset_chosen = false;   // the Welcome window has been answered (it shows on the first run)
     bool suppress_preset = false;  // not saved: a test run offers no Welcome window (and leaves preset_chosen alone)
     // Game

@@ -19,6 +19,7 @@
 #include "../settings.hpp"
 #include "../wii_cutscenes.hpp"
 #include "../setup.hpp"
+#include "../update_check.hpp"
 
 #include <SDL3/SDL.h>
 
@@ -723,6 +724,10 @@ SettingsWindow::SettingsWindow(bool prelaunch) : mPrelaunch(prelaunch) {
                 "Scales this interface relative to the display's DPI scale. Auto follows the display. Has no effect "
                 "on the game's own screens.");
         }
+        bool_row(leftPane, rightPane, "Check for updates", SETTING(check_updates),
+            "Looks on GitHub for a newer release when the program starts, and says so on the main menu. It sends "
+            "nothing but the program's name and version, and never downloads or replaces anything: the button opens "
+            "the release's page. Takes effect the next time the program starts.");
         bool_row(leftPane, rightPane, "Skip the main menu at start", SETTING(skip_prelaunch),
             "Starts the game right away when it is set up, without the main menu. The menu is still available in "
             "the game: press F1 or R+Start.");
@@ -743,6 +748,14 @@ SettingsWindow::SettingsWindow(bool prelaunch) : mPrelaunch(prelaunch) {
                 pane.add_rml("<br/>Version " + escape(report::version()) +
                              "<br/><br/>This is an early alpha: things are missing and things break. Features marked "
                              "Experimental are the least tested.");
+                if (update::Available newer; update::available(newer)) {
+                    pane.add_rml("<br/><br/>Version " + escape(newer.version) + " is available.<br/>" +
+                                 escape_lines(newer.notes));
+                    pane.add_button("Open the release page").on_pressed([url = newer.url] {
+                        play_sound(kSoundClick);
+                        report::open_url(url);
+                    });
+                }
                 pane.add_button("Open the project page").on_pressed([] {
                     play_sound(kSoundClick);
                     report::open_url(report::kRepositoryUrl);

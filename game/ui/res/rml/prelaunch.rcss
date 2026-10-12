@@ -449,3 +449,40 @@ body.animate-in .intro-item {
         justify-content: flex-start;
     }
 }
+
+/* A newer release: shown once the update check has found one (the Download button is in the menu). */
+update-banner {
+    display: none;
+    position: absolute;
+    right: 96dp;
+    left: auto;
+    top: 72dp;
+    width: 440dp;
+    padding: var(--space-lg);
+    flex-direction: column;
+    gap: var(--space-sm);
+    border-radius: var(--radius-panel);
+    background-color: rgba(var(--color-surface-rgb), 80%);
+    font-size: var(--font-size-md);
+    text-align: left;
+}
+
+body.mirrored update-banner {
+    right: auto;
+    left: 96dp;
+}
+
+body.has-update update-banner {
+    display: flex;
+}
+
+update-title {
+    display: block;
+    font-size: var(--font-size-xl);
+    color: var(--color-prelaunch-accent);
+}
+
+update-notes {
+    display: block;
+    color: rgba(var(--color-text-rgb), 85%);
+}
