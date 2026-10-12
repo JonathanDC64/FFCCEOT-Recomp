@@ -6,7 +6,7 @@ Decisions marked *decided* came out of a Q&A with the project owner; the rest ar
 ## 0. Making a package
 
 ```
-python tools/package.py windows [--version 0.3.0-alpha] [--llvm-dir "C:/Program Files/LLVM"] [--no-build]
+python tools/package.py windows [--version 0.3.1-alpha] [--llvm-dir "C:/Program Files/LLVM"] [--no-build]
 ```
 
 It configures a clean `build/pkg-windows` (`-DFFCC_PACKAGE=ON`: source paths are mapped away and the PDB path is just
@@ -17,7 +17,7 @@ SHA-256), adds the licences (`NOTICE.md`, `licenses/`), scans the result for gam
 module, generated code) and writes `dist/FFCCEOT-Recomp-<version>-windows-x64.zip`. Releases are published by hand, as drafts.
 
 ```
-python tools/package.py linux [--version 0.3.0-alpha]
+python tools/package.py linux [--version 0.3.1-alpha]
 python tools/package.py linux --smoke "<path of your ROM>"
 ```
 
