@@ -362,7 +362,25 @@ def package_linux(args):
             shutil.copy2(lib, tc / "lib" / lib.name)
     inc = llvm / "lib" / "clang" / LLVM_MAJOR / "include"
     shutil.copytree(inc, tc / "lib" / "clang" / LLVM_MAJOR / "include")
-    # (the binaries find the libraries next to them through their $ORIGIN/../lib run path: checked below)
+    # lld also needs libxml2 (and its libicu and liblzma), which distributions do not all have under that name (Arch has
+    # libxml2.so.16): they come along, with a run path of their own, because a run path is not passed on to the libraries
+    # a library needs.
+    needed = ("libxml2.so.2", "libicuuc.so.70", "libicudata.so.70", "liblzma.so.5")
+    found = subprocess.run(["ldd", str(tc / "bin" / "lld")], capture_output=True, text=True).stdout
+    for soname in needed:
+        src = next((Path(l.split("=>")[1].split()[0]) for l in found.splitlines() if l.strip().startswith(soname)), None)
+        if src is None:
+            sys.exit(f"lld does not load {soname} any more: update the list in package.py")
+        shutil.copy2(src.resolve(), tc / "lib" / soname)
+        if soname.startswith(("libxml2", "libicuuc")):
+            run(["patchelf", "--set-rpath", "$ORIGIN", tc / "lib" / soname])
+    # (the binaries find the libraries next to them through their $ORIGIN/../lib run path: checked below, that nothing is
+    # missing and that the libraries above come from the package and not from the system)
+    out = subprocess.run([str(tc / "bin" / "lld"), "--version"], capture_output=True, text=True,
+                         env=dict(os.environ, LD_DEBUG="libs")).stderr
+    for soname in needed:
+        if not any("calling init" in l and soname in l and "/toolchain/" in l for l in out.splitlines()):
+            sys.exit(f"lld does not take {soname} from the package:\n{out}")
     for real in ("clang-" + LLVM_MAJOR, "lld"):
         out = subprocess.run(["ldd", str(tc / "bin" / real)], capture_output=True, text=True).stdout
         if "not found" in out:

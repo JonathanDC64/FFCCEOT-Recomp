@@ -136,8 +136,14 @@ endif()
 # The version in problem reports.
 find_package(Git QUIET)
 set(FFCC_GIT_REV "")
+# (--tags: the release tags are lightweight. A package is built from a tag, so it is never "dirty": in the Linux build the mounted
+# tree always looks changed.)
+set(FFCC_DESCRIBE_FLAGS --tags --always)
+if(NOT FFCC_PACKAGE)
+  list(APPEND FFCC_DESCRIBE_FLAGS --dirty)
+endif()
 if(GIT_FOUND)
-  execute_process(COMMAND ${GIT_EXECUTABLE} describe --always --dirty
+  execute_process(COMMAND ${GIT_EXECUTABLE} describe ${FFCC_DESCRIBE_FLAGS}
                   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR} OUTPUT_VARIABLE FFCC_GIT_REV OUTPUT_STRIP_TRAILING_WHITESPACE
                   ERROR_QUIET)
 endif()
