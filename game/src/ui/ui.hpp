@@ -95,6 +95,8 @@ bool game_obscured_below(const Document& doc) noexcept;
 Document* top_document() noexcept;
 
 std::string escape(std::string_view str) noexcept;
+// escape() with each line break as <br/> (RML shows a line break as a space).
+std::string escape_lines(std::string_view str) noexcept;
 Rml::Element* append(Rml::Element* parent, const Rml::String& tag) noexcept;
 Rml::Element* append_text(Rml::Element* parent, const Rml::String& text) noexcept;
 Rml::Element* append_text_element(

@@ -291,6 +291,18 @@ std::string escape(std::string_view str) noexcept {
     return result;
 }
 
+std::string escape_lines(std::string_view str) noexcept {
+    std::string result;
+    size_t at = 0;
+    while (at <= str.size()) {
+        const size_t end = std::min(str.find('\n', at), str.size());
+        if (at > 0) result += "<br/>";
+        result += escape(str.substr(at, end - at));
+        at = end + 1;
+    }
+    return result;
+}
+
 Rml::Element* append(Rml::Element* parent, const Rml::String& tag) noexcept {
     if (parent == nullptr) {
         return nullptr;

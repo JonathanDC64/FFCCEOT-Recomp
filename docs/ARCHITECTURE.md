@@ -616,6 +616,11 @@ writes the manifest and removes older builds. When it finishes the game boots be
 only needs a rebuild uses the kept copy and asks for nothing. A failure keeps the log for a problem report; a cancel
 kills the compilers. `ffcc --setup-only --setup-rom <file>` does it without a window.
 
+**Update check.** `game/src/update_check.cpp` asks GitHub's releases API once at start (a detached thread; WinHTTP, or
+`curl` on Linux), `release_info.cpp` (no platform code, covered by `test_release_info`) reads the JSON, compares versions
+and turns the notes into plain text. The start screen shows the newer release with a Download button that opens its page;
+nothing is downloaded or replaced. Details and the reasons are in PACKAGING.md ("Update check").
+
 **Crashes and problem reports.** A crash in the game's own code (access violation and the like) or an abort (the
 runtime's fatal errors) is caught by `game/src/crash_report.cpp`: a vectored handler sees the fault first, but only the
 unhandled-exception filter and the SIGABRT handler end the run, because first-chance faults can be ones the program

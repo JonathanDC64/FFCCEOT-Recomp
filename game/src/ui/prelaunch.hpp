@@ -28,8 +28,10 @@ protected:
 private:
     void build_menu_buttons();
     void play();
+    void show_update();
 
     bool mEntranceAnimationStarted = false;
+    bool mUpdateShown = false;  // the panel and the Download button are built
     bool mPlayPending = false;  // Play was chosen while the game was still being built or started
     std::vector<std::unique_ptr<Button>> mMenuButtons;
     Button* mPlayButton = nullptr;
@@ -38,6 +40,8 @@ private:
     Rml::Element* mRomStatusLabel = nullptr;
     Rml::Element* mRomDetail = nullptr;
     Rml::Element* mVersion = nullptr;
+    Rml::Element* mUpdateTitle = nullptr;
+    Rml::Element* mUpdateNotes = nullptr;
 };
 
 }  // namespace ui

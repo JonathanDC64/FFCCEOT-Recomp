@@ -62,6 +62,10 @@ European one adds German.
    generated rebuilds by itself from the kept copy.
 3. Pick a preset in the Welcome window (*Enhanced* is the recommended way to play) and press Play.
 
+The start screen tells you when a newer release is out (it asks GitHub once at start and sends nothing but the program's
+name and version; turn it off in Settings, Interface). It never downloads anything by itself: the Download button opens the
+release page.
+
 The program is **unsigned**, so Windows SmartScreen or your antivirus may warn about it the first time, and about the
 game module it builds. Saves and settings live in `%APPDATA%\FFCCEOT-Recomp\EchoesOfTime` (Linux:
 `~/.local/share/FFCCEOT-Recomp/EchoesOfTime`); put a file named `portable.txt` next to the program (next to the

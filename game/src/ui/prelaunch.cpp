@@ -11,6 +11,7 @@
 
 #include "../report.hpp"
 #include "../setup.hpp"
+#include "../update_check.hpp"
 
 namespace ui {
 namespace {
@@ -40,6 +41,10 @@ const Rml::String kDocumentSource = R"RML(
             </rom-status>
             <rom-version id="rom-version" />
         </rom-info>
+        <update-banner id="update-banner" class="intro-item delay-6">
+            <update-title id="update-title" />
+            <update-notes id="update-notes" />
+        </update-banner>
         <version-info class="intro-item delay-6">
             <version-label>Version <version-number id="version-text"></version-number></version-label>
         </version-info>
@@ -77,6 +82,8 @@ Prelaunch::Prelaunch() : Document(kDocumentSource, false, DocumentScope::Prelaun
     mRomStatusLabel = mDocument->GetElementById("rom-status-label");
     mRomDetail = mDocument->GetElementById("rom-version");
     mVersion = mDocument->GetElementById("version-text");
+    mUpdateTitle = mDocument->GetElementById("update-title");
+    mUpdateNotes = mDocument->GetElementById("update-notes");
 
     listen(mDocument, Rml::EventId::Transitionend, [this](Rml::Event& event) {
         auto* target = event.GetTargetElement();
@@ -135,6 +142,33 @@ void Prelaunch::play() {
     play_sound(kSoundPlay);
     show_menu_notification();
     hide(true);
+}
+
+// A newer release was found on GitHub (see update_check.hpp): the notes in a panel, and a Download button that opens the
+// release's page. Built when the answer arrives, which can be after the screen is up.
+void Prelaunch::show_update() {
+    if (mUpdateShown) {
+        return;
+    }
+    update::Available newer;
+    if (!update::available(newer)) {
+        return;
+    }
+    mUpdateShown = true;
+    set_text_content(mUpdateTitle, "Version " + newer.version + " is available");
+    mUpdateNotes->SetInnerRML(escape_lines(newer.notes));
+    mDocument->SetClass("has-update", true);
+
+    auto* menuList = mDocument->GetElementById("menu-list");
+    if (menuList == nullptr) {
+        return;
+    }
+    mMenuButtons.push_back(std::make_unique<Button>(menuList, "Download"));
+    mMenuButtons.back()->on_pressed([url = newer.url] {
+        play_sound(kSoundClick);
+        report::open_url(url);
+    });
+    apply_intro_animation(mMenuButtons.back()->root(), "delay-4");
 }
 
 void Prelaunch::show() {
@@ -224,6 +258,7 @@ void Prelaunch::update() {
     if (mVersion != nullptr) {
         set_text_content(mVersion, report::version());
     }
+    show_update();
 
     Document::update();
 }

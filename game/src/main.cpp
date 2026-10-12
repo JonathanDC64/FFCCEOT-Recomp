@@ -48,6 +48,7 @@
 #include "ui/modal.hpp"
 #include "ui/overlay.hpp"
 #include "ui/prelaunch.hpp"
+#include "update_check.hpp"
 #include "wii_cutscenes.hpp"
 #include "ui/preset.hpp"
 #include "ui/rom_setup.hpp"
@@ -435,6 +436,13 @@ private:
         if (settings_changed_) {
             settings_changed_ = false;
             apply_settings();
+        }
+        // The start screen shows a newer release itself; with it gone (or skipped), a note over the game.
+        if (!update_noted_) {
+            if (update::Available newer; update::available(newer)) {
+                update_noted_ = true;
+                if (!ui::is_prelaunch_open()) ui::push_toast({"info", "Update available", "Version " + newer.version + " is out. Open the menu and look under Settings, About.", std::chrono::seconds(10)});
+            }
         }
         const bool ui_open = ui::any_document_visible();
         if (ui_was_open_ && !ui_open) resumed();
@@ -1329,6 +1337,7 @@ private:
     bool quit_requested_ = false;              // Quit, in the start screen or the menu
     bool report_requested_ = false;            // Report an issue
     bool settings_changed_ = false;            // the interface changed a setting
+    bool update_noted_ = false;                // the newer release was announced over the game
     bool start_requested_ = false;             // the game was built: start it
     std::string script_shot_;                  // --ui-script: save the next frame shown here
     std::atomic<bool> done_{false};            // the game thread has finished (the main thread may close the window)
@@ -1549,6 +1558,7 @@ int main(int argc, char** argv) {
                      "  --console-name <name>                the console's name other players see (default: this PC's)\n"
                      "  --language english|french|german|spanish   the language the game plays in (German: Europe only)\n"
                      "  --online-server wiilink|kaeru|host|<DNS address>   Wi-Fi Connection server (default kaeru)\n"
+                     "  --update-check-as <version>          check GitHub for a release newer than this version (even in a test run)\n"
                      "start screen and setup:\n"
                      "  --prelaunch                          show the start screen even with a ROM on the command line\n"
                      "  --first-run                          offer the Welcome presets again\n"
@@ -1612,6 +1622,7 @@ int main(int argc, char** argv) {
     bool module_given = false, setup_only = false;
     std::filesystem::path setup_rom, toolchain_dir, ui_script_path, ui_shot_dir = ".";
     bool force_prelaunch = false, first_run = false, no_exe_icon = false;
+    std::string update_check_as;  // testing: --update-check-as <version>
     double virtual_display_hz = 144;
     std::map<uint64_t, std::string> screenshots;
     std::vector<ScriptStep> script;
@@ -1741,6 +1752,8 @@ int main(int argc, char** argv) {
         } else if (a == "--game-module" && has_value) {
             game_module_path = argv[++i];
             module_given = true;
+        } else if (a == "--update-check-as" && has_value) {
+            update_check_as = argv[++i];
         } else if (a == "--prelaunch") {
             force_prelaunch = true;
         } else if (a == "--first-run") {
@@ -1959,6 +1972,9 @@ int main(int argc, char** argv) {
     // The start screen is shown on every launch (Dusklight's prelaunch), unless the settings skip it and a game is ready
     // to run, or a ROM was given on the command line.
     host.show_prelaunch = force_prelaunch || (!explicit_rom && !(host.settings.skip_prelaunch && status.state == setup::State::Ready));
+    // A newer release on GitHub (Settings -> Interface turns this off); test runs never look.
+    if (!update_check_as.empty()) update::start(update_check_as);
+    else if (!testing && host.settings.check_updates) update::start(report::version());
     game.fullscreen = host.settings.fullscreen;
     host.settings.fullscreen = false;  // the window starts windowed; set_fullscreen below records the state
     if (!host.open_window()) return 1;

@@ -134,6 +134,7 @@ const Field kFields[] = {
               return true;
           }},
     BOOL_FIELD("interface.skip_prelaunch", skip_prelaunch),
+    BOOL_FIELD("interface.check_updates", check_updates),
     BOOL_FIELD("interface.preset_chosen", preset_chosen),
     ENUM_FIELD("game.language", language, kLanguages),
     BOOL_FIELD("game.skip_logos", skip_logos),
