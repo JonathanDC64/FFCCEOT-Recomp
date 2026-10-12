@@ -42,7 +42,7 @@ ffcc_patch(gpu3d_src GPU3D.cpp "void GPU3D::CheckFIFOIRQ() noexcept\n{\n"
 ffcc_patch(gpu3d_src GPU3D.cpp "void GPU3D::CheckFIFODMA() noexcept\n{\n"
   "void GPU3D::CheckFIFODMA() noexcept\n{\n    if (FfccGxReplaying) return; // ffcc patch\n")
 ffcc_patch(gpu3d_src GPU3D.cpp "void GPU3D::VBlank() noexcept\n{\n"
-  "void GPU3D::VBlank() noexcept\n{\n    const bool ffcc_flushed = GeometryEnabled && RenderingEnabled && FlushRequest; // ffcc patch\n    if (ffcc_wide_scene > 0) ffcc_wide_scene--; // ffcc patch\n    if (ffcc_ortho_verts > 16 && ffcc_persp_verts == 0) ffcc_wide_block = 30; else if (ffcc_wide_block > 0) ffcc_wide_block--;\n    ffcc_ortho_verts = ffcc_persp_verts = 0;\n")
+  "void GPU3D::VBlank() noexcept\n{\n    const bool ffcc_flushed = GeometryEnabled && RenderingEnabled && FlushRequest; // ffcc patch\n    if (ffcc_wide_scene > 0 && ffcc_flushed) ffcc_wide_scene--; // ffcc patch: counts scenes, not VBlanks, so a stall (a load) does not end it\n    if (ffcc_ortho_verts > 16 && ffcc_persp_verts == 0) ffcc_wide_block = 30; else if (ffcc_wide_block > 0) ffcc_wide_block--;\n    ffcc_ortho_verts = ffcc_persp_verts = 0;\n")
 ffcc_patch(gpu3d_src GPU3D.cpp "            FlushRequest = 0;\n        }\n    }\n}\n"
   "            FlushRequest = 0;\n        }\n    }\n    if (FfccGxVBlankHook && !FfccGxReplaying) FfccGxVBlankHook(FfccGxCommandHookContext, ffcc_flushed); // ffcc patch\n}\n")
 ffcc_patch(gpu3d_src GPU3D.cpp "            Viewport[4] = (Viewport[2] - Viewport[0] + 1) & 0x1FF;          // width\n"
