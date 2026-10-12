@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Builds a release package: the program and the compiler it needs, and nothing of the game.
 
-  python tools/package.py windows [--version 0.3.0-alpha] [--llvm-dir DIR] [--no-build]
+  python tools/package.py windows [--version 0.3.1-alpha] [--llvm-dir DIR] [--no-build]
   python tools/package.py linux   (run inside tools/docker/linux.Dockerfile's image: see docs/PACKAGING.md)
 
 The package holds the program, a small piece of LLVM (clang and the linker, with clang's own headers: the player's PC
@@ -30,7 +30,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import check_no_game_data as guard  # noqa: E402
 
-DEFAULT_VERSION = "0.3.0-alpha"
+DEFAULT_VERSION = "0.3.1-alpha"
 LLVM_VERSION = "22.1.8"
 LLVM_MAJOR = LLVM_VERSION.split(".")[0]
 LLVM_RELEASE = f"https://github.com/llvm/llvm-project/releases/download/llvmorg-{LLVM_VERSION}/"
