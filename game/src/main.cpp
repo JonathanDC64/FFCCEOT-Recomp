@@ -831,6 +831,10 @@ public:
                 SDL_SetWindowSize(window_, d.w, presenter_.flip_model() ? d.h : d.h + 1);
                 SDL_SyncWindow(window_);
                 SDL_RaiseWindow(window_);
+                std::printf("fullscreen: display %d (%d x %d at %d,%d), window %d x %d, %s\n",
+                            int(SDL_GetDisplayForWindow(window_)), d.w, d.h, d.x, d.y, d.w,
+                            presenter_.flip_model() ? d.h : d.h + 1,
+                            presenter_.flip_model() ? "flip model" : "OpenGL swap (one pixel taller)");
             } else {
                 SDL_SetWindowBordered(window_, true);
                 SDL_SyncWindow(window_);

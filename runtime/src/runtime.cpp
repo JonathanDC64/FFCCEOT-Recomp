@@ -427,8 +427,14 @@ void RuntimeImpl::end_frame() {
     perf_mark_ = std::chrono::steady_clock::now();  // the frontend's frame pacing is not emulation time
 }
 
+// The widescreen state the geometry engine keeps (third_party/CMakeLists.txt patch): a scene is drawn wide only while
+// ffcc_wide_scene is counting down and ffcc_wide_block (a scene of orthographic geometry only) is not.
+extern "C" int ffcc_wide_scene;
+extern "C" int ffcc_wide_block;
+
 void RuntimeImpl::probe_frame() {
     melonDS::NDS& n = *nds;
+    probe_wide_ += ffcc_wide_block > 0 ? 'B' : ffcc_wide_scene > 0 ? 'W' : '4';
     // RenderFrameIdentical is false when this frame's VBlank swapped in a new polygon list (a geometry flush).
     const bool new3d = !n.GPU.GPU3D.RenderFrameIdentical;
     const bool top = n.GPU.ScreenSwap;  // POWCNT1 bit 15: engine A (the 3D one) on the top screen
@@ -453,8 +459,11 @@ void RuntimeImpl::probe_frame() {
         (unsigned long long)frames_, probe_new3d_, probe_capture_frames_, probe_top_, probe_swaps_,
         probe_pattern_.c_str());
     log("fps-probe: frame %llu: ARM9 busy (tenths) %s\n", (unsigned long long)frames_, probe_busy_.c_str());
+    log("fps-probe: frame %llu: 3D width (W wide, 4 = 4:3, B held at 4:3) %s\n", (unsigned long long)frames_,
+        probe_wide_.c_str());
     probe_pattern_.clear();
     probe_busy_.clear();
+    probe_wide_.clear();
     probe_new3d_ = probe_capture_frames_ = probe_top_ = probe_swaps_ = 0;
 }
 
