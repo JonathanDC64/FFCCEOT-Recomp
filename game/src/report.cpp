@@ -461,7 +461,9 @@ void start_log() {
     _dup2(fd, 2);
     SetStdHandle(STD_OUTPUT_HANDLE, write);
     SetStdHandle(STD_ERROR_HANDLE, write);
-    std::setvbuf(stdout, nullptr, _IOLBF, 4096);
+    // Unbuffered: the C runtime on Windows treats _IOLBF as fully buffered, so with 4 KB of buffer nothing the program
+    // prints ever reached the log file (a problem report quoted an empty log) until 4 KB had been written.
+    std::setvbuf(stdout, nullptr, _IONBF, 0);
     std::setvbuf(stderr, nullptr, _IONBF, 0);
     CloseHandle(CreateThread(nullptr, 0, tee_thread, read, 0, nullptr));
     g_log_path = path;

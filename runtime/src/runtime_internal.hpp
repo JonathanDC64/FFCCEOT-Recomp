@@ -189,7 +189,7 @@ private:
     // was on the top screen; summarised every 60 frames.
     void probe_frame();
     bool probe_capture_ = false;
-    std::string probe_pattern_, probe_busy_;
+    std::string probe_pattern_, probe_busy_, probe_wide_;
     u64 halted_cycles_ = 0, probe_cycles_mark_ = 0, probe_halted_mark_ = 0;  // ARM9 cycles spent halted (all time)
     int probe_new3d_ = 0, probe_capture_frames_ = 0, probe_top_ = 0, probe_swaps_ = 0;
     bool probe_last_top_ = false;

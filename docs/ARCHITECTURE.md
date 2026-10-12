@@ -161,7 +161,7 @@ emulated hardware state as the source of truth.
 switches. `--trace-files` logs which ROM file (or overlay) each cartridge read hits, by frame. `--perf` reports emulation
 cost per frame and logs hitches: frames that took over 10 ms to emulate, late frames, and missed display refreshes.
 `--fps-probe` shows, per frame, whether a new 3D scene came and how busy the ARM9 was (tenths of the frame not halted):
-a run of frames without a new scene and with a busy ARM9 is the game running late. `--exit-after-frames N` quits cleanly for scripted runs, and `--dump-at-frame N` prints the CPU state.
+a run of frames without a new scene and with a busy ARM9 is the game running late. It also logs a once-a-second width trace (`W` widened 3D, `4` 4:3, `B` held at 4:3 by the ortho-only block) and, with the fullscreen line printed at start (display, window size, flip model or the one-pixel-taller GL swap), tells a problem report which presentation path ran. `--exit-after-frames N` quits cleanly for scripted runs, and `--dump-at-frame N` prints the CPU state.
 In `FFCC_TRACE_ENTRY` builds, `--profile-functions <file>` writes each function's first and last frame, call count
 and cycles (counted to the last function entered, so a caller's work after a call goes to its callee).
 Diffing two frame ranges of that profile is how the logo and title scenes were found. Configure with `-DFFCC_TRACE_ENTRY=ON` to record every function entry (thread, address, LR, SP). The last 64
@@ -623,7 +623,7 @@ crashed one. The dialog (`crash_dialog.cpp`) is a UI modal (`ui::Modal`, the sam
 with its own GL context. It offers *Restart game* (relaunches the saved command line once the crashed process
 has ended), *Report issue*, *Show details* (the top of the stack) and *Close*. Reporting (`game/src/report.cpp`) zips
 the crash text, the system information (OS, CPU, RAM, GPUs and drivers, monitors), `settings.ini` and the log's start and
-end (`<data>/logs/ffcc.log`, a tee of stdout and stderr) into `<data>/reports`, opens the repository's new-issue form
+end (`<data>/logs/ffcc.log`, a tee of stdout and stderr) (both streams unbuffered: the Windows C runtime treats line buffering as full buffering, which once left the log empty) into `<data>/reports`, opens the repository's new-issue form
 with the title and a body filled in (the encoded URL stays under about 6.5 KB), and opens the folder with the zip to be
 dragged into the issue. The menu strip's *Report an issue* tab does the same without a crash, adding a screenshot
 of the game taken a few frames after the menu closes. The user's name, profile folder and computer name are redacted
