@@ -630,7 +630,7 @@ crashed one. The dialog (`crash_dialog.cpp`) is a UI modal (`ui::Modal`, the sam
 with its own GL context. It offers *Restart game* (relaunches the saved command line once the crashed process
 has ended), *Report issue*, *Show details* (the top of the stack) and *Close*. Reporting (`game/src/report.cpp`) zips
 the crash text, the system information (OS, CPU, RAM, GPUs and drivers, monitors), `settings.ini` and the log's start and
-end (`<data>/logs/ffcc.log`, a tee of stdout and stderr) (both streams unbuffered: the Windows C runtime treats line buffering as full buffering, which once left the log empty) into `<data>/reports`, opens the repository's new-issue form
+end (`<data>/logs/ffcc.log`, a tee of stdout and stderr) (both streams unbuffered: the Windows C runtime treats line buffering as full buffering, which once left the log empty; and a program started from the desktop has no stdout at all, so its streams are reopened on NUL first) into `<data>/reports`, opens the repository's new-issue form
 with the title and a body filled in (the encoded URL stays under about 6.5 KB), and opens the folder with the zip to be
 dragged into the issue. The menu strip's *Report an issue* tab does the same without a crash, adding a screenshot
 of the game taken a few frames after the menu closes. The user's name, profile folder and computer name are redacted
