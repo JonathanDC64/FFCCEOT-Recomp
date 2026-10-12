@@ -217,6 +217,8 @@ and interpolation (§5.3) need our own rasteriser:
   the presenter shows the middle of the output for it.
 - Orthographic geometry (no perspective) is not widened by the game's hook: it is squeezed back to 4:3 in the wide
   viewport, and a frame with no perspective geometry at all (the title) stays 4:3 for a while (`ffcc_wide_block`).
+  The widened state (`ffcc_wide_scene`) counts flushed scenes, not VBlanks, so a stall (a load: the 3D stops for
+  a dozen frames) does not turn the picture 4:3 under the wide HUD.
 - The HUD: `RenderSprites` groups engine A's touching sprites into clusters; a cluster of at most 150 x 110 pixels at the
   left or right edge is scaled (HUD size, 50-200%) about the screen's corner and, with "HUD at the edges", moved out to the
   edge of the wide picture (a per-sprite transform in the sprite vertex shader). The pickup text (an item's name or amount,
@@ -460,7 +462,7 @@ AMD and Intel drivers):
 3. D3D11 copies that texture to the swapchain's back buffer and presents with sync interval 0 (the frontend paces
    frames; the flip model shows the newest frame at the next refresh, without tearing).
 
-The two extra copies are at window resolution and cost well under a millisecond. The window is sized exactly to the
+The Direct3D device is created on the adapter that drives the window's monitor (not the default one, which on a PC with an integrated and a discrete GPU can be the other). The two extra copies are at window resolution and cost well under a millisecond. The window is sized exactly to the
 display. If the interop is missing (or `--no-flip-model` is passed), presentation falls back to a GL swap and the
 window is made one pixel taller than the display, which fails the driver's exact-match test and keeps it composited
 (the shell still hides the taskbar; Godot and Chromium use the same trick), at about one frame of extra latency.

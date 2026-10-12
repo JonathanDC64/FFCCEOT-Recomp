@@ -30,6 +30,25 @@ using PFNUNREGISTEROBJECT = BOOL(WINAPI*)(HANDLE device, HANDLE object);
 using PFNLOCKOBJECTS = BOOL(WINAPI*)(HANDLE device, GLint count, HANDLE* objects);
 constexpr GLenum kAccessWriteDiscard = 0x0002;  // WGL_ACCESS_WRITE_DISCARD_NV
 
+// The graphics adapter that drives the monitor the window is on. On a PC with more than one (an integrated and a
+// discrete GPU, or several discrete ones) the default adapter can be another one, and a swapchain made there for a
+// window on the first's monitor is not the one the OpenGL context draws on.
+ComPtr<IDXGIAdapter1> adapter_of_window(HWND hwnd) {
+    const HMONITOR monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+    ComPtr<IDXGIFactory1> factory;
+    if (!monitor || FAILED(CreateDXGIFactory1(IID_PPV_ARGS(&factory)))) return nullptr;
+    for (UINT i = 0;; ++i) {
+        ComPtr<IDXGIAdapter1> adapter;
+        if (factory->EnumAdapters1(i, &adapter) == DXGI_ERROR_NOT_FOUND) return nullptr;
+        for (UINT o = 0;; ++o) {
+            ComPtr<IDXGIOutput> output;
+            if (adapter->EnumOutputs(o, &output) == DXGI_ERROR_NOT_FOUND) break;
+            DXGI_OUTPUT_DESC desc{};
+            if (SUCCEEDED(output->GetDesc(&desc)) && desc.Monitor == monitor) return adapter;
+        }
+    }
+}
+
 }  // namespace
 
 struct FlipPresenter::Impl {
@@ -123,8 +142,17 @@ bool FlipPresenter::init(void* hwnd, std::string& error) {
         return false;
     }
 
-    if (FAILED(D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, D3D11_CREATE_DEVICE_BGRA_SUPPORT, nullptr,
-                                 0, D3D11_SDK_VERSION, &m.device, nullptr, &m.context))) {
+    // The window's own adapter first, then the default one.
+    ComPtr<IDXGIAdapter1> window_adapter = adapter_of_window(static_cast<HWND>(hwnd));
+    HRESULT device_hr = E_FAIL;
+    if (window_adapter)
+        device_hr = D3D11CreateDevice(window_adapter.Get(), D3D_DRIVER_TYPE_UNKNOWN, nullptr,
+                                      D3D11_CREATE_DEVICE_BGRA_SUPPORT, nullptr, 0, D3D11_SDK_VERSION, &m.device,
+                                      nullptr, &m.context);
+    if (FAILED(device_hr))
+        device_hr = D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, D3D11_CREATE_DEVICE_BGRA_SUPPORT,
+                                      nullptr, 0, D3D11_SDK_VERSION, &m.device, nullptr, &m.context);
+    if (FAILED(device_hr)) {
         error = "cannot create a Direct3D 11 device";
         return false;
     }
