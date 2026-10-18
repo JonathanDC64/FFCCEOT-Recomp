@@ -1,0 +1,22 @@
+{
+  "$schema": "https://recomp.fyi/schema/v1.json",
+  "game": "Final Fantasy Crystal Chronicles: Echoes of Time",
+  "system": "NDS",
+  "type": "recomp",
+  "original": [
+    { "region": "USA", "serial": "CFIE", "sha1": "1df23d5a3a655bdd587c360b581202931d0f66e1" },
+    { "region": "Europe", "serial": "CFIP", "sha1": "18f7004f74c83feba40f003641ec00571e52a301" }
+  ],
+  "project": "FFCCEOT-Recomp",
+  "status": "in-progress",
+  "targets": ["Windows", "Linux", "Steam Deck"],
+  "toolchain": "Ndsrecomp",
+  "approach": "Static recompilation of the ARM9 code to C, built on the player's PC from their own copy; melonDS core for the DS hardware, OpenGL renderer",
+  "maintainers": [{ "name": "JonathanDC64", "link": "https://github.com/JonathanDC64" }],
+  "links": [
+    { "label": "Releases", "url": "https://github.com/JonathanDC64/FFCCEOT-Recomp/releases" },
+    { "label": "Website", "url": "https://jonathandc64.github.io/FFCCEOT-Recomp/" }
+  ],
+  "help": ["Playtesting past the opening areas", "Online play testing", "Linux and Steam Deck testing"],
+  "notes": "Early alpha, played through the opening areas. Widescreen with HUD at the edges, 3D at 60 fps or the display's refresh rate, high resolution, gamepad play without the touch screen, analog movement, online multiplayer. USA and Europe versions. Nothing of the game is included."
+}
