@@ -1,0 +1,107 @@
+{
+  "$schema": "https://recomplauncher.com/schema/recomplauncher.json",
+  "format": 1,
+  "name": "Final Fantasy Crystal Chronicles: Echoes of Time",
+  "repo": "JonathanDC64/FFCCEOT-Recomp",
+  "game": {
+    "kind": "iso",
+    "label": "Your dump (.nds) of Final Fantasy Crystal Chronicles: Echoes of Time, the USA (CFIE) or the European (CFIP) release.",
+    "dumps": [
+      { "name": "USA", "size": 134217728, "crc32": "86c071f1" },
+      { "name": "Europe", "crc32": "2dbad135" }
+    ]
+  },
+  "prepare": {
+    "program": ["ffcc.exe", "FFCCEOT-Recomp.AppImage"],
+    "args": ["--prepare", "--setup-rom", "{game}"],
+    "label": "Building the game from your ROM",
+    "timeout": 900
+  },
+  "start": {
+    "program": ["ffcc.exe", "FFCCEOT-Recomp.AppImage"],
+    "args": ["--skip-start-screen"]
+  },
+  "folders": {
+    "saves": [
+      { "path": "{install}/data/saves", "if": "{install}/portable.txt" },
+      { "path": "{config}/FFCCEOT-Recomp/EchoesOfTime/saves", "if": "{config}/FFCCEOT-Recomp/EchoesOfTime" },
+      { "path": "{local}/FFCCEOT-Recomp/EchoesOfTime/saves" }
+    ],
+    "logs": [
+      { "path": "{install}/data/logs", "if": "{install}/portable.txt" },
+      { "path": "{config}/FFCCEOT-Recomp/EchoesOfTime/logs", "if": "{config}/FFCCEOT-Recomp/EchoesOfTime" },
+      { "path": "{local}/FFCCEOT-Recomp/EchoesOfTime/logs" }
+    ]
+  },
+  "saves": [
+    "{install}/data/saves",
+    "{config}/FFCCEOT-Recomp/EchoesOfTime/saves",
+    "{local}/FFCCEOT-Recomp/EchoesOfTime/saves"
+  ],
+  "settings": [
+    {
+      "id": "window", "label": "Window", "in": "args",
+      "help": "Borderless fullscreen fills your screen. F11 switches in the game.",
+      "choices": [
+        { "label": "Game's setting", "args": [] },
+        { "label": "Fullscreen", "args": ["--fullscreen"] }
+      ]
+    },
+    {
+      "id": "layout", "label": "Screens", "in": "args",
+      "help": "How the DS's two screens are laid out. Single shows the top screen, with the touch screen as a small picture in the corner.",
+      "choices": [
+        { "label": "Game's setting", "args": [] },
+        { "label": "Single screen", "args": ["--layout", "single"] },
+        { "label": "Main and side", "args": ["--layout", "main-side"] },
+        { "label": "Stacked", "args": ["--layout", "stacked"] },
+        { "label": "Side by side", "args": ["--layout", "side"] }
+      ]
+    },
+    {
+      "id": "resolution", "label": "Resolution", "in": "args",
+      "help": "How sharp the 3D is drawn. Auto matches your window. Higher needs a faster graphics card.",
+      "choices": [
+        { "label": "Game's setting", "args": [] },
+        { "label": "Auto", "args": ["--scale", "auto"] },
+        { "label": "2x", "args": ["--scale", "2"] },
+        { "label": "4x", "args": ["--scale", "4"] },
+        { "label": "8x", "args": ["--scale", "8"] }
+      ]
+    },
+    {
+      "id": "aspect", "label": "Picture shape", "in": "args",
+      "help": "The DS is 4:3. A wider picture shows more of the world to the sides.",
+      "choices": [
+        { "label": "Game's setting", "args": [] },
+        { "label": "4:3", "args": ["--aspect", "4:3"] },
+        { "label": "16:9", "args": ["--aspect", "16:9"] },
+        { "label": "21:9", "args": ["--aspect", "21:9"] }
+      ]
+    },
+    {
+      "id": "textures", "label": "Textures", "in": "args",
+      "help": "Smoothing removes the blocky look of the DS textures. Off keeps them as on the console.",
+      "choices": [
+        { "label": "Game's setting", "args": [] },
+        { "label": "Off", "args": ["--texture-smoothing", "off"] },
+        { "label": "Smooth", "args": ["--texture-smoothing", "smooth"] },
+        { "label": "Sharp", "args": ["--texture-smoothing", "sharp"] }
+      ]
+    },
+    {
+      "id": "motion", "label": "3D frame rate", "in": "args",
+      "help": "The game draws its 3D at 30 fps. 60 fps or your screen's rate fills in the frames between.",
+      "choices": [
+        { "label": "Game's setting", "args": [] },
+        { "label": "30 fps", "args": ["--no-interpolate"] },
+        { "label": "60 fps", "args": ["--interpolate", "--no-display-rate"] },
+        { "label": "Screen's rate", "args": ["--interpolate", "--display-rate"] }
+      ]
+    }
+  ],
+  "actions": [
+    { "id": "saves", "label": "Saves", "help": "Your saves, one per release (USA and Europe).", "open": "saves" },
+    { "id": "logs", "label": "Logs", "help": "The game's log, which goes with a problem report.", "open": "logs" }
+  ]
+}
