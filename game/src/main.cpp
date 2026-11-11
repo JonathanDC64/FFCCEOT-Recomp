@@ -1510,8 +1510,8 @@ int main(int argc, char** argv) {
     for (int i = first_option; i < argc; i++) {
         const std::string a = argv[i];
         if (a == "--no-settings" || a == "--input-script" || a == "--ui-script" || a == "--unpaced" ||
-            a == "--exit-after-frames" || a == "--help" || a == "-h")
-            testing = true;
+            a == "--exit-after-frames" || a == "--help" || a == "-h" || a == "--prepare")
+            testing = true;  // (--prepare: a launcher reads its stdout, which the log would otherwise take over)
     }
     report::set_data_dir(data_dir);
     if (!testing) report::start_log();
@@ -1564,6 +1564,8 @@ int main(int argc, char** argv) {
                      "  --first-run                          offer the Welcome presets again\n"
                      "  --setup-rom <file>                   the start screen starts with this ROM\n"
                      "  --setup-only                         set up from --setup-rom without a window, then exit\n"
+                     "  --prepare                            --setup-only for a launcher: prints \"progress <0..1> <step>\" lines on stdout\n"
+                     "  --skip-start-screen                  go straight to the game when it is set up (Settings, Interface does this for good)\n"
                      "  --toolchain <dir>                    the compiler to build the game with (default: next to the program)\n"
                      "  --data-dir <folder>                  keep the settings, the save and the game in this folder\n"
                      "testing:\n"
@@ -1619,7 +1621,7 @@ int main(int argc, char** argv) {
     std::multimap<uint64_t, std::pair<int, int>> resize_at;
     bool allow_flip_model = true;
     std::filesystem::path game_module_path = GameModule::default_path();
-    bool module_given = false, setup_only = false;
+    bool module_given = false, setup_only = false, prepare_lines = false, skip_start_screen = false;
     std::filesystem::path setup_rom, toolchain_dir, ui_script_path, ui_shot_dir = ".";
     bool force_prelaunch = false, first_run = false, no_exe_icon = false;
     std::string update_check_as;  // testing: --update-check-as <version>
@@ -1762,6 +1764,11 @@ int main(int argc, char** argv) {
             no_exe_icon = true;
         } else if (a == "--setup-only") {
             setup_only = true;
+        } else if (a == "--prepare") {
+            setup_only = true;
+            prepare_lines = true;
+        } else if (a == "--skip-start-screen") {
+            skip_start_screen = true;
         } else if (a == "--ui-script" && has_value) {
             ui_script_path = argv[++i];
         } else if (a == "--ui-shots" && has_value) {
@@ -1860,7 +1867,12 @@ int main(int argc, char** argv) {
             // No window: setup from the command line (testing).
             setup::Request request{data_dir, setup_rom, toolchain_dir};
             setup::Callbacks callbacks;
-            callbacks.progress = [](float f, const std::string& step) {
+            callbacks.progress = [prepare_lines](float f, const std::string& step) {
+                if (prepare_lines) {
+                    std::printf("progress %.2f %s\n", f, step.c_str());
+                    std::fflush(stdout);  // (the launcher reads a pipe, which is not flushed by line)
+                    return;
+                }
                 std::fprintf(stderr, "[%3d%%] %s\n", int(f * 100), step.c_str());
             };
             const setup::Result result = setup::run(request, callbacks);
@@ -1971,7 +1983,8 @@ int main(int argc, char** argv) {
     host.ui_shot_dir = ui_shot_dir;
     // The start screen is shown on every launch (Dusklight's prelaunch), unless the settings skip it and a game is ready
     // to run, or a ROM was given on the command line.
-    host.show_prelaunch = force_prelaunch || (!explicit_rom && !(host.settings.skip_prelaunch && status.state == setup::State::Ready));
+    const bool skip_prelaunch = host.settings.skip_prelaunch || skip_start_screen;
+    host.show_prelaunch = force_prelaunch || (!explicit_rom && !(skip_prelaunch && status.state == setup::State::Ready));
     // A newer release on GitHub (Settings -> Interface turns this off); test runs never look.
     if (!update_check_as.empty()) update::start(update_check_as);
     else if (!testing && host.settings.check_updates) update::start(report::version());
