@@ -5,6 +5,8 @@ recompiling the game: its ARM code is translated to C and compiled on your PC, n
 
 **[Download the latest alpha for Windows or Linux](https://github.com/JonathanDC64/FFCCEOT-Recomp/releases)** (a Windows zip or a Linux AppImage; you bring your own ROM).
 
+<a href="https://recomplauncher.com/game/ffcceot-recomp"><picture><source media="(prefers-color-scheme: dark)" srcset="https://recomplauncher.com/assets/press/launcher/badge-light.svg"><img alt="Get it on RecompLauncher" src="https://recomplauncher.com/assets/press/launcher/badge-dark.svg" height="48"></picture></a>
+
 Project page: **<https://jonathandc64.github.io/FFCCEOT-Recomp/>**
 
 > **Status: alpha.** The game boots and plays from the title screen into the field, with sound, saves and online play.
@@ -114,7 +116,9 @@ Everything in the settings can also be set for one run. Run `ffcc --help` for th
 `--texture-smoothing off|smooth|sharp`, `--stable-textures`, `--better-polygons`, `--display-rate`, `--no-interpolate`,
 `--pacing variable --rate-cap <fps>`, `--aspect 16:9`, `--hud-edges`, `--hud-scale 50..200`, `--fullscreen`,
 `--analog-movement off|single-player|multiplayer`, `--no-skip-logos`, `--prelaunch` (show the start screen even with a
-ROM given), `--toolchain <dir>` (the compiler to build with) and `--data-dir <dir>`. The program has no console window
+ROM given), `--skip-start-screen` (go straight to the game when it is set up), `--setup-rom <file>` with `--prepare` (set
+the game up from that ROM without a window, printing `progress <0..1> <step>` lines for a launcher such as
+[RecompLauncher](https://recomplauncher.com)), `--toolchain <dir>` (the compiler to build with) and `--data-dir <dir>`. The program has no console window
 of its own: started from a terminal it prints there, but the terminal does not wait for it.
 
 ## Problems?

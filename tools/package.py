@@ -269,6 +269,7 @@ def package_windows(args):
     check_no_build_paths(stage)
     copy_llvm(llvm, "windows", stage)
     copy_licenses(build_dir, stage)
+    shutil.copy2(ROOT / "recomplauncher.json", stage / "recomplauncher.json")  # (RecompLauncher reads it from the top of the zip)
     (stage / "README.txt").write_text(README_TXT.format(
         version=version,
         start="Extract this folder somewhere you can write to (not Program Files) and run ffcc.exe.",
@@ -389,6 +390,7 @@ def package_linux(args):
     docs.mkdir(parents=True)
     copy_licenses(build_dir, docs)
     shutil.copy2(llvm / "LICENSE.TXT", docs / "licenses" / "LLVM-Apache-2.0-with-LLVM-exception.txt")
+    shutil.copy2(ROOT / "recomplauncher.json", appdir / "recomplauncher.json")  # (RecompLauncher reads it from the AppImage's root)
     (appdir / "ffcc.desktop").write_text(DESKTOP, encoding="utf-8")
     (appdir / "ffcc.png").write_bytes(ico_png(ROOT / "game" / "res" / "ffcc.ico"))
     apprun = appdir / "AppRun"
